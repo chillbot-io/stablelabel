@@ -29,6 +29,23 @@ export interface SensitivityLabel {
   priority: number;
   color: string | null;
   parent: { id: string } | null;
+  parentLabelId: string | null;
+  contentFormats: string[] | null;
+  autoLabeling: unknown | null;
+}
+
+/** Shape returned by Get-SLLabel -Tree */
+export interface LabelTreeNode {
+  Id: string;
+  Name: string;
+  Tooltip: string | null;
+  IsActive: boolean;
+  SubLabels: Array<{
+    Id: string;
+    Name: string;
+    Tooltip: string | null;
+    IsActive: boolean;
+  }>;
 }
 
 export interface LabelPolicy {
@@ -39,6 +56,27 @@ export interface LabelPolicy {
   Enabled: boolean;
   CreatedBy: string;
   WhenCreated: string;
+  WhenChanged: string | null;
+  Mode: string | null;
+  Type: string | null;
+  ExchangeLocation: string[] | null;
+  SharePointLocation: string[] | null;
+  OneDriveLocation: string[] | null;
+}
+
+export interface AutoLabelPolicy {
+  Name: string;
+  Guid: string;
+  Comment: string | null;
+  Enabled: boolean;
+  Mode: string | null;
+  WhenCreated: string;
+  WhenChanged: string | null;
+  ApplySensitivityLabel: string | null;
+  ExchangeLocation: string[] | null;
+  SharePointLocation: string[] | null;
+  OneDriveLocation: string[] | null;
+  Priority: number | null;
 }
 
 export interface SnapshotSummary {

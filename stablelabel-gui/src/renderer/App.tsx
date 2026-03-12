@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import Sidebar from './components/Layout/Sidebar';
 import TopBar from './components/Layout/TopBar';
 import DashboardPage from './components/Dashboard/DashboardPage';
+import LabelsPage from './components/Labels/LabelsPage';
 import type { Page } from './lib/types';
 
 export default function App() {
@@ -12,7 +13,7 @@ export default function App() {
       case 'dashboard':
         return <DashboardPage onNavigate={setCurrentPage} />;
       case 'labels':
-        return <PlaceholderPage title="Sensitivity Labels" description="Label hierarchy, policies, and auto-label management" />;
+        return <LabelsPage />;
       case 'retention':
         return <PlaceholderPage title="Retention" description="Retention labels and policies" />;
       case 'dlp':
@@ -39,7 +40,7 @@ export default function App() {
       <Sidebar currentPage={currentPage} onNavigate={setCurrentPage} />
       <div className="flex-1 flex flex-col overflow-hidden">
         <TopBar />
-        <main className="flex-1 overflow-auto p-6">
+        <main className={`flex-1 overflow-auto ${currentPage === 'labels' ? '' : 'p-6'}`}>
           {renderPage()}
         </main>
       </div>
