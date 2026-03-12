@@ -25,6 +25,9 @@ $script:SLLabelCache = @{
     TenantId  = $null
 }
 
+# Module-scoped active elevated job (used by Start/Invoke/Stop-SLElevatedJob)
+$script:SLActiveJob = $null
+
 # Module-scoped config
 $script:SLConfig = @{
     SnapshotPath    = Join-Path $HOME '.stablelabel' 'snapshots'

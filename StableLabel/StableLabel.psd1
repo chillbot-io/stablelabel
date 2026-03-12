@@ -83,6 +83,9 @@
         'Revoke-SLMailboxAccess'
         'Request-SLPimRole'
         'Get-SLElevationStatus'
+        'Start-SLElevatedJob'
+        'Invoke-SLElevatedAction'
+        'Stop-SLElevatedJob'
 
         # Analysis
         'Test-SLPermission'
