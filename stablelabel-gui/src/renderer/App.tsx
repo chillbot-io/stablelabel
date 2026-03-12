@@ -10,7 +10,7 @@ export default function App() {
   const renderPage = () => {
     switch (currentPage) {
       case 'dashboard':
-        return <DashboardPage />;
+        return <DashboardPage onNavigate={setCurrentPage} />;
       case 'labels':
         return <PlaceholderPage title="Sensitivity Labels" description="Label hierarchy, policies, and auto-label management" />;
       case 'retention':
