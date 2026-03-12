@@ -76,6 +76,43 @@ function Stop-SLElevatedJob {
         $cleanupErrors = [System.Collections.Generic.List[string]]::new()
         $cleanupResults = [System.Collections.Generic.List[object]]::new()
 
+        # === Step 0: Disconnect CIFS file shares ===
+        $fileShareElevations = @($jobState['Elevations'] | Where-Object {
+            $_['Type'] -eq 'FileShare' -and $_['Status'] -eq 'Active'
+        })
+
+        foreach ($elevation in $fileShareElevations) {
+            $sharePath = $elevation['Path']
+
+            try {
+                Write-Verbose "[$currentJobId] Disconnecting file share: $sharePath"
+                Disconnect-SLFileShare -Path $sharePath
+                $elevation['Status'] = 'Disconnected'
+                $elevation['DisconnectedAt'] = [datetime]::UtcNow.ToString('o')
+
+                $cleanupResults.Add([PSCustomObject]@{
+                    Type   = 'FileShare'
+                    Path   = $sharePath
+                    Status = 'Disconnected'
+                })
+
+                Write-Host "  File share disconnected: $sharePath" -ForegroundColor Green
+            }
+            catch {
+                $elevation['Status'] = 'DisconnectFailed'
+                $errorMsg = "Failed to disconnect file share '$sharePath': $($_.Exception.Message)"
+                $cleanupErrors.Add($errorMsg)
+                Write-Warning "[$currentJobId] $errorMsg"
+
+                $cleanupResults.Add([PSCustomObject]@{
+                    Type   = 'FileShare'
+                    Path   = $sharePath
+                    Status = 'Failed'
+                    Error  = $_.Exception.Message
+                })
+            }
+        }
+
         # === Step 1: Revoke Site Admin (reverse order) ===
         $siteAdminElevations = @($jobState['Elevations'] | Where-Object {
             $_['Type'] -eq 'SiteAdmin' -and $_['Status'] -eq 'Active'

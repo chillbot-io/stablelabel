@@ -104,6 +104,16 @@
         'Get-SLActivityReport'
         'Get-SLAuditLog'
 
+        # File Shares (CIFS/SMB)
+        'Connect-SLFileShare'
+        'Disconnect-SLFileShare'
+        'Get-SLFileShareLabel'
+        'Set-SLFileShareLabel'
+        'Remove-SLFileShareLabel'
+        'Set-SLFileShareLabelBulk'
+        'Get-SLFileShareScan'
+        'Get-SLFileShareInventory'
+
         # Snapshot
         'New-SLSnapshot'
         'Get-SLSnapshot'

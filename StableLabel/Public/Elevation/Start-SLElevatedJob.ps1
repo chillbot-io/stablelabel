@@ -30,6 +30,12 @@ function Start-SLElevatedJob {
         Skip enabling Super User. Use when only Site Admin elevation is needed.
     .PARAMETER SkipSiteAdmin
         Skip granting Site Admin. Use when only Super User elevation is needed.
+    .PARAMETER FileSharePaths
+        One or more UNC paths to CIFS/SMB file shares to mount as part of the job.
+        Shares are automatically disconnected by Stop-SLElevatedJob.
+    .PARAMETER FileShareCredential
+        Optional PSCredential for CIFS share authentication. If omitted, uses
+        Windows integrated authentication (Kerberos/NTLM).
     .PARAMETER DryRun
         Simulate the entire elevation without making changes.
     .PARAMETER AsJson
@@ -37,7 +43,10 @@ function Start-SLElevatedJob {
     .EXAMPLE
         $job = Start-SLElevatedJob -SiteUrls 'https://contoso.sharepoint.com/sites/hr' -UserPrincipalName 'ga@contoso.com'
     .EXAMPLE
-        $job = Start-SLElevatedJob -SiteUrls @('https://contoso.sharepoint.com/sites/hr','https://contoso.sharepoint.com/sites/legal') -UserPrincipalName 'ga@contoso.com' -DryRun
+        $job = Start-SLElevatedJob -SiteUrls @('https://contoso.sharepoint.com/sites/hr') -FileSharePaths '\\fileserver\compliance' -UserPrincipalName 'ga@contoso.com'
+    .EXAMPLE
+        $cred = Get-Credential
+        $job = Start-SLElevatedJob -FileSharePaths '\\nas01\legal' -FileShareCredential $cred -UserPrincipalName 'ga@contoso.com' -SkipSiteAdmin
     #>
     [CmdletBinding(SupportsShouldProcess, ConfirmImpact = 'High')]
     param(
@@ -53,6 +62,10 @@ function Start-SLElevatedJob {
         [switch]$SkipSuperUser,
 
         [switch]$SkipSiteAdmin,
+
+        [string[]]$FileSharePaths,
+
+        [PSCredential]$FileShareCredential,
 
         [switch]$DryRun,
 
@@ -210,7 +223,32 @@ function Start-SLElevatedJob {
                 }
             }
 
-            # === Step 4: Record job state for tracking/recovery ===
+            # === Step 4: Mount CIFS/SMB file shares ===
+            if ($FileSharePaths) {
+                foreach ($sharePath in $FileSharePaths) {
+                    Write-Verbose "[$jobId] Mounting file share: $sharePath"
+
+                    $connectParams = @{ Path = $sharePath }
+                    if ($FileShareCredential) {
+                        $connectParams['Credential'] = $FileShareCredential
+                    }
+
+                    $shareResult = Connect-SLFileShare @connectParams
+
+                    $jobState['Elevations'].Add(@{
+                        Type        = 'FileShare'
+                        Path        = $sharePath
+                        DriveName   = $shareResult.DriveName
+                        AuthType    = $shareResult.AuthType
+                        Status      = 'Active'
+                        ActivatedAt = [datetime]::UtcNow.ToString('o')
+                    })
+
+                    Write-Host "  File share mounted: $sharePath" -ForegroundColor Green
+                }
+            }
+
+            # === Step 5: Record job state for tracking/recovery ===
             $jobState['Status'] = 'Active'
             Save-SLJobState -JobState $jobState
 
@@ -221,6 +259,7 @@ function Start-SLElevatedJob {
                 UserPrincipalName = $gaContext.Account
                 ElevationCount    = $jobState['Elevations'].Count
                 SiteUrls          = $SiteUrls
+                FileSharePaths    = $FileSharePaths
             } -Result 'success'
 
             Write-Host "`nElevated job started: $jobId" -ForegroundColor Cyan
