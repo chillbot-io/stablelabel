@@ -1,0 +1,13 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  @apply bg-gray-950 text-gray-100 font-sans;
+  margin: 0;
+  overflow: hidden;
+}
+
+#root {
+  height: 100vh;
+}

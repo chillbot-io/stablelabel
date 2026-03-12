@@ -1,0 +1,9 @@
+node_modules/
+.vite/
+out/
+dist/
+*.env
+.DS_Store
+stablelabel-gui/node_modules/
+stablelabel-gui/out/
+stablelabel-gui/.vite/
