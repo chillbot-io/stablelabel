@@ -5,9 +5,11 @@ import type { AutoLabelPolicy } from '../../lib/types';
 interface AutoLabelDetailProps {
   policyName: string;
   onOpenLabel: (id: string, name: string) => void;
+  onEdit: (name: string) => void;
+  onDeleted: () => void;
 }
 
-export default function AutoLabelDetail({ policyName, onOpenLabel }: AutoLabelDetailProps) {
+export default function AutoLabelDetail({ policyName, onOpenLabel, onEdit, onDeleted }: AutoLabelDetailProps) {
   const { invoke } = usePowerShell();
   const [policy, setPolicy] = useState<AutoLabelPolicy | null>(null);
   const [loading, setLoading] = useState(true);
@@ -66,9 +68,17 @@ export default function AutoLabelDetail({ policyName, onOpenLabel }: AutoLabelDe
             <p className="text-sm text-gray-400 mt-1">{policy.Comment}</p>
           )}
         </div>
-        <span className={`px-2 py-1 text-xs rounded ${modeInfo.color}`}>
-          {modeInfo.text}
-        </span>
+        <div className="flex items-center gap-2">
+          <span className={`px-2 py-1 text-xs rounded ${modeInfo.color}`}>
+            {modeInfo.text}
+          </span>
+          <button
+            onClick={() => onEdit(policyName)}
+            className="px-3 py-1 text-xs text-blue-400 hover:text-blue-300 bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/20 rounded transition-colors"
+          >
+            Edit
+          </button>
+        </div>
       </div>
 
       {/* Mode explanation */}

@@ -4,9 +4,10 @@ import type { AutoLabelPolicy } from '../../lib/types';
 
 interface AutoLabelListProps {
   onOpenAutoLabel: (name: string) => void;
+  onNewAutoLabel: () => void;
 }
 
-export default function AutoLabelList({ onOpenAutoLabel }: AutoLabelListProps) {
+export default function AutoLabelList({ onOpenAutoLabel, onNewAutoLabel }: AutoLabelListProps) {
   const { invoke } = usePowerShell();
   const [policies, setPolicies] = useState<AutoLabelPolicy[]>([]);
   const [loading, setLoading] = useState(true);
@@ -126,12 +127,18 @@ export default function AutoLabelList({ onOpenAutoLabel }: AutoLabelListProps) {
         )}
       </div>
 
-      <div className="p-2 border-t border-gray-800">
+      <div className="p-2 border-t border-gray-800 space-y-1.5">
+        <button
+          onClick={onNewAutoLabel}
+          className="w-full py-1.5 text-xs text-teal-300 hover:text-teal-200 bg-teal-500/10 hover:bg-teal-500/20 border border-teal-500/20 rounded transition-colors"
+        >
+          + New Auto-Label Policy
+        </button>
         <button
           onClick={fetchPolicies}
           className="w-full py-1.5 text-xs text-gray-400 hover:text-gray-200 bg-gray-800 hover:bg-gray-700 rounded transition-colors"
         >
-          Refresh Auto-Label Policies
+          Refresh
         </button>
       </div>
     </div>

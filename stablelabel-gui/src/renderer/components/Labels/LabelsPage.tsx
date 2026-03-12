@@ -1,34 +1,35 @@
 import React, { useState, useCallback } from 'react';
+import { usePowerShell } from '../../hooks/usePowerShell';
 import TabBar, { type Tab } from '../common/TabBar';
 import LabelList from './LabelList';
 import LabelDetail from './LabelDetail';
 import PolicyList from './PolicyList';
 import PolicyDetail from './PolicyDetail';
+import PolicyForm from './PolicyForm';
 import AutoLabelList from './AutoLabelList';
 import AutoLabelDetail from './AutoLabelDetail';
+import AutoLabelForm from './AutoLabelForm';
 
 type BrowserSection = 'labels' | 'policies' | 'autolabel';
 
 interface OpenTab extends Tab {
-  /** What to render: 'label-detail' | 'policy-detail' | 'autolabel-detail' */
   type: string;
-  /** Identifier to pass to the detail component (label ID, policy name, etc.) */
   itemId: string;
 }
+
+let formCounter = 0;
 
 export default function LabelsPage() {
   const [browserSection, setBrowserSection] = useState<BrowserSection>('labels');
   const [tabs, setTabs] = useState<OpenTab[]>([]);
   const [activeTabId, setActiveTabId] = useState<string | null>(null);
 
-  // Open or focus a tab
   const openTab = useCallback(
     (type: string, itemId: string, label: string, kind: string) => {
       const tabId = `${type}:${itemId}`;
       setTabs((prev) => {
         const existing = prev.find((t) => t.id === tabId);
         if (existing) {
-          // Already open — just focus it
           setActiveTabId(tabId);
           return prev;
         }
@@ -46,7 +47,6 @@ export default function LabelsPage() {
       setTabs((prev) => {
         const idx = prev.findIndex((t) => t.id === tabId);
         const next = prev.filter((t) => t.id !== tabId);
-        // If we closed the active tab, focus the nearest remaining tab
         if (activeTabId === tabId) {
           if (next.length === 0) {
             setActiveTabId(null);
@@ -61,7 +61,7 @@ export default function LabelsPage() {
     [activeTabId],
   );
 
-  // Handlers for cross-linking between detail views
+  // View handlers
   const handleOpenLabel = useCallback(
     (id: string, name: string) => openTab('label-detail', id, name, 'label'),
     [openTab],
@@ -77,59 +77,75 @@ export default function LabelsPage() {
     [openTab],
   );
 
+  // Form handlers — new
+  const handleNewPolicy = useCallback(() => {
+    formCounter++;
+    openTab('policy-form-new', `new-${formCounter}`, '+ New Policy', 'policy');
+  }, [openTab]);
+
+  const handleNewAutoLabel = useCallback(() => {
+    formCounter++;
+    openTab('autolabel-form-new', `new-${formCounter}`, '+ New Auto-Label', 'autolabel');
+  }, [openTab]);
+
+  // Form handlers — edit (opens a form tab pre-populated with existing data)
+  const handleEditPolicy = useCallback(
+    (name: string) => openTab('policy-form-edit', name, `Edit: ${name}`, 'policy'),
+    [openTab],
+  );
+
+  const handleEditAutoLabel = useCallback(
+    (name: string) => openTab('autolabel-form-edit', name, `Edit: ${name}`, 'autolabel'),
+    [openTab],
+  );
+
+  // After save: close form tab, open the detail tab for the saved item
+  const handlePolicySaved = useCallback(
+    (name: string) => {
+      // Close the current form tab
+      if (activeTabId) closeTab(activeTabId);
+      // Open the detail view
+      handleOpenPolicy(name);
+    },
+    [activeTabId, closeTab, handleOpenPolicy],
+  );
+
+  const handleAutoLabelSaved = useCallback(
+    (name: string) => {
+      if (activeTabId) closeTab(activeTabId);
+      handleOpenAutoLabel(name);
+    },
+    [activeTabId, closeTab, handleOpenAutoLabel],
+  );
+
+  // After delete: close the tab
+  const handleDeleted = useCallback(() => {
+    if (activeTabId) closeTab(activeTabId);
+  }, [activeTabId, closeTab]);
+
   const activeTab = tabs.find((t) => t.id === activeTabId) ?? null;
 
   return (
     <div className="flex h-full">
       {/* Left browser panel */}
       <div className="w-64 flex-shrink-0 border-r border-gray-800 flex flex-col bg-gray-950">
-        {/* Section switcher */}
         <div className="flex border-b border-gray-800">
-          <SectionTab
-            label="Labels"
-            active={browserSection === 'labels'}
-            onClick={() => setBrowserSection('labels')}
-            accentColor="blue"
-          />
-          <SectionTab
-            label="Policies"
-            active={browserSection === 'policies'}
-            onClick={() => setBrowserSection('policies')}
-            accentColor="purple"
-          />
-          <SectionTab
-            label="Auto"
-            active={browserSection === 'autolabel'}
-            onClick={() => setBrowserSection('autolabel')}
-            accentColor="teal"
-          />
+          <SectionTab label="Labels" active={browserSection === 'labels'} onClick={() => setBrowserSection('labels')} accentColor="blue" />
+          <SectionTab label="Policies" active={browserSection === 'policies'} onClick={() => setBrowserSection('policies')} accentColor="purple" />
+          <SectionTab label="Auto" active={browserSection === 'autolabel'} onClick={() => setBrowserSection('autolabel')} accentColor="teal" />
         </div>
 
-        {/* Section content */}
         <div className="flex-1 overflow-hidden">
-          {browserSection === 'labels' && (
-            <LabelList onOpenLabel={handleOpenLabel} />
-          )}
-          {browserSection === 'policies' && (
-            <PolicyList onOpenPolicy={handleOpenPolicy} />
-          )}
-          {browserSection === 'autolabel' && (
-            <AutoLabelList onOpenAutoLabel={handleOpenAutoLabel} />
-          )}
+          {browserSection === 'labels' && <LabelList onOpenLabel={handleOpenLabel} />}
+          {browserSection === 'policies' && <PolicyList onOpenPolicy={handleOpenPolicy} onNewPolicy={handleNewPolicy} />}
+          {browserSection === 'autolabel' && <AutoLabelList onOpenAutoLabel={handleOpenAutoLabel} onNewAutoLabel={handleNewAutoLabel} />}
         </div>
       </div>
 
       {/* Right workspace */}
       <div className="flex-1 flex flex-col overflow-hidden">
-        {/* Tab bar */}
-        <TabBar
-          tabs={tabs}
-          activeTabId={activeTabId}
-          onSelect={setActiveTabId}
-          onClose={closeTab}
-        />
+        <TabBar tabs={tabs} activeTabId={activeTabId} onSelect={setActiveTabId} onClose={closeTab} />
 
-        {/* Tab content */}
         <div className="flex-1 overflow-auto">
           {activeTab ? (
             <TabContent
@@ -137,12 +153,15 @@ export default function LabelsPage() {
               onOpenLabel={handleOpenLabel}
               onOpenPolicy={handleOpenPolicy}
               onOpenAutoLabel={handleOpenAutoLabel}
+              onEditPolicy={handleEditPolicy}
+              onEditAutoLabel={handleEditAutoLabel}
+              onPolicySaved={handlePolicySaved}
+              onAutoLabelSaved={handleAutoLabelSaved}
+              onDeleted={handleDeleted}
+              onCancel={() => { if (activeTabId) closeTab(activeTabId); }}
             />
           ) : (
-            <EmptyWorkspace
-              tabCount={tabs.length}
-              onSwitchSection={setBrowserSection}
-            />
+            <EmptyWorkspace tabCount={tabs.length} onSwitchSection={setBrowserSection} onNewPolicy={handleNewPolicy} onNewAutoLabel={handleNewAutoLabel} />
           )}
         </div>
       </div>
@@ -150,32 +169,13 @@ export default function LabelsPage() {
   );
 }
 
-function SectionTab({
-  label,
-  active,
-  onClick,
-  accentColor,
-}: {
-  label: string;
-  active: boolean;
-  onClick: () => void;
-  accentColor: string;
-}) {
+function SectionTab({ label, active, onClick, accentColor }: { label: string; active: boolean; onClick: () => void; accentColor: string }) {
   const borderColor = active
-    ? accentColor === 'blue'
-      ? 'border-blue-400'
-      : accentColor === 'purple'
-        ? 'border-purple-400'
-        : 'border-teal-400'
+    ? accentColor === 'blue' ? 'border-blue-400' : accentColor === 'purple' ? 'border-purple-400' : 'border-teal-400'
     : 'border-transparent';
 
   return (
-    <button
-      onClick={onClick}
-      className={`flex-1 py-2 text-xs font-medium border-b-2 transition-colors ${borderColor} ${
-        active ? 'text-gray-200' : 'text-gray-500 hover:text-gray-300'
-      }`}
-    >
+    <button onClick={onClick} className={`flex-1 py-2 text-xs font-medium border-b-2 transition-colors ${borderColor} ${active ? 'text-gray-200' : 'text-gray-500 hover:text-gray-300'}`}>
       {label}
     </button>
   );
@@ -186,95 +186,137 @@ function TabContent({
   onOpenLabel,
   onOpenPolicy,
   onOpenAutoLabel,
+  onEditPolicy,
+  onEditAutoLabel,
+  onPolicySaved,
+  onAutoLabelSaved,
+  onDeleted,
+  onCancel,
 }: {
   tab: OpenTab;
   onOpenLabel: (id: string, name: string) => void;
   onOpenPolicy: (name: string) => void;
   onOpenAutoLabel: (name: string) => void;
+  onEditPolicy: (name: string) => void;
+  onEditAutoLabel: (name: string) => void;
+  onPolicySaved: (name: string) => void;
+  onAutoLabelSaved: (name: string) => void;
+  onDeleted: () => void;
+  onCancel: () => void;
 }) {
   switch (tab.type) {
     case 'label-detail':
       return <LabelDetail labelId={tab.itemId} onOpenPolicy={onOpenPolicy} />;
     case 'policy-detail':
-      return <PolicyDetail policyName={tab.itemId} onOpenLabel={onOpenLabel} />;
+      return <PolicyDetail policyName={tab.itemId} onOpenLabel={onOpenLabel} onEdit={onEditPolicy} onDeleted={onDeleted} />;
     case 'autolabel-detail':
-      return <AutoLabelDetail policyName={tab.itemId} onOpenLabel={onOpenLabel} />;
+      return <AutoLabelDetail policyName={tab.itemId} onOpenLabel={onOpenLabel} onEdit={onEditAutoLabel} onDeleted={onDeleted} />;
+    case 'policy-form-new':
+      return <PolicyForm onSaved={onPolicySaved} onCancel={onCancel} />;
+    case 'policy-form-edit':
+      return <PolicyFormWithData policyName={tab.itemId} onSaved={onPolicySaved} onCancel={onCancel} onDeleted={onDeleted} />;
+    case 'autolabel-form-new':
+      return <AutoLabelForm onSaved={onAutoLabelSaved} onCancel={onCancel} />;
+    case 'autolabel-form-edit':
+      return <AutoLabelFormWithData policyName={tab.itemId} onSaved={onAutoLabelSaved} onCancel={onCancel} onDeleted={onDeleted} />;
     default:
       return <div className="p-6 text-gray-500">Unknown tab type</div>;
   }
 }
 
+/** Fetches existing policy data before rendering the edit form */
+function PolicyFormWithData({ policyName, onSaved, onCancel, onDeleted }: { policyName: string; onSaved: (name: string) => void; onCancel: () => void; onDeleted: () => void }) {
+  const { invoke } = usePowerShell();
+  const [policy, setPolicy] = React.useState(null);
+  const [loading, setLoading] = React.useState(true);
+
+  React.useEffect(() => {
+    invoke(`Get-SLLabelPolicy -Identity '${policyName}'`).then((r) => {
+      if (r.success && r.data) setPolicy(r.data as never);
+      setLoading(false);
+    });
+  }, [policyName]);
+
+  if (loading) return <div className="p-6"><div className="h-32 bg-gray-800 rounded animate-pulse" /></div>;
+  return <PolicyForm existing={policy} onSaved={onSaved} onCancel={onCancel} onDeleted={onDeleted} />;
+}
+
+/** Fetches existing auto-label policy data before rendering the edit form */
+function AutoLabelFormWithData({ policyName, onSaved, onCancel, onDeleted }: { policyName: string; onSaved: (name: string) => void; onCancel: () => void; onDeleted: () => void }) {
+  const { invoke } = usePowerShell();
+  const [policy, setPolicy] = React.useState(null);
+  const [loading, setLoading] = React.useState(true);
+
+  React.useEffect(() => {
+    invoke(`Get-SLAutoLabelPolicy -Identity '${policyName}'`).then((r) => {
+      if (r.success && r.data) setPolicy(r.data as never);
+      setLoading(false);
+    });
+  }, [policyName]);
+
+  if (loading) return <div className="p-6"><div className="h-32 bg-gray-800 rounded animate-pulse" /></div>;
+  return <AutoLabelForm existing={policy} onSaved={onSaved} onCancel={onCancel} onDeleted={onDeleted} />;
+}
+
 function EmptyWorkspace({
   tabCount,
   onSwitchSection,
+  onNewPolicy,
+  onNewAutoLabel,
 }: {
   tabCount: number;
   onSwitchSection: (s: 'labels' | 'policies' | 'autolabel') => void;
+  onNewPolicy: () => void;
+  onNewAutoLabel: () => void;
 }) {
   return (
     <div className="h-full flex items-center justify-center">
-      <div className="text-center max-w-md">
+      <div className="text-center max-w-lg">
         <h2 className="text-lg font-semibold text-gray-300 mb-2">
-          {tabCount === 0 ? 'Select an item to inspect' : 'No tab selected'}
+          {tabCount === 0 ? 'Select an item or create new' : 'No tab selected'}
         </h2>
         <p className="text-sm text-gray-500 mb-6">
-          Click a label, policy, or auto-label rule in the left panel to open it here.
-          You can open multiple items as tabs for side-by-side reference.
+          Browse labels, policies, and auto-label rules in the left panel.
+          Open multiple items as tabs for side-by-side reference.
         </p>
 
-        <div className="grid grid-cols-3 gap-3">
-          <QuickLink
-            label="Labels"
-            description="Sensitivity label hierarchy"
-            color="blue"
-            onClick={() => onSwitchSection('labels')}
-          />
-          <QuickLink
-            label="Policies"
-            description="Publishing policies"
-            color="purple"
-            onClick={() => onSwitchSection('policies')}
-          />
-          <QuickLink
-            label="Auto-Label"
-            description="Automatic labeling rules"
-            color="teal"
-            onClick={() => onSwitchSection('autolabel')}
-          />
+        <div className="grid grid-cols-3 gap-3 mb-4">
+          <QuickLink label="Labels" description="View hierarchy" color="blue" onClick={() => onSwitchSection('labels')} />
+          <QuickLink label="Policies" description="Publishing policies" color="purple" onClick={() => onSwitchSection('policies')} />
+          <QuickLink label="Auto-Label" description="Automatic rules" color="teal" onClick={() => onSwitchSection('autolabel')} />
+        </div>
+
+        <div className="flex gap-3 justify-center">
+          <button
+            onClick={onNewPolicy}
+            className="px-4 py-2 text-xs text-purple-300 bg-purple-500/10 hover:bg-purple-500/20 border border-purple-500/20 rounded transition-colors"
+          >
+            + New Label Policy
+          </button>
+          <button
+            onClick={onNewAutoLabel}
+            className="px-4 py-2 text-xs text-teal-300 bg-teal-500/10 hover:bg-teal-500/20 border border-teal-500/20 rounded transition-colors"
+          >
+            + New Auto-Label Policy
+          </button>
         </div>
 
         <div className="mt-6 text-xs text-gray-600 space-y-1">
-          <p>Tip: Items open as tabs — you can keep multiple open at once.</p>
-          <p>Labels link to their policies, and policies link back to labels.</p>
+          <p>Tip: Items open as tabs — keep multiple open at once.</p>
+          <p>Detail views have Edit buttons. Policies have Delete.</p>
         </div>
       </div>
     </div>
   );
 }
 
-function QuickLink({
-  label,
-  description,
-  color,
-  onClick,
-}: {
-  label: string;
-  description: string;
-  color: string;
-  onClick: () => void;
-}) {
-  const bg =
-    color === 'blue'
-      ? 'bg-blue-500/10 border-blue-500/20 hover:bg-blue-500/20'
-      : color === 'purple'
-        ? 'bg-purple-500/10 border-purple-500/20 hover:bg-purple-500/20'
-        : 'bg-teal-500/10 border-teal-500/20 hover:bg-teal-500/20';
+function QuickLink({ label, description, color, onClick }: { label: string; description: string; color: string; onClick: () => void }) {
+  const bg = color === 'blue' ? 'bg-blue-500/10 border-blue-500/20 hover:bg-blue-500/20'
+    : color === 'purple' ? 'bg-purple-500/10 border-purple-500/20 hover:bg-purple-500/20'
+    : 'bg-teal-500/10 border-teal-500/20 hover:bg-teal-500/20';
 
   return (
-    <button
-      onClick={onClick}
-      className={`p-3 rounded-lg border transition-colors text-left ${bg}`}
-    >
+    <button onClick={onClick} className={`p-3 rounded-lg border transition-colors text-left ${bg}`}>
       <div className="text-sm font-medium text-gray-200">{label}</div>
       <div className="text-xs text-gray-500 mt-0.5">{description}</div>
     </button>

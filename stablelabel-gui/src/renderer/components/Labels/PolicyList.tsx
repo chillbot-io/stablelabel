@@ -4,9 +4,10 @@ import type { LabelPolicy } from '../../lib/types';
 
 interface PolicyListProps {
   onOpenPolicy: (name: string) => void;
+  onNewPolicy: () => void;
 }
 
-export default function PolicyList({ onOpenPolicy }: PolicyListProps) {
+export default function PolicyList({ onOpenPolicy, onNewPolicy }: PolicyListProps) {
   const { invoke } = usePowerShell();
   const [policies, setPolicies] = useState<LabelPolicy[]>([]);
   const [loading, setLoading] = useState(true);
@@ -111,12 +112,18 @@ export default function PolicyList({ onOpenPolicy }: PolicyListProps) {
         )}
       </div>
 
-      <div className="p-2 border-t border-gray-800">
+      <div className="p-2 border-t border-gray-800 space-y-1.5">
+        <button
+          onClick={onNewPolicy}
+          className="w-full py-1.5 text-xs text-purple-300 hover:text-purple-200 bg-purple-500/10 hover:bg-purple-500/20 border border-purple-500/20 rounded transition-colors"
+        >
+          + New Label Policy
+        </button>
         <button
           onClick={fetchPolicies}
           className="w-full py-1.5 text-xs text-gray-400 hover:text-gray-200 bg-gray-800 hover:bg-gray-700 rounded transition-colors"
         >
-          Refresh Policies
+          Refresh
         </button>
       </div>
     </div>

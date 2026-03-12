@@ -5,9 +5,11 @@ import type { LabelPolicy } from '../../lib/types';
 interface PolicyDetailProps {
   policyName: string;
   onOpenLabel: (id: string, name: string) => void;
+  onEdit: (name: string) => void;
+  onDeleted: () => void;
 }
 
-export default function PolicyDetail({ policyName, onOpenLabel }: PolicyDetailProps) {
+export default function PolicyDetail({ policyName, onOpenLabel, onEdit, onDeleted }: PolicyDetailProps) {
   const { invoke } = usePowerShell();
   const [policy, setPolicy] = useState<LabelPolicy | null>(null);
   const [loading, setLoading] = useState(true);
@@ -62,15 +64,23 @@ export default function PolicyDetail({ policyName, onOpenLabel }: PolicyDetailPr
             <p className="text-sm text-gray-400 mt-1">{policy.Comment}</p>
           )}
         </div>
-        <span
-          className={`px-2 py-1 text-xs rounded ${
-            policy.Enabled
-              ? 'bg-green-500/10 text-green-400 border border-green-500/20'
-              : 'bg-gray-700/50 text-gray-400 border border-gray-600'
-          }`}
-        >
-          {policy.Enabled ? 'Enabled' : 'Disabled'}
-        </span>
+        <div className="flex items-center gap-2">
+          <span
+            className={`px-2 py-1 text-xs rounded ${
+              policy.Enabled
+                ? 'bg-green-500/10 text-green-400 border border-green-500/20'
+                : 'bg-gray-700/50 text-gray-400 border border-gray-600'
+            }`}
+          >
+            {policy.Enabled ? 'Enabled' : 'Disabled'}
+          </span>
+          <button
+            onClick={() => onEdit(policyName)}
+            className="px-3 py-1 text-xs text-blue-400 hover:text-blue-300 bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/20 rounded transition-colors"
+          >
+            Edit
+          </button>
+        </div>
       </div>
 
       {/* Metadata grid */}

@@ -79,6 +79,35 @@ export interface AutoLabelPolicy {
   Priority: number | null;
 }
 
+export interface RetentionLabel {
+  Name: string;
+  Guid: string;
+  Comment: string | null;
+  RetentionDuration: number | null;
+  RetentionAction: string | null;
+  RetentionType: string | null;
+  IsRecordLabel: boolean;
+  IsRegulatoryLabel: boolean;
+  WhenCreated: string;
+  WhenChanged: string | null;
+}
+
+export interface RetentionPolicy {
+  Name: string;
+  Guid: string;
+  Comment: string | null;
+  Enabled: boolean;
+  Mode: string | null;
+  WhenCreated: string;
+  WhenChanged: string | null;
+  ExchangeLocation: string[] | null;
+  SharePointLocation: string[] | null;
+  OneDriveLocation: string[] | null;
+  ModernGroupLocation: string[] | null;
+  SkypeLocation: string[] | null;
+  PublicFolderLocation: string[] | null;
+}
+
 export interface SnapshotSummary {
   Name: string;
   SnapshotId: string;
