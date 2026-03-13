@@ -6,6 +6,7 @@ import LabelsPage from './components/Labels/LabelsPage';
 import RetentionPage from './components/Retention/RetentionPage';
 import DlpPage from './components/DLP/DlpPage';
 import DocumentsPage from './components/Documents/DocumentsPage';
+import ProtectionPage from './components/Protection/ProtectionPage';
 import type { Page } from './lib/types';
 
 export default function App() {
@@ -24,7 +25,7 @@ export default function App() {
       case 'documents':
         return <DocumentsPage />;
       case 'protection':
-        return <PlaceholderPage title="Protection" description="AIP Service - templates, document tracking, revocation" />;
+        return <ProtectionPage />;
       case 'elevation':
         return <PlaceholderPage title="Elevation" description="Privilege management - super user, site admin, PIM" />;
       case 'snapshots':
@@ -43,7 +44,7 @@ export default function App() {
       <Sidebar currentPage={currentPage} onNavigate={setCurrentPage} />
       <div className="flex-1 flex flex-col overflow-hidden">
         <TopBar />
-        <main className={`flex-1 overflow-auto ${currentPage === 'labels' || currentPage === 'retention' || currentPage === 'dlp' || currentPage === 'documents' ? '' : 'p-6'}`}>
+        <main className={`flex-1 overflow-auto ${currentPage === 'labels' || currentPage === 'retention' || currentPage === 'dlp' || currentPage === 'documents' || currentPage === 'protection' ? '' : 'p-6'}`}>
           {renderPage()}
         </main>
       </div>

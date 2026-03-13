@@ -169,6 +169,53 @@ export interface BulkLabelResult {
   }>;
 }
 
+export interface ProtectionConfig {
+  BPOSId: string | null;
+  RightsManagementServiceId: string | null;
+  LicensingIntranetDistributionPointUrl: string | null;
+  LicensingExtranetDistributionPointUrl: string | null;
+  CertificationIntranetDistributionPointUrl: string | null;
+  CertificationExtranetDistributionPointUrl: string | null;
+  AdminConnectionUrl: string | null;
+  AdminV2ConnectionUrl: string | null;
+  OnPremiseDomainName: string | null;
+  Keys: unknown[] | null;
+  CurrentLicensorCertificateGuid: string | null;
+  Templates: unknown[] | null;
+  FunctionalState: string | null;
+  SuperUsersEnabled: boolean;
+  SuperUsers: string[] | null;
+  AdminRoleMembers: string[] | null;
+  KeyRolloverCount: number | null;
+  ProvisioningDate: string | null;
+  IPCv3ServiceFunctionalState: string | null;
+  DevicePlatformState: Record<string, string> | null;
+  FciEnabledForConnectorAuthorization: boolean;
+}
+
+export interface ProtectionTemplate {
+  TemplateId: string;
+  Names: Record<string, string> | null;
+  Descriptions: Record<string, string> | null;
+  Status: string | null;
+  ReadOnly: boolean;
+}
+
+export interface DocumentTrackEntry {
+  ContentId: string | null;
+  Issuer: string | null;
+  Owner: string | null;
+  ContentName: string | null;
+  CreatedTime: string | null;
+  FromTime: string | null;
+  ToTime: string | null;
+}
+
+export interface ProtectionAdmin {
+  EmailAddress: string;
+  Role: string;
+}
+
 export interface SnapshotSummary {
   Name: string;
   SnapshotId: string;
