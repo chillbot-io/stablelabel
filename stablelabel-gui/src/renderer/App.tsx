@@ -4,6 +4,7 @@ import TopBar from './components/Layout/TopBar';
 import DashboardPage from './components/Dashboard/DashboardPage';
 import LabelsPage from './components/Labels/LabelsPage';
 import RetentionPage from './components/Retention/RetentionPage';
+import DlpPage from './components/DLP/DlpPage';
 import type { Page } from './lib/types';
 
 export default function App() {
@@ -18,7 +19,7 @@ export default function App() {
       case 'retention':
         return <RetentionPage />;
       case 'dlp':
-        return <PlaceholderPage title="DLP" description="Data Loss Prevention policies and rules" />;
+        return <DlpPage />;
       case 'documents':
         return <PlaceholderPage title="Documents" description="Site scanner, label reports, and bulk operations" />;
       case 'protection':
@@ -41,7 +42,7 @@ export default function App() {
       <Sidebar currentPage={currentPage} onNavigate={setCurrentPage} />
       <div className="flex-1 flex flex-col overflow-hidden">
         <TopBar />
-        <main className={`flex-1 overflow-auto ${currentPage === 'labels' || currentPage === 'retention' ? '' : 'p-6'}`}>
+        <main className={`flex-1 overflow-auto ${currentPage === 'labels' || currentPage === 'retention' || currentPage === 'dlp' ? '' : 'p-6'}`}>
           {renderPage()}
         </main>
       </div>

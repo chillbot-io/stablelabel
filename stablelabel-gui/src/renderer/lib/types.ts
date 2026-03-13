@@ -108,6 +108,42 @@ export interface RetentionPolicy {
   PublicFolderLocation: string[] | null;
 }
 
+export interface DlpPolicy {
+  Name: string;
+  Guid: string;
+  Comment: string | null;
+  Mode: string | null;
+  Enabled: boolean;
+  WhenCreated: string;
+  WhenChanged: string | null;
+  ExchangeLocation: string[] | null;
+  SharePointLocation: string[] | null;
+  OneDriveLocation: string[] | null;
+  TeamsLocation: string[] | null;
+}
+
+export interface DlpRule {
+  Name: string;
+  Guid: string;
+  Policy: string;
+  Comment: string | null;
+  BlockAccess: boolean;
+  NotifyUser: string[] | null;
+  GenerateAlert: string[] | null;
+  ContentContainsSensitiveInformation: unknown[] | null;
+  Disabled: boolean;
+  Priority: number | null;
+}
+
+export interface SensitiveInfoType {
+  Name: string;
+  Id: string;
+  Description: string | null;
+  Publisher: string | null;
+  Type: string | null;
+  RecommendedConfidence: number | null;
+}
+
 export interface SnapshotSummary {
   Name: string;
   SnapshotId: string;
