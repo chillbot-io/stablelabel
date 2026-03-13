@@ -9,6 +9,7 @@ import DocumentsPage from './components/Documents/DocumentsPage';
 import ProtectionPage from './components/Protection/ProtectionPage';
 import ElevationPage from './components/Elevation/ElevationPage';
 import SnapshotsPage from './components/Snapshots/SnapshotsPage';
+import AnalysisPage from './components/Analysis/AnalysisPage';
 import type { Page } from './lib/types';
 
 export default function App() {
@@ -33,7 +34,7 @@ export default function App() {
       case 'snapshots':
         return <SnapshotsPage />;
       case 'analysis':
-        return <PlaceholderPage title="Analysis" description="Permission checks, policy conflicts, deployment readiness" />;
+        return <AnalysisPage />;
       case 'templates':
         return <PlaceholderPage title="Templates" description="Pre-built compliance templates for guided setup" />;
       default:
@@ -46,7 +47,7 @@ export default function App() {
       <Sidebar currentPage={currentPage} onNavigate={setCurrentPage} />
       <div className="flex-1 flex flex-col overflow-hidden">
         <TopBar />
-        <main className={`flex-1 overflow-auto ${currentPage === 'labels' || currentPage === 'retention' || currentPage === 'dlp' || currentPage === 'documents' || currentPage === 'protection' || currentPage === 'elevation' || currentPage === 'snapshots' ? '' : 'p-6'}`}>
+        <main className={`flex-1 overflow-auto ${currentPage === 'labels' || currentPage === 'retention' || currentPage === 'dlp' || currentPage === 'documents' || currentPage === 'protection' || currentPage === 'elevation' || currentPage === 'snapshots' || currentPage === 'analysis' ? '' : 'p-6'}`}>
           {renderPage()}
         </main>
       </div>

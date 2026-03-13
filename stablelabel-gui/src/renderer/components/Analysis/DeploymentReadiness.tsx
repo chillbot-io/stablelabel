@@ -1,0 +1,77 @@
+import React, { useState } from 'react';
+import { usePowerShell } from '../../hooks/usePowerShell';
+
+interface ReadinessResult {
+  OverallStatus: string;
+  Checks: Array<{
+    Name: string;
+    Status: string;
+    Detail: string | null;
+  }>;
+}
+
+export default function DeploymentReadiness() {
+  const { invoke } = usePowerShell();
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [result, setResult] = useState<ReadinessResult | null>(null);
+
+  const handleRun = async () => {
+    setLoading(true); setError(null); setResult(null);
+    try {
+      const r = await invoke<ReadinessResult>('Test-SLDeploymentReadiness');
+      if (r.success && r.data) setResult(r.data);
+      else setError(r.error ?? 'Failed');
+    } catch (e) { setError(e instanceof Error ? e.message : 'Failed'); }
+    setLoading(false);
+  };
+
+  return (
+    <div className="space-y-4">
+      <div>
+        <h3 className="text-sm font-semibold text-gray-300 mb-1">Deployment Readiness</h3>
+        <p className="text-xs text-gray-500">Pre-deployment checklist to verify your environment is ready for label and DLP deployment.</p>
+      </div>
+
+      <button onClick={handleRun} disabled={loading} className="px-4 py-2 text-xs font-medium text-white bg-blue-600 hover:bg-blue-500 disabled:bg-blue-600/50 rounded transition-colors">
+        {loading ? 'Running checks...' : 'Run Readiness Check'}
+      </button>
+
+      {error && <div className="p-3 bg-red-900/20 border border-red-800 rounded text-sm text-red-300">{error}</div>}
+
+      {result && (
+        <div className="space-y-3">
+          {/* Overall status */}
+          <div className={`p-4 rounded-lg border ${result.OverallStatus === 'Pass' ? 'bg-green-500/5 border-green-500/20' : result.OverallStatus === 'Fail' ? 'bg-red-500/5 border-red-500/20' : 'bg-yellow-500/5 border-yellow-500/20'}`}>
+            <div className="flex items-center gap-2">
+              <span className={`text-lg ${result.OverallStatus === 'Pass' ? 'text-green-400' : result.OverallStatus === 'Fail' ? 'text-red-400' : 'text-yellow-400'}`}>
+                {result.OverallStatus === 'Pass' ? '●' : result.OverallStatus === 'Fail' ? '●' : '●'}
+              </span>
+              <span className="text-sm font-medium text-gray-200">Overall: {result.OverallStatus}</span>
+            </div>
+          </div>
+
+          {/* Individual checks */}
+          <div className="space-y-1.5">
+            {result.Checks.map((check, i) => (
+              <div key={i} className="flex items-center justify-between px-3 py-2.5 bg-gray-900 border border-gray-800 rounded">
+                <div>
+                  <span className="text-sm text-gray-200">{check.Name}</span>
+                  {check.Detail && <p className="text-xs text-gray-500 mt-0.5">{check.Detail}</p>}
+                </div>
+                <StatusBadge status={check.Status} />
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function StatusBadge({ status }: { status: string }) {
+  const cls = status === 'Pass' ? 'bg-green-500/10 text-green-400'
+    : status === 'Fail' ? 'bg-red-500/10 text-red-400'
+    : 'bg-yellow-500/10 text-yellow-400';
+  return <span className={`text-[10px] px-1.5 py-0.5 rounded ${cls}`}>{status}</span>;
+}
