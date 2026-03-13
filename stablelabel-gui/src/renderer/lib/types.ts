@@ -216,6 +216,30 @@ export interface ProtectionAdmin {
   Role: string;
 }
 
+export interface ElevationStatus {
+  ActiveJob: ElevatedJob | null;
+  CompletedJobs: ElevatedJob[];
+}
+
+export interface ElevatedJob {
+  JobId: string;
+  UserPrincipalName: string;
+  StartedAt: string;
+  CompletedAt: string | null;
+  Status: string;
+  Elevations: Array<{
+    Type: string;
+    Target: string;
+    Status: string;
+    Timestamp: string;
+  }>;
+}
+
+export interface SuperUserStatus {
+  Enabled: boolean;
+  SuperUsers: string[];
+}
+
 export interface SnapshotSummary {
   Name: string;
   SnapshotId: string;
