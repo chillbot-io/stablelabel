@@ -144,6 +144,31 @@ export interface SensitiveInfoType {
   RecommendedConfidence: number | null;
 }
 
+export interface DocumentLabelResult {
+  labels: Array<{
+    sensitivityLabelId: string;
+    name: string;
+    description: string | null;
+    color: string | null;
+    assignmentMethod: string | null;
+  }>;
+}
+
+export interface BulkLabelResult {
+  Action: string;
+  TotalItems: number;
+  SuccessCount: number;
+  FailedCount: number;
+  SensitivityLabelId: string;
+  DryRun: boolean;
+  Results: Array<{
+    DriveId: string;
+    ItemId: string;
+    Status: string;
+    Error: string | null;
+  }>;
+}
+
 export interface SnapshotSummary {
   Name: string;
   SnapshotId: string;
