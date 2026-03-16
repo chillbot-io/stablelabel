@@ -14,6 +14,7 @@ const navItems: NavItem[] = [
   { id: 'retention', label: 'Retention', icon: '⏱', group: 'Information Protection' },
   { id: 'dlp', label: 'DLP', icon: '⛨', group: 'Information Protection' },
   { id: 'documents', label: 'Documents', icon: '📄', group: 'Operations' },
+  { id: 'fileshares', label: 'File Shares', icon: '📁', group: 'Operations' },
   { id: 'protection', label: 'Protection', icon: '🔐', group: 'Operations' },
   { id: 'elevation', label: 'Elevation', icon: '⬆', group: 'Operations' },
   { id: 'snapshots', label: 'Snapshots', icon: '📸', group: 'Safety' },
@@ -64,9 +65,20 @@ export default function Sidebar({ currentPage, onNavigate }: SidebarProps) {
         ))}
       </div>
 
-      {/* Version */}
-      <div className="p-4 border-t border-gray-800">
-        <p className="text-xs text-gray-600">v0.1.0</p>
+      {/* Settings + Version */}
+      <div className="p-2 border-t border-gray-800">
+        <button
+          onClick={() => onNavigate('settings')}
+          className={`w-full flex items-center gap-2 px-4 py-2 text-sm rounded transition-colors ${
+            currentPage === 'settings'
+              ? 'bg-blue-600/20 text-blue-400'
+              : 'text-gray-500 hover:bg-gray-800 hover:text-gray-200'
+          }`}
+        >
+          <span className="w-5 text-center">⚙</span>
+          Settings
+        </button>
+        <p className="text-xs text-gray-600 px-4 mt-2">v0.1.0</p>
       </div>
     </nav>
   );

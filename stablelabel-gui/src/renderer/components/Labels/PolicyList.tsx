@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { usePowerShell } from '../../hooks/usePowerShell';
+import { usePagination } from '../../hooks/usePagination';
 import type { LabelPolicy } from '../../lib/types';
 
 interface PolicyListProps {
@@ -37,6 +38,8 @@ export default function PolicyList({ onOpenPolicy, onNewPolicy }: PolicyListProp
   const filtered = search.trim()
     ? policies.filter((p) => p.Name.toLowerCase().includes(search.toLowerCase()))
     : policies;
+
+  const { visible: paginated, hasMore, remaining, loadMore } = usePagination(filtered);
 
   if (loading) {
     return (
@@ -76,10 +79,11 @@ export default function PolicyList({ onOpenPolicy, onNewPolicy }: PolicyListProp
       </div>
 
       <div className="flex-1 overflow-y-auto py-1">
-        {filtered.length === 0 ? (
+        {paginated.length === 0 ? (
           <p className="p-4 text-xs text-gray-600">No policies found.</p>
         ) : (
-          filtered.map((policy) => (
+          <>
+          {paginated.map((policy) => (
             <button
               key={policy.Guid ?? policy.Name}
               onClick={() => onOpenPolicy(policy.Name)}
@@ -108,7 +112,13 @@ export default function PolicyList({ onOpenPolicy, onNewPolicy }: PolicyListProp
                 )}
               </div>
             </button>
-          ))
+          ))}
+          {hasMore && (
+            <button onClick={loadMore} className="w-full py-2 text-xs text-blue-400 hover:text-blue-300 hover:bg-gray-800/50 transition-colors">
+              Show {remaining} more...
+            </button>
+          )}
+          </>
         )}
       </div>
 

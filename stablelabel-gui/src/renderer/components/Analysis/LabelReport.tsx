@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { usePowerShell } from '../../hooks/usePowerShell';
+import ExportButton from '../common/ExportButton';
 
 interface LabelReportResult {
   TotalLabels: number;
@@ -34,9 +35,12 @@ export default function LabelReport() {
         <p className="text-xs text-gray-500">Comprehensive summary of sensitivity labels and their policy assignments.</p>
       </div>
 
-      <button onClick={handleRun} disabled={loading} className="px-4 py-2 text-xs font-medium text-white bg-blue-600 hover:bg-blue-500 disabled:bg-blue-600/50 rounded transition-colors">
-        {loading ? 'Generating...' : 'Generate Report'}
-      </button>
+      <div className="flex items-center gap-2">
+        <button onClick={handleRun} disabled={loading} className="px-4 py-2 text-xs font-medium text-white bg-blue-600 hover:bg-blue-500 disabled:bg-blue-600/50 rounded transition-colors">
+          {loading ? 'Generating...' : 'Generate Report'}
+        </button>
+        {report && <ExportButton data={report} filename="label-report" />}
+      </div>
 
       {error && <div className="p-3 bg-red-900/20 border border-red-800 rounded text-sm text-red-300">{error}</div>}
 

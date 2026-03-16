@@ -225,7 +225,7 @@ describe('ProtectionConfigPanel', () => {
     expect(screen.getByText('ConnectorAdministrator')).toBeInTheDocument();
   });
 
-  it('hides admins section when empty', async () => {
+  it('shows admins section with add form even when empty', async () => {
     mockInvoke
       .mockResolvedValueOnce({ success: true, data: mockConfig })
       .mockResolvedValueOnce({ success: true, data: [] })
@@ -234,7 +234,8 @@ describe('ProtectionConfigPanel', () => {
     await waitFor(() => {
       expect(screen.getByText('Service Configuration')).toBeInTheDocument();
     });
-    expect(screen.queryByText(/Role-Based Administrators/)).not.toBeInTheDocument();
+    expect(screen.getByText('Role-Based Administrators (0)')).toBeInTheDocument();
+    expect(screen.getByPlaceholderText('admin@contoso.com')).toBeInTheDocument();
   });
 
   it('renders keys section when keys are returned', async () => {
@@ -244,8 +245,10 @@ describe('ProtectionConfigPanel', () => {
       .mockResolvedValueOnce({ success: true, data: mockKeys });
     render(<ProtectionConfigPanel />);
     await waitFor(() => {
-      expect(screen.getByText('Tenant Keys')).toBeInTheDocument();
+      expect(screen.getByText('Tenant Keys (2)')).toBeInTheDocument();
     });
+    expect(screen.getByText('key-001')).toBeInTheDocument();
+    expect(screen.getByText('key-002')).toBeInTheDocument();
   });
 
   it('wraps non-array keys data into array', async () => {
@@ -256,8 +259,9 @@ describe('ProtectionConfigPanel', () => {
       .mockResolvedValueOnce({ success: true, data: singleKey });
     render(<ProtectionConfigPanel />);
     await waitFor(() => {
-      expect(screen.getByText('Tenant Keys')).toBeInTheDocument();
+      expect(screen.getByText('Tenant Keys (1)')).toBeInTheDocument();
     });
+    expect(screen.getByText('key-single')).toBeInTheDocument();
   });
 
   it('hides keys section when keys are null', async () => {
@@ -294,22 +298,17 @@ describe('ProtectionConfigPanel', () => {
     expect(screen.queryByText(/Hide.*raw JSON|Hide.*Full config/)).not.toBeInTheDocument();
   });
 
-  it('toggles raw JSON display for keys section', async () => {
-    const user = userEvent.setup();
+  it('renders formatted keys with status', async () => {
     mockInvoke
       .mockResolvedValueOnce({ success: true, data: mockConfig })
       .mockResolvedValueOnce({ success: true, data: [] })
       .mockResolvedValueOnce({ success: true, data: mockKeys });
     render(<ProtectionConfigPanel />);
     await waitFor(() => {
-      expect(screen.getByText('Tenant Keys')).toBeInTheDocument();
+      expect(screen.getByText('Tenant Keys (2)')).toBeInTheDocument();
     });
-
-    // There should be multiple "Show" buttons now (keys + full config)
-    const showButtons = screen.getAllByText(/Show/);
-    expect(showButtons.length).toBeGreaterThanOrEqual(2);
-    await user.click(showButtons[0]);
-    expect(screen.getByText(/Hide/)).toBeInTheDocument();
+    expect(screen.getByText('Active')).toBeInTheDocument();
+    expect(screen.getByText('Archived')).toBeInTheDocument();
   });
 
   it('calls correct PowerShell commands on mount', async () => {
@@ -325,7 +324,7 @@ describe('ProtectionConfigPanel', () => {
     });
   });
 
-  it('handles admins fetch failure gracefully (only config error shown)', async () => {
+  it('handles admins fetch failure gracefully (shows empty admin section)', async () => {
     mockInvoke
       .mockResolvedValueOnce({ success: true, data: mockConfig })
       .mockResolvedValueOnce({ success: false, data: null, error: 'No admin access' })
@@ -334,8 +333,8 @@ describe('ProtectionConfigPanel', () => {
     await waitFor(() => {
       expect(screen.getByText('Service Configuration')).toBeInTheDocument();
     });
-    // Admins section should not appear since data wasn't set
-    expect(screen.queryByText(/Role-Based Administrators/)).not.toBeInTheDocument();
+    // Admins section still renders with 0 count and add form
+    expect(screen.getByText('Role-Based Administrators (0)')).toBeInTheDocument();
   });
 
   it('renders StatusCard with green color for enabled state', async () => {
@@ -366,5 +365,215 @@ describe('ProtectionConfigPanel', () => {
     const superUsersCard = screen.getByText('Super Users').closest('div')!;
     const value = superUsersCard.querySelector('dd')!;
     expect(value.className).toContain('text-yellow-400');
+  });
+
+  it('shows Remove button for each super user', async () => {
+    mockInvoke
+      .mockResolvedValueOnce({ success: true, data: mockConfig })
+      .mockResolvedValueOnce({ success: true, data: [] })
+      .mockResolvedValueOnce({ success: true, data: null });
+    render(<ProtectionConfigPanel />);
+    await waitFor(() => {
+      expect(screen.getByText('Super Users (2)')).toBeInTheDocument();
+    });
+    const removeButtons = screen.getAllByText('Remove');
+    expect(removeButtons.length).toBe(2);
+  });
+
+  it('shows confirm dialog when Remove super user clicked', async () => {
+    const user = userEvent.setup();
+    mockInvoke
+      .mockResolvedValueOnce({ success: true, data: mockConfig })
+      .mockResolvedValueOnce({ success: true, data: [] })
+      .mockResolvedValueOnce({ success: true, data: null });
+    render(<ProtectionConfigPanel />);
+    await waitFor(() => {
+      expect(screen.getByText('Super Users (2)')).toBeInTheDocument();
+    });
+
+    const removeButtons = screen.getAllByText('Remove');
+    await user.click(removeButtons[0]);
+
+    expect(screen.getByText(/Remove super user access for "admin@contoso.com"/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Cancel' })).toBeInTheDocument();
+  });
+
+  it('cancels remove super user dialog', async () => {
+    const user = userEvent.setup();
+    mockInvoke
+      .mockResolvedValueOnce({ success: true, data: mockConfig })
+      .mockResolvedValueOnce({ success: true, data: [] })
+      .mockResolvedValueOnce({ success: true, data: null });
+    render(<ProtectionConfigPanel />);
+    await waitFor(() => {
+      expect(screen.getByText('Super Users (2)')).toBeInTheDocument();
+    });
+
+    const removeButtons = screen.getAllByText('Remove');
+    await user.click(removeButtons[0]);
+    expect(screen.getByText(/Remove super user access/)).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(screen.queryByText(/Remove super user access/)).not.toBeInTheDocument();
+  });
+
+  it('calls Disable-SLSuperUser when confirm is clicked', async () => {
+    const user = userEvent.setup();
+    const configAfterRemove = { ...mockConfig, SuperUsers: ['superuser@contoso.com'] };
+    mockInvoke
+      .mockResolvedValueOnce({ success: true, data: mockConfig })
+      .mockResolvedValueOnce({ success: true, data: [] })
+      .mockResolvedValueOnce({ success: true, data: null })
+      // Disable call
+      .mockResolvedValueOnce({ success: true, data: null })
+      // Reload calls
+      .mockResolvedValueOnce({ success: true, data: configAfterRemove })
+      .mockResolvedValueOnce({ success: true, data: [] })
+      .mockResolvedValueOnce({ success: true, data: null });
+
+    render(<ProtectionConfigPanel />);
+    await waitFor(() => {
+      expect(screen.getByText('Super Users (2)')).toBeInTheDocument();
+    });
+
+    const removeButtons = screen.getAllByText('Remove');
+    await user.click(removeButtons[0]);
+    // Click the confirm button in the dialog
+    const confirmBtn = screen.getByRole('button', { name: /Remove Super User/ });
+    await user.click(confirmBtn);
+
+    await waitFor(() => {
+      expect(mockInvoke).toHaveBeenCalledWith(
+        expect.stringContaining('Disable-SLSuperUser')
+      );
+    });
+  });
+
+  it('shows add admin form with email, role, and Add button', async () => {
+    mockInvoke
+      .mockResolvedValueOnce({ success: true, data: mockConfig })
+      .mockResolvedValueOnce({ success: true, data: [] })
+      .mockResolvedValueOnce({ success: true, data: null });
+    render(<ProtectionConfigPanel />);
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText('admin@contoso.com')).toBeInTheDocument();
+    });
+    expect(screen.getByText('Add')).toBeInTheDocument();
+    expect(screen.getByText('Email')).toBeInTheDocument();
+    expect(screen.getByText('Role')).toBeInTheDocument();
+  });
+
+  it('Add button is disabled when email is empty', async () => {
+    mockInvoke
+      .mockResolvedValueOnce({ success: true, data: mockConfig })
+      .mockResolvedValueOnce({ success: true, data: [] })
+      .mockResolvedValueOnce({ success: true, data: null });
+    render(<ProtectionConfigPanel />);
+    await waitFor(() => {
+      expect(screen.getByText('Add')).toBeInTheDocument();
+    });
+    expect(screen.getByText('Add')).toBeDisabled();
+  });
+
+  it('calls Grant-SLSiteAdmin when add admin clicked', async () => {
+    const user = userEvent.setup();
+    mockInvoke
+      .mockResolvedValueOnce({ success: true, data: mockConfig })
+      .mockResolvedValueOnce({ success: true, data: [] })
+      .mockResolvedValueOnce({ success: true, data: null })
+      // Grant call
+      .mockResolvedValueOnce({ success: true, data: null })
+      // Reload
+      .mockResolvedValueOnce({ success: true, data: mockConfig })
+      .mockResolvedValueOnce({ success: true, data: mockAdmins })
+      .mockResolvedValueOnce({ success: true, data: null });
+
+    render(<ProtectionConfigPanel />);
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText('admin@contoso.com')).toBeInTheDocument();
+    });
+
+    await user.type(screen.getByPlaceholderText('admin@contoso.com'), 'newadmin@contoso.com');
+    await user.click(screen.getByText('Add'));
+
+    await waitFor(() => {
+      expect(mockInvoke).toHaveBeenCalledWith(
+        expect.stringContaining('Grant-SLSiteAdmin')
+      );
+      expect(mockInvoke).toHaveBeenCalledWith(
+        expect.stringContaining('newadmin@contoso.com')
+      );
+    });
+  });
+
+  it('shows action error when add admin fails', async () => {
+    const user = userEvent.setup();
+    mockInvoke
+      .mockResolvedValueOnce({ success: true, data: mockConfig })
+      .mockResolvedValueOnce({ success: true, data: [] })
+      .mockResolvedValueOnce({ success: true, data: null })
+      .mockResolvedValueOnce({ success: false, data: null, error: 'Permission denied' });
+
+    render(<ProtectionConfigPanel />);
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText('admin@contoso.com')).toBeInTheDocument();
+    });
+
+    await user.type(screen.getByPlaceholderText('admin@contoso.com'), 'test@contoso.com');
+    await user.click(screen.getByText('Add'));
+
+    await waitFor(() => {
+      expect(screen.getByText('Permission denied')).toBeInTheDocument();
+    });
+  });
+
+  it('shows action error when remove super user fails', async () => {
+    const user = userEvent.setup();
+    mockInvoke
+      .mockResolvedValueOnce({ success: true, data: mockConfig })
+      .mockResolvedValueOnce({ success: true, data: [] })
+      .mockResolvedValueOnce({ success: true, data: null })
+      .mockResolvedValueOnce({ success: false, data: null, error: 'Cannot remove' });
+
+    render(<ProtectionConfigPanel />);
+    await waitFor(() => {
+      expect(screen.getByText('Super Users (2)')).toBeInTheDocument();
+    });
+
+    const removeButtons = screen.getAllByText('Remove');
+    await user.click(removeButtons[0]);
+    const confirmBtn = screen.getByRole('button', { name: /Remove Super User/ });
+    await user.click(confirmBtn);
+
+    await waitFor(() => {
+      expect(screen.getByText('Cannot remove')).toBeInTheDocument();
+    });
+  });
+
+  it('has role select with Global Admin and Connector Admin options', async () => {
+    mockInvoke
+      .mockResolvedValueOnce({ success: true, data: mockConfig })
+      .mockResolvedValueOnce({ success: true, data: [] })
+      .mockResolvedValueOnce({ success: true, data: null });
+    render(<ProtectionConfigPanel />);
+    await waitFor(() => {
+      expect(screen.getByText('Service Configuration')).toBeInTheDocument();
+    });
+    const select = screen.getByRole('combobox');
+    expect(select).toBeInTheDocument();
+    expect(screen.getByText('Global Admin')).toBeInTheDocument();
+    expect(screen.getByText('Connector Admin')).toBeInTheDocument();
+  });
+
+  it('renders raw JSON toggle', async () => {
+    mockInvoke
+      .mockResolvedValueOnce({ success: true, data: mockConfig })
+      .mockResolvedValueOnce({ success: true, data: [] })
+      .mockResolvedValueOnce({ success: true, data: null });
+    render(<ProtectionConfigPanel />);
+    await waitFor(() => {
+      expect(screen.getByText('Service Configuration')).toBeInTheDocument();
+    });
+    expect(screen.getByText(/Show.*Full config/)).toBeInTheDocument();
   });
 });

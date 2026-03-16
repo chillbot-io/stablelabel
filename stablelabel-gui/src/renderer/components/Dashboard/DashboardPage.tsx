@@ -2,6 +2,7 @@ import React, { useEffect, useState, useCallback } from 'react';
 import { useConnectionStatus } from '../../hooks/useConnectionStatus';
 import { usePowerShell } from '../../hooks/usePowerShell';
 import type { Page } from '../../lib/types';
+import ExportButton from '../common/ExportButton';
 
 interface DashboardStats {
   labels: number | null;
@@ -323,7 +324,17 @@ function RecentActivity({ entries }: { entries: AuditEntry[] }) {
 
   return (
     <div className="bg-gray-900 border border-gray-800 rounded-lg p-4">
-      <h3 className="text-sm font-semibold text-gray-300 mb-3">Recent Activity</h3>
+      <div className="flex items-center justify-between mb-3">
+        <h3 className="text-sm font-semibold text-gray-300">Recent Activity</h3>
+        {entries.length > 0 && (
+          <ExportButton
+            data={entries}
+            filename="audit-log"
+            csvHeaders={['Timestamp', 'Action', 'Target', 'Result']}
+            csvRowMapper={(e) => { const a = e as AuditEntry; return [a.Timestamp, a.Action, a.Target, a.Result]; }}
+          />
+        )}
+      </div>
       {entries.length === 0 ? (
         <p className="text-xs text-gray-600">No recent activity recorded.</p>
       ) : (

@@ -16,4 +16,7 @@ contextBridge.exposeInMainWorld('stablelabel', {
   /** Get bridge status */
   getStatus: (): Promise<{ initialized: boolean; modulePath?: string }> =>
     ipcRenderer.invoke('ps:get-status'),
+
+  /** Current platform (win32, darwin, linux) */
+  platform: process.platform,
 });

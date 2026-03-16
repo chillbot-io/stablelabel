@@ -264,7 +264,7 @@ export interface SnapshotDiff {
   Categories: Record<string, {
     Added: Array<{ Identity: string }>;
     Removed: Array<{ Identity: string }>;
-    Modified: Array<{ Identity: string }>;
+    Modified: Array<{ Identity: string; PropertyChanges?: Array<{ Property: string; OldValue: string; NewValue: string }> }>;
     Summary: {
       AddedCount: number;
       RemovedCount: number;
@@ -285,14 +285,107 @@ export interface PolicyHealth {
   HealthStatus: string;
 }
 
+export interface FileShareConnection {
+  Name: string;
+  Path: string;
+  DriveLetter: string;
+  Server: string;
+  ShareName: string;
+  ConnectedAt: string;
+  AuthType: string;
+}
+
+export interface FileShareDisconnectResult {
+  Action: string;
+  Disconnected: number;
+  Failed: number;
+  Results: Array<{
+    Name: string;
+    Path: string;
+    Status: string;
+    Error?: string;
+  }>;
+  Errors?: string[];
+}
+
+export interface FileShareInventory {
+  Action: string;
+  Summary: {
+    TotalFiles: number;
+    LabeledCount: number;
+    UnlabeledCount: number;
+    LabelDistribution: Record<string, number>;
+  };
+  Items: FileShareInventoryItem[];
+  ExportPath: string | null;
+}
+
+export interface FileShareInventoryItem {
+  FullPath: string;
+  FileName: string;
+  Extension: string;
+  SizeKB: number;
+  LastModified: string;
+  IsSupported: boolean;
+  IsLabeled: boolean;
+  LabelName: string | null;
+  LabelId: string | null;
+  SubLabelName: string | null;
+  SubLabelId: string | null;
+  Owner: string | null;
+}
+
+export interface FileShareScanResult {
+  Action: string;
+  Path: string;
+  TotalFiles: number;
+  SupportedFiles: number;
+  UnsupportedFiles: number;
+  LabeledFiles: number;
+  UnlabeledFiles: number;
+  FilesByLabel: Record<string, number>;
+  FilesByExtension: Record<string, number>;
+  ScanDuration: string;
+  Details: Array<{
+    FullPath: string;
+    FileName: string;
+    Extension: string;
+    SizeKB: number;
+    IsLabeled: boolean;
+    LabelName: string | null;
+    SubLabelName: string | null;
+    IsProtected: boolean;
+    ScanStatus: string;
+    Error: string | null;
+  }>;
+}
+
+export interface FileShareBulkResult {
+  Action: string;
+  Path: string;
+  TotalFiles: number;
+  SuccessCount: number;
+  FailedCount: number;
+  SkippedCount: number;
+  SensitivityLabelId: string;
+  Results: Array<{
+    Path: string;
+    Status: string;
+    Error: string | null;
+  }>;
+  DryRun: boolean;
+}
+
 export type Page =
   | 'dashboard'
   | 'labels'
   | 'retention'
   | 'dlp'
   | 'documents'
+  | 'fileshares'
   | 'protection'
   | 'elevation'
   | 'snapshots'
   | 'analysis'
-  | 'templates';
+  | 'templates'
+  | 'settings';

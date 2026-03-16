@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { usePowerShell } from '../../hooks/usePowerShell';
 import type { PolicyHealth as PolicyHealthType } from '../../lib/types';
+import ExportButton from '../common/ExportButton';
 
 export default function PolicyHealth() {
   const { invoke } = usePowerShell();
@@ -43,6 +44,14 @@ export default function PolicyHealth() {
         <button onClick={handleRun} disabled={loading} className="px-4 py-1.5 text-xs font-medium text-white bg-blue-600 hover:bg-blue-500 disabled:bg-blue-600/50 rounded transition-colors">
           {loading ? 'Checking...' : 'Check Health'}
         </button>
+        {results && results.length > 0 && (
+          <ExportButton
+            data={results}
+            filename="policy-health"
+            csvHeaders={['Name', 'Type', 'Status', 'Mode', 'Distribution', 'HasRules', 'LastModified', 'Health']}
+            csvRowMapper={(p) => { const ph = p as PolicyHealthType; return [ph.Name, ph.Type, ph.Status, ph.Mode, ph.DistributionStatus, String(ph.HasRules), ph.LastModified, ph.HealthStatus]; }}
+          />
+        )}
       </div>
 
       {error && <div className="p-3 bg-red-900/20 border border-red-800 rounded text-sm text-red-300">{error}</div>}

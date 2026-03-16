@@ -12,6 +12,7 @@ if (typeof window !== 'undefined') {
       invoke: mockInvoke,
       checkPwsh: mockCheckPwsh,
       getStatus: mockGetStatus,
+      platform: 'win32',
     },
     writable: true,
   });

@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { usePowerShell } from '../../hooks/usePowerShell';
+import { usePagination } from '../../hooks/usePagination';
 import type { RetentionPolicy } from '../../lib/types';
 
 interface Props {
@@ -30,6 +31,7 @@ export default function RetentionPolicyList({ onOpenPolicy, onNewPolicy }: Props
   useEffect(() => { fetch(); }, []);
 
   const filtered = search.trim() ? policies.filter(p => p.Name.toLowerCase().includes(search.toLowerCase())) : policies;
+  const { visible: paginated, hasMore, remaining, loadMore } = usePagination(filtered);
 
   const locationCount = (p: RetentionPolicy) => {
     let count = 0;
@@ -52,7 +54,7 @@ export default function RetentionPolicyList({ onOpenPolicy, onNewPolicy }: Props
       </div>
       <div className="px-3 py-1.5 text-xs text-gray-500 border-b border-gray-800/50">{policies.length} retention {policies.length === 1 ? 'policy' : 'policies'}</div>
       <div className="flex-1 overflow-y-auto py-1">
-        {filtered.length === 0 ? <p className="p-4 text-xs text-gray-600">No retention policies found.</p> : filtered.map(policy => (
+        {paginated.length === 0 ? <p className="p-4 text-xs text-gray-600">No retention policies found.</p> : <>{paginated.map(policy => (
           <button key={policy.Guid ?? policy.Name} onClick={() => onOpenPolicy(policy.Name)} className="w-full text-left px-3 py-2 hover:bg-gray-800 transition-colors group">
             <div className="flex items-center justify-between">
               <span className="text-sm text-gray-200 group-hover:text-white truncate">{policy.Name}</span>
@@ -63,7 +65,9 @@ export default function RetentionPolicyList({ onOpenPolicy, onNewPolicy }: Props
               {policy.Comment && <span className="text-[10px] text-gray-600 truncate">{policy.Comment}</span>}
             </div>
           </button>
-        ))}
+        ))}{hasMore && (
+            <button onClick={loadMore} className="w-full py-2 text-xs text-blue-400 hover:text-blue-300 hover:bg-gray-800/50 transition-colors">Show {remaining} more...</button>
+          )}</>}
       </div>
       <div className="p-2 border-t border-gray-800 space-y-1.5">
         <button onClick={onNewPolicy} className="w-full py-1.5 text-xs text-amber-300 hover:text-amber-200 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/20 rounded transition-colors">+ New Retention Policy</button>
