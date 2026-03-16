@@ -44,7 +44,7 @@ function Get-SLTemplate {
             },
             [PSCustomObject]@{
                 Name               = 'GDPR-DLP'
-                Description        = 'GDPR-focused DLP policies for EU personal data protection'
+                Description        = 'EU personal data protection rules covering national IDs, passports, and tax identifiers'
                 Type               = 'DLP'
                 SensitiveInfoTypes = @(
                     'EU National Identification Number',
@@ -53,22 +53,33 @@ function Get-SLTemplate {
                 )
             },
             [PSCustomObject]@{
-                Name        = 'Financial-Retention'
-                Description = 'Financial services retention labels meeting SEC/FINRA requirements'
-                Type        = 'Retention'
-                Labels      = @(
-                    @{ Name = 'Keep-7-Years'; Duration = 2555; Action = 'Keep' },
-                    @{ Name = 'Keep-10-Years'; Duration = 3650; Action = 'Keep' }
-                )
-            },
-            [PSCustomObject]@{
                 Name               = 'Healthcare-HIPAA'
-                Description        = 'HIPAA compliance DLP rules for protected health information'
+                Description        = 'HIPAA compliance rules detecting protected health information in documents and emails'
                 Type               = 'DLP'
                 SensitiveInfoTypes = @(
                     'U.S. Social Security Number',
                     'Drug Enforcement Agency Number',
                     'U.S. Health Insurance Claim Number'
+                )
+            },
+            [PSCustomObject]@{
+                Name               = 'PCI-DSS'
+                Description        = 'PCI-DSS rules detecting credit card numbers, bank accounts, and routing numbers'
+                Type               = 'DLP'
+                SensitiveInfoTypes = @(
+                    'Credit Card Number',
+                    'U.S. Bank Account Number',
+                    'ABA Routing Number'
+                )
+            },
+            [PSCustomObject]@{
+                Name               = 'PII-Protection'
+                Description        = 'Detect and protect personal identifiers including SSNs, driver licenses, and passport numbers'
+                Type               = 'DLP'
+                SensitiveInfoTypes = @(
+                    'U.S. Social Security Number',
+                    'U.S. Driver''s License Number',
+                    'U.S. Passport Number'
                 )
             }
         )
