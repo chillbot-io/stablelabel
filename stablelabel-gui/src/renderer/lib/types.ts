@@ -264,7 +264,7 @@ export interface SnapshotDiff {
   Categories: Record<string, {
     Added: Array<{ Identity: string }>;
     Removed: Array<{ Identity: string }>;
-    Modified: Array<{ Identity: string }>;
+    Modified: Array<{ Identity: string; PropertyChanges?: Array<{ Property: string; OldValue: string; NewValue: string }> }>;
     Summary: {
       AddedCount: number;
       RemovedCount: number;

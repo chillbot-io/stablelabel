@@ -15,6 +15,8 @@ const sections: Array<{ id: Section; label: string; description: string }> = [
   { id: 'logs', label: 'Logs', description: 'Protection tracking logs' },
 ];
 
+const isWindows = typeof window !== 'undefined' && window.stablelabel?.platform === 'win32';
+
 export default function ProtectionPage() {
   const [active, setActive] = useState<Section>('config');
 
@@ -26,6 +28,11 @@ export default function ProtectionPage() {
           <h2 className="text-sm font-semibold text-gray-300">AIP Protection</h2>
           <p className="text-[10px] text-gray-500 mt-0.5">Azure Information Protection service management</p>
         </div>
+        {!isWindows && (
+          <div className="mx-2 mt-2 p-2.5 bg-amber-500/5 border border-amber-500/20 rounded text-[10px] text-amber-400">
+            AIPService requires Windows with PowerShell 5.1. Some operations may not be available on this platform.
+          </div>
+        )}
         <div className="flex-1 py-2">
           {sections.map((s) => (
             <button

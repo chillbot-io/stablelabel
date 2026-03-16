@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { usePowerShell } from '../../hooks/usePowerShell';
+import { useElapsedTime } from '../../hooks/useElapsedTime';
 import { TextField, TextArea, ToggleField } from '../common/FormFields';
 import type { FileShareBulkResult } from '../../lib/types';
 
@@ -14,6 +15,7 @@ export default function FileShareLabelBulk() {
   const [owner, setOwner] = useState('');
   const [dryRun, setDryRun] = useState(true);
   const [loading, setLoading] = useState(false);
+  const elapsed = useElapsedTime(loading);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<FileShareBulkResult | null>(null);
 
@@ -64,9 +66,17 @@ export default function FileShareLabelBulk() {
 
       {error && <div className="p-3 bg-red-900/20 border border-red-800 rounded text-sm text-red-300">{error}</div>}
 
-      <button onClick={handleBulk} disabled={loading} className="px-4 py-2 text-xs font-medium text-white bg-blue-600 hover:bg-blue-500 disabled:bg-blue-600/50 rounded transition-colors">
-        {loading ? 'Processing...' : dryRun ? 'Dry Run — Bulk Apply' : 'Bulk Apply Labels'}
-      </button>
+      <div className="flex items-center gap-3">
+        <button onClick={handleBulk} disabled={loading} className="px-4 py-2 text-xs font-medium text-white bg-blue-600 hover:bg-blue-500 disabled:bg-blue-600/50 rounded transition-colors">
+          {loading ? 'Processing...' : dryRun ? 'Dry Run — Bulk Apply' : 'Bulk Apply Labels'}
+        </button>
+        {loading && (
+          <span className="flex items-center gap-2 text-xs text-gray-400">
+            <span className="inline-block w-3 h-3 border-2 border-blue-400 border-t-transparent rounded-full animate-spin" />
+            {elapsed || 'Starting...'}
+          </span>
+        )}
+      </div>
 
       {result && (
         <div className="space-y-3 pt-2">

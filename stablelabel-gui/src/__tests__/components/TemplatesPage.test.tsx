@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import TemplatesPage from '../../renderer/components/Templates/TemplatesPage';
 import { mockInvoke } from '../setup';
@@ -7,6 +7,7 @@ import { mockInvoke } from '../setup';
 describe('TemplatesPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // Get-SLTemplate returns empty so fallback templates are used
     mockInvoke.mockResolvedValue({ success: true, data: null });
   });
 
@@ -20,40 +21,54 @@ describe('TemplatesPage', () => {
     expect(screen.getAllByText(/Content-based classification policies/).length).toBeGreaterThanOrEqual(1);
   });
 
-  it('renders all template options', () => {
+  it('renders all template options after loading', async () => {
     render(<TemplatesPage />);
-    expect(screen.getByText('PHI')).toBeInTheDocument();
-    expect(screen.getByText('PCI')).toBeInTheDocument();
-    expect(screen.getByText('PII')).toBeInTheDocument();
-    expect(screen.getByText('GDPR')).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByText('Healthcare-HIPAA')).toBeInTheDocument();
+    });
+    expect(screen.getByText('PCI-DSS')).toBeInTheDocument();
+    expect(screen.getByText('PII-Protection')).toBeInTheDocument();
+    expect(screen.getByText('GDPR-DLP')).toBeInTheDocument();
+    expect(screen.getByText('Standard-Labels')).toBeInTheDocument();
   });
 
-  it('shows placeholder when no template selected', () => {
+  it('shows placeholder when no template selected', async () => {
     render(<TemplatesPage />);
-    expect(screen.getAllByText(/Select a template/).length).toBeGreaterThanOrEqual(1);
+    await waitFor(() => {
+      expect(screen.getAllByText(/Select a template/).length).toBeGreaterThanOrEqual(1);
+    });
   });
 
-  it('selects PHI template and shows detail', async () => {
+  it('selects Healthcare-HIPAA template and shows detail', async () => {
     const user = userEvent.setup();
     render(<TemplatesPage />);
 
-    await user.click(screen.getByText('PHI'));
+    await waitFor(() => {
+      expect(screen.getByText('Healthcare-HIPAA')).toBeInTheDocument();
+    });
+    await user.click(screen.getByText('Healthcare-HIPAA'));
     expect(screen.getAllByText(/HIPAA/i).length).toBeGreaterThanOrEqual(1);
   });
 
-  it('selects PCI template and shows detail', async () => {
+  it('selects PCI-DSS template and shows detail', async () => {
     const user = userEvent.setup();
     render(<TemplatesPage />);
 
-    await user.click(screen.getByText('PCI'));
-    expect(screen.getAllByText(/Payment Card/i).length).toBeGreaterThanOrEqual(1);
+    await waitFor(() => {
+      expect(screen.getByText('PCI-DSS')).toBeInTheDocument();
+    });
+    await user.click(screen.getByText('PCI-DSS'));
+    expect(screen.getAllByText(/PCI-DSS/i).length).toBeGreaterThanOrEqual(1);
   });
 
   it('has Deploy and Dry Run buttons for selected template', async () => {
     const user = userEvent.setup();
     render(<TemplatesPage />);
 
-    await user.click(screen.getByText('PHI'));
+    await waitFor(() => {
+      expect(screen.getByText('Healthcare-HIPAA')).toBeInTheDocument();
+    });
+    await user.click(screen.getByText('Healthcare-HIPAA'));
     expect(screen.getByText('Deploy')).toBeInTheDocument();
     expect(screen.getByText('Dry Run')).toBeInTheDocument();
   });
@@ -63,7 +78,10 @@ describe('TemplatesPage', () => {
     const user = userEvent.setup();
     render(<TemplatesPage />);
 
-    await user.click(screen.getByText('PHI'));
+    await waitFor(() => {
+      expect(screen.getByText('Healthcare-HIPAA')).toBeInTheDocument();
+    });
+    await user.click(screen.getByText('Healthcare-HIPAA'));
     await user.click(screen.getByText('Dry Run'));
 
     expect(mockInvoke).toHaveBeenCalledWith(
@@ -79,7 +97,10 @@ describe('TemplatesPage', () => {
     const user = userEvent.setup();
     render(<TemplatesPage />);
 
-    await user.click(screen.getByText('PHI'));
+    await waitFor(() => {
+      expect(screen.getByText('Healthcare-HIPAA')).toBeInTheDocument();
+    });
+    await user.click(screen.getByText('Healthcare-HIPAA'));
     await user.click(screen.getByText('Deploy'));
 
     expect(mockInvoke).toHaveBeenCalledWith(

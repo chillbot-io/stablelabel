@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { usePowerShell } from '../../hooks/usePowerShell';
+import ExportButton from '../common/ExportButton';
 
 interface ReadinessResult {
   Ready: boolean;
@@ -34,9 +35,19 @@ export default function DeploymentReadiness() {
         <p className="text-xs text-gray-500">Pre-deployment checklist to verify your environment is ready for label and DLP deployment.</p>
       </div>
 
-      <button onClick={handleRun} disabled={loading} className="px-4 py-2 text-xs font-medium text-white bg-blue-600 hover:bg-blue-500 disabled:bg-blue-600/50 rounded transition-colors">
-        {loading ? 'Running checks...' : 'Run Readiness Check'}
-      </button>
+      <div className="flex items-center gap-2">
+        <button onClick={handleRun} disabled={loading} className="px-4 py-2 text-xs font-medium text-white bg-blue-600 hover:bg-blue-500 disabled:bg-blue-600/50 rounded transition-colors">
+          {loading ? 'Running checks...' : 'Run Readiness Check'}
+        </button>
+        {result && (
+          <ExportButton
+            data={result}
+            filename="deployment-readiness"
+            csvHeaders={['Check', 'Status', 'Message']}
+            csvRowMapper={(c) => { const ck = c as { Name: string; Status: string; Message: string }; return [ck.Name, ck.Status, ck.Message]; }}
+          />
+        )}
+      </div>
 
       {error && <div className="p-3 bg-red-900/20 border border-red-800 rounded text-sm text-red-300">{error}</div>}
 

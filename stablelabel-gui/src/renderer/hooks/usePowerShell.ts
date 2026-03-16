@@ -7,6 +7,7 @@ declare global {
       invoke: (command: string) => Promise<PsResult>;
       checkPwsh: () => Promise<{ available: boolean; path?: string; error?: string }>;
       getStatus: () => Promise<{ initialized: boolean; modulePath?: string }>;
+      platform: string;
     };
   }
 }

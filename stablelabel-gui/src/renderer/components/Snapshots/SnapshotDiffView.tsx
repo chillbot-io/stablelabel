@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import type { SnapshotDiff } from '../../lib/types';
+import ExportButton from '../common/ExportButton';
 
 interface Props { diff: SnapshotDiff; onClose: () => void; }
 
@@ -15,6 +16,7 @@ export default function SnapshotDiffView({ diff, onClose }: Props) {
           <p className="text-xs text-gray-500 mt-0.5">Compared at {diff.ComparedAt}</p>
         </div>
         <div className="flex items-center gap-2">
+          <ExportButton data={diff} filename={`snapshot-diff-${diff.ReferenceSnapshot}`} label="Export" />
           <span className={`px-2 py-1 text-xs rounded ${diff.HasChanges ? 'bg-yellow-500/10 text-yellow-400 border border-yellow-500/20' : 'bg-green-500/10 text-green-400 border border-green-500/20'}`}>
             {diff.HasChanges ? 'Changes Detected' : 'No Changes'}
           </span>
@@ -37,7 +39,7 @@ export default function SnapshotDiffView({ diff, onClose }: Props) {
   );
 }
 
-function CategoryDiff({ category, data }: { category: string; data: { Added: Array<{ Identity: string }>; Removed: Array<{ Identity: string }>; Modified: Array<{ Identity: string }>; Summary: { AddedCount: number; RemovedCount: number; ModifiedCount: number; UnchangedCount: number } } }) {
+function CategoryDiff({ category, data }: { category: string; data: { Added: Array<{ Identity: string }>; Removed: Array<{ Identity: string }>; Modified: Array<{ Identity: string; PropertyChanges?: Array<{ Property: string; OldValue: string; NewValue: string }> }>; Summary: { AddedCount: number; RemovedCount: number; ModifiedCount: number; UnchangedCount: number } } }) {
   const [expanded, setExpanded] = useState(data.Summary.AddedCount + data.Summary.RemovedCount + data.Summary.ModifiedCount > 0);
   const hasChanges = data.Summary.AddedCount + data.Summary.RemovedCount + data.Summary.ModifiedCount > 0;
 
@@ -71,9 +73,38 @@ function CategoryDiff({ category, data }: { category: string; data: { Added: Arr
             </div>
           ))}
           {data.Modified.map((item, i) => (
-            <div key={`m-${i}`} className="flex items-center gap-2 px-2.5 py-1.5 rounded bg-yellow-500/5">
-              <span className="text-[10px] px-1 py-0.5 bg-yellow-500/20 text-yellow-400 rounded">Modified</span>
-              <span className="text-xs text-gray-300">{item.Identity}</span>
+            <ModifiedItem key={`m-${i}`} item={item} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ModifiedItem({ item }: { item: { Identity: string; PropertyChanges?: Array<{ Property: string; OldValue: string; NewValue: string }> } }) {
+  const [expanded, setExpanded] = useState(false);
+  const hasProps = item.PropertyChanges && item.PropertyChanges.length > 0;
+
+  return (
+    <div className="rounded bg-yellow-500/5">
+      <div
+        className={`flex items-center gap-2 px-2.5 py-1.5 ${hasProps ? 'cursor-pointer' : ''}`}
+        onClick={() => hasProps && setExpanded(!expanded)}
+      >
+        <span className="text-[10px] px-1 py-0.5 bg-yellow-500/20 text-yellow-400 rounded">Modified</span>
+        <span className="text-xs text-gray-300 flex-1">{item.Identity}</span>
+        {hasProps && (
+          <span className="text-[10px] text-gray-500">{expanded ? '▾' : '▸'} {item.PropertyChanges!.length} prop{item.PropertyChanges!.length !== 1 ? 's' : ''}</span>
+        )}
+      </div>
+      {expanded && hasProps && (
+        <div className="px-3 pb-2 space-y-1">
+          {item.PropertyChanges!.map((pc, j) => (
+            <div key={j} className="flex items-start gap-2 px-2 py-1 bg-gray-900/50 rounded text-[10px]">
+              <span className="text-gray-400 font-medium min-w-[80px]">{pc.Property}</span>
+              <span className="text-red-400 line-through">{pc.OldValue || '(empty)'}</span>
+              <span className="text-gray-600">→</span>
+              <span className="text-green-400">{pc.NewValue || '(empty)'}</span>
             </div>
           ))}
         </div>
