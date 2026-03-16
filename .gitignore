@@ -7,3 +7,5 @@ dist/
 stablelabel-gui/node_modules/
 stablelabel-gui/out/
 stablelabel-gui/.vite/
+coverage/
+stablelabel-gui/coverage/
