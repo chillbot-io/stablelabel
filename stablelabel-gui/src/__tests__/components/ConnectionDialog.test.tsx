@@ -1,79 +1,120 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import ConnectionDialog from '../../renderer/components/Connection/ConnectionDialog';
 import { mockInvoke } from '../setup';
 
 describe('ConnectionDialog', () => {
   const onClose = vi.fn();
+  const onConnected = vi.fn();
 
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it('renders all three connect buttons', () => {
+  it('renders the title and connect button', () => {
     render(<ConnectionDialog onClose={onClose} />);
-
-    expect(screen.getByText('Microsoft Graph')).toBeInTheDocument();
-    expect(screen.getByText('Security & Compliance')).toBeInTheDocument();
-    expect(screen.getByText('Protection Service')).toBeInTheDocument();
+    expect(screen.getAllByText('Connect to StableLabel').length).toBeGreaterThanOrEqual(2); // title + button
+    expect(screen.getByRole('button', { name: 'Connect to StableLabel' })).toBeInTheDocument();
   });
 
-  it('renders the title', () => {
+  it('renders description text', () => {
     render(<ConnectionDialog onClose={onClose} />);
-    expect(screen.getByText('Connect to Microsoft 365')).toBeInTheDocument();
+    expect(screen.getByText(/Installs prerequisites/)).toBeInTheDocument();
   });
 
-  it('calls onClose when Close button is clicked', async () => {
+  it('calls onClose when Cancel button is clicked', async () => {
     const user = userEvent.setup();
     render(<ConnectionDialog onClose={onClose} />);
 
-    await user.click(screen.getByText('Close'));
+    await user.click(screen.getByText('Cancel'));
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
-  it('invokes Connect-SLGraph when Microsoft Graph button is clicked', async () => {
-    mockInvoke.mockResolvedValue({ success: true, data: null });
+  it('invokes Connect-SLAll when connect button is clicked', async () => {
+    mockInvoke.mockResolvedValue({
+      success: true,
+      data: {
+        Status: 'Connected',
+        UserPrincipalName: 'admin@contoso.com',
+        TenantId: 'abc123',
+        Steps: [],
+      },
+    });
     const user = userEvent.setup();
 
-    render(<ConnectionDialog onClose={onClose} />);
+    render(<ConnectionDialog onClose={onClose} onConnected={onConnected} />);
 
-    await user.click(screen.getByText('Microsoft Graph'));
-    expect(mockInvoke).toHaveBeenCalledWith('Connect-SLGraph');
+    await user.click(screen.getByRole('button', { name: 'Connect to StableLabel' }));
+
+    expect(mockInvoke).toHaveBeenCalledWith('Connect-SLAll');
   });
 
-  it('invokes Connect-SLCompliance when Compliance button is clicked', async () => {
-    mockInvoke.mockResolvedValue({ success: true, data: null });
+  it('shows connected state on success', async () => {
+    mockInvoke.mockResolvedValue({
+      success: true,
+      data: {
+        Status: 'Connected',
+        UserPrincipalName: 'admin@contoso.com',
+        TenantId: 'abc123',
+        Steps: [
+          { Step: 'Prereq', Module: 'Microsoft.Graph.Authentication', Status: 'AlreadyInstalled', Version: '2.10.0' },
+          { Step: 'Graph', Status: 'Connected', UPN: 'admin@contoso.com' },
+          { Step: 'Compliance', Status: 'Connected' },
+        ],
+      },
+    });
     const user = userEvent.setup();
 
-    render(<ConnectionDialog onClose={onClose} />);
+    render(<ConnectionDialog onClose={onClose} onConnected={onConnected} />);
 
-    await user.click(screen.getByText('Security & Compliance'));
-    expect(mockInvoke).toHaveBeenCalledWith('Connect-SLCompliance');
-  });
+    await user.click(screen.getByRole('button', { name: 'Connect to StableLabel' }));
 
-  it('invokes Connect-SLProtection when Protection button is clicked', async () => {
-    mockInvoke.mockResolvedValue({ success: true, data: null });
-    const user = userEvent.setup();
-
-    render(<ConnectionDialog onClose={onClose} />);
-
-    await user.click(screen.getByText('Protection Service'));
-    expect(mockInvoke).toHaveBeenCalledWith('Connect-SLProtection');
+    await waitFor(() => {
+      expect(screen.getByText('Connected successfully')).toBeInTheDocument();
+    });
+    expect(screen.getByText(/Signed in as/)).toBeInTheDocument();
+    expect(onConnected).toHaveBeenCalled();
   });
 
   it('displays error when connection fails', async () => {
-    mockInvoke.mockResolvedValue({ success: false, data: null, error: 'Auth failed' });
+    mockInvoke.mockResolvedValue({
+      success: true,
+      data: {
+        Status: 'Failed',
+        Stage: 'Graph',
+        Error: 'Auth failed',
+        Steps: [{ Step: 'Graph', Status: 'Failed', Error: 'Auth failed' }],
+      },
+    });
     const user = userEvent.setup();
 
     render(<ConnectionDialog onClose={onClose} />);
 
-    await user.click(screen.getByText('Microsoft Graph'));
+    await user.click(screen.getByRole('button', { name: 'Connect to StableLabel' }));
 
-    expect(await screen.findByText('Auth failed')).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByText('Auth failed')).toBeInTheDocument();
+    });
   });
 
-  it('shows Connecting... text while connecting', async () => {
+  it('shows Try Again button after failure', async () => {
+    mockInvoke.mockResolvedValue({
+      success: true,
+      data: { Status: 'Failed', Stage: 'Graph', Error: 'Timeout', Steps: [] },
+    });
+    const user = userEvent.setup();
+
+    render(<ConnectionDialog onClose={onClose} />);
+
+    await user.click(screen.getByRole('button', { name: 'Connect to StableLabel' }));
+
+    await waitFor(() => {
+      expect(screen.getByText('Try Again')).toBeInTheDocument();
+    });
+  });
+
+  it('shows checking prerequisites text while connecting', async () => {
     let resolveInvoke: (v: unknown) => void;
     mockInvoke.mockReturnValueOnce(
       new Promise((resolve) => { resolveInvoke = resolve; })
@@ -82,11 +123,42 @@ describe('ConnectionDialog', () => {
 
     render(<ConnectionDialog onClose={onClose} />);
 
-    await user.click(screen.getByText('Microsoft Graph'));
+    await user.click(screen.getByRole('button', { name: 'Connect to StableLabel' }));
 
-    expect(screen.getByText('Connecting...')).toBeInTheDocument();
+    expect(screen.getByText('Checking prerequisites...')).toBeInTheDocument();
 
     // Resolve the promise to clean up
-    resolveInvoke!({ success: true, data: null });
+    resolveInvoke!({
+      success: true,
+      data: { Status: 'Connected', Steps: [] },
+    });
+  });
+
+  it('shows step details for prerequisites', async () => {
+    mockInvoke.mockResolvedValue({
+      success: true,
+      data: {
+        Status: 'Connected',
+        UserPrincipalName: 'user@test.com',
+        Steps: [
+          { Step: 'Prereq', Module: 'Microsoft.Graph.Authentication', Status: 'AlreadyInstalled', Version: '2.15.0' },
+          { Step: 'Prereq', Module: 'ExchangeOnlineManagement', Status: 'Installed', Version: '3.2.0' },
+          { Step: 'Graph', Status: 'Connected', UPN: 'user@test.com' },
+          { Step: 'Compliance', Status: 'Connected' },
+        ],
+      },
+    });
+    const user = userEvent.setup();
+
+    render(<ConnectionDialog onClose={onClose} />);
+
+    await user.click(screen.getByRole('button', { name: 'Connect to StableLabel' }));
+
+    await waitFor(() => {
+      expect(screen.getByText(/Microsoft.Graph.Authentication v2.15.0/)).toBeInTheDocument();
+    });
+    expect(screen.getByText(/ExchangeOnlineManagement \(installed\)/)).toBeInTheDocument();
+    expect(screen.getByText(/Microsoft Graph — user@test.com/)).toBeInTheDocument();
+    expect(screen.getByText('Security & Compliance')).toBeInTheDocument();
   });
 });

@@ -63,7 +63,7 @@ describe('DashboardPage', () => {
     mockInvoke.mockResolvedValue({ success: true, data: disconnectedStatus });
     render(<DashboardPage />);
     expect(screen.getByText('Not Connected')).toBeInTheDocument();
-    expect(screen.getByText(/Connect to Microsoft Graph/)).toBeInTheDocument();
+    expect(screen.getByText(/Connect to Microsoft Purview/)).toBeInTheDocument();
   });
 
   it('renders page header when disconnected', () => {
@@ -73,12 +73,10 @@ describe('DashboardPage', () => {
     expect(screen.getByText('Tenant compliance overview')).toBeInTheDocument();
   });
 
-  it('shows connection commands in welcome card', () => {
+  it('shows connect button in welcome card', () => {
     mockInvoke.mockResolvedValue({ success: true, data: disconnectedStatus });
     render(<DashboardPage />);
-    expect(screen.getByText('Connect-SLGraph')).toBeInTheDocument();
-    expect(screen.getByText('Connect-SLCompliance')).toBeInTheDocument();
-    expect(screen.getByText('Connect-SLProtection')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Connect to StableLabel' })).toBeInTheDocument();
   });
 
   // === Connected state ===

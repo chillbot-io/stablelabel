@@ -3,6 +3,7 @@ import { useConnectionStatus } from '../../hooks/useConnectionStatus';
 import { usePowerShell } from '../../hooks/usePowerShell';
 import type { Page } from '../../lib/types';
 import ExportButton from '../common/ExportButton';
+import ConnectionDialog from '../Connection/ConnectionDialog';
 
 interface DashboardStats {
   labels: number | null;
@@ -120,11 +121,19 @@ export default function DashboardPage({ onNavigate }: DashboardPageProps) {
     fetchStats();
   };
 
+  const [showConnect, setShowConnect] = useState(false);
+
   if (!anyConnected) {
     return (
       <div className="space-y-6">
         <PageHeader />
-        <WelcomeCard />
+        <WelcomeCard onConnect={() => setShowConnect(true)} />
+        {showConnect && (
+          <ConnectionDialog
+            onClose={() => setShowConnect(false)}
+            onConnected={() => refreshConnection()}
+          />
+        )}
       </div>
     );
   }
@@ -216,27 +225,22 @@ function PageHeader() {
   );
 }
 
-function WelcomeCard() {
+function WelcomeCard({ onConnect }: { onConnect: () => void }) {
   return (
     <div className="bg-gray-900 border border-gray-800 rounded-lg p-8 text-center">
       <h2 className="text-xl font-semibold text-gray-300 mb-2">Not Connected</h2>
-      <p className="text-gray-500 mb-4">
-        Connect to Microsoft Graph and Security & Compliance PowerShell to get started.
+      <p className="text-gray-500 mb-6">
+        Connect to Microsoft Purview to manage sensitivity labels, DLP policies, retention, and more.
       </p>
-      <div className="flex flex-col gap-2 text-sm text-gray-600 max-w-md mx-auto">
-        <div className="bg-gray-800/50 rounded p-3 text-left">
-          <span className="text-blue-400 font-mono text-xs">Connect-SLGraph</span>
-          <span className="text-gray-600 ml-2">— Labels, documents, sites</span>
-        </div>
-        <div className="bg-gray-800/50 rounded p-3 text-left">
-          <span className="text-blue-400 font-mono text-xs">Connect-SLCompliance</span>
-          <span className="text-gray-600 ml-2">— Policies, DLP, retention</span>
-        </div>
-        <div className="bg-gray-800/50 rounded p-3 text-left">
-          <span className="text-blue-400 font-mono text-xs">Connect-SLProtection</span>
-          <span className="text-gray-600 ml-2">— AIP templates (Windows)</span>
-        </div>
-      </div>
+      <button
+        onClick={onConnect}
+        className="px-6 py-3 bg-blue-600 hover:bg-blue-500 text-white font-medium rounded-lg transition-colors text-sm"
+      >
+        Connect to StableLabel
+      </button>
+      <p className="text-xs text-gray-600 mt-4">
+        Installs prerequisites automatically and prompts you to sign in with Microsoft.
+      </p>
     </div>
   );
 }

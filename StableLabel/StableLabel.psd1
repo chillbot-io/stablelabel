@@ -15,6 +15,7 @@
         # Connection
         'Connect-SLGraph'
         'Connect-SLCompliance'
+        'Connect-SLAll'
         'Connect-SLProtection'
         'Disconnect-SLGraph'
         'Disconnect-SLCompliance'
