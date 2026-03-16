@@ -11,6 +11,7 @@ const config: ForgeConfig = {
     asar: true,
     name: 'StableLabel',
     executableName: 'stablelabel',
+    icon: './assets/icon',
     extraResource: [
       // Bundle the PowerShell module inside the app
       '../StableLabel',
@@ -20,7 +21,7 @@ const config: ForgeConfig = {
   makers: [
     new MakerSquirrel({
       name: 'StableLabel',
-      setupIcon: undefined, // TODO: add icon
+      setupIcon: './assets/icon.ico',
     }),
     new MakerZIP({}, ['darwin']),
     new MakerDeb({
@@ -28,6 +29,7 @@ const config: ForgeConfig = {
         name: 'stablelabel',
         productName: 'StableLabel',
         genericName: 'Compliance Management',
+        icon: './assets/icon.png',
         categories: ['Utility'],
       },
     }),

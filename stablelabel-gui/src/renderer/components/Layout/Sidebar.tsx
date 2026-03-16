@@ -14,6 +14,7 @@ const navItems: NavItem[] = [
   { id: 'retention', label: 'Retention', icon: '⏱', group: 'Information Protection' },
   { id: 'dlp', label: 'DLP', icon: '⛨', group: 'Information Protection' },
   { id: 'documents', label: 'Documents', icon: '📄', group: 'Operations' },
+  { id: 'fileshares', label: 'File Shares', icon: '📁', group: 'Operations' },
   { id: 'protection', label: 'Protection', icon: '🔐', group: 'Operations' },
   { id: 'elevation', label: 'Elevation', icon: '⬆', group: 'Operations' },
   { id: 'snapshots', label: 'Snapshots', icon: '📸', group: 'Safety' },

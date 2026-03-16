@@ -11,6 +11,7 @@ import ElevationPage from './components/Elevation/ElevationPage';
 import SnapshotsPage from './components/Snapshots/SnapshotsPage';
 import AnalysisPage from './components/Analysis/AnalysisPage';
 import TemplatesPage from './components/Templates/TemplatesPage';
+import FileSharesPage from './components/FileShares/FileSharesPage';
 import type { Page } from './lib/types';
 
 export default function App() {
@@ -28,6 +29,8 @@ export default function App() {
         return <DlpPage />;
       case 'documents':
         return <DocumentsPage />;
+      case 'fileshares':
+        return <FileSharesPage />;
       case 'protection':
         return <ProtectionPage />;
       case 'elevation':
@@ -48,7 +51,7 @@ export default function App() {
       <Sidebar currentPage={currentPage} onNavigate={setCurrentPage} />
       <div className="flex-1 flex flex-col overflow-hidden">
         <TopBar />
-        <main className={`flex-1 overflow-auto ${currentPage === 'labels' || currentPage === 'retention' || currentPage === 'dlp' || currentPage === 'documents' || currentPage === 'protection' || currentPage === 'elevation' || currentPage === 'snapshots' || currentPage === 'analysis' || currentPage === 'templates' ? '' : 'p-6'}`}>
+        <main className={`flex-1 overflow-auto ${currentPage === 'labels' || currentPage === 'retention' || currentPage === 'dlp' || currentPage === 'documents' || currentPage === 'protection' || currentPage === 'elevation' || currentPage === 'snapshots' || currentPage === 'analysis' || currentPage === 'fileshares' || currentPage === 'templates' ? '' : 'p-6'}`}>
           {renderPage()}
         </main>
       </div>
