@@ -46,7 +46,8 @@ export default function DashboardPage({ onNavigate }: DashboardPageProps) {
     if (!anyConnected) return;
     setLoading(true);
 
-    const newStats: DashboardStats = { ...stats };
+    // Use functional updater to avoid stale closure over stats
+    const updates: Partial<DashboardStats> = {};
 
     // Fire all queries in parallel
     const promises: Promise<void>[] = [];
@@ -54,7 +55,7 @@ export default function DashboardPage({ onNavigate }: DashboardPageProps) {
     if (graphConnected) {
       promises.push(
         invoke('Get-SLLabel').then((r) => {
-          if (r.success && Array.isArray(r.data)) newStats.labels = r.data.length;
+          if (r.success && Array.isArray(r.data)) updates.labels = r.data.length;
         }).catch(() => {}),
       );
     }
@@ -62,13 +63,13 @@ export default function DashboardPage({ onNavigate }: DashboardPageProps) {
     if (complianceConnected) {
       promises.push(
         invoke('Get-SLDlpPolicy').then((r) => {
-          if (r.success && Array.isArray(r.data)) newStats.dlpPolicies = r.data.length;
+          if (r.success && Array.isArray(r.data)) updates.dlpPolicies = r.data.length;
         }).catch(() => {}),
         invoke('Get-SLRetentionPolicy').then((r) => {
-          if (r.success && Array.isArray(r.data)) newStats.retentionPolicies = r.data.length;
+          if (r.success && Array.isArray(r.data)) updates.retentionPolicies = r.data.length;
         }).catch(() => {}),
         invoke('Get-SLAutoLabelPolicy').then((r) => {
-          if (r.success && Array.isArray(r.data)) newStats.autoLabelPolicies = r.data.length;
+          if (r.success && Array.isArray(r.data)) updates.autoLabelPolicies = r.data.length;
         }).catch(() => {}),
       );
     }
@@ -76,7 +77,7 @@ export default function DashboardPage({ onNavigate }: DashboardPageProps) {
     // Snapshots are local — always available
     promises.push(
       invoke('Get-SLSnapshot').then((r) => {
-        if (r.success && Array.isArray(r.data)) newStats.snapshots = r.data.length;
+        if (r.success && Array.isArray(r.data)) updates.snapshots = r.data.length;
       }).catch(() => {}),
     );
 
@@ -84,14 +85,14 @@ export default function DashboardPage({ onNavigate }: DashboardPageProps) {
     promises.push(
       invoke('Get-SLElevationStatus').then((r) => {
         if (r.success && r.data) {
-          const d = r.data as { ActiveJobs?: unknown[] };
-          newStats.activeElevations = d.ActiveJobs?.length ?? 0;
+          const d = r.data as { State?: { ActiveJob?: unknown } };
+          updates.activeElevations = d.State?.ActiveJob ? 1 : 0;
         }
       }).catch(() => {}),
     );
 
     await Promise.all(promises);
-    setStats(newStats);
+    setStats((prev) => ({ ...prev, ...updates }));
 
     // Fetch recent audit activity
     try {
@@ -111,7 +112,7 @@ export default function DashboardPage({ onNavigate }: DashboardPageProps) {
     if (anyConnected) {
       fetchStats();
     }
-  }, [anyConnected]);
+  }, [anyConnected, fetchStats]);
 
   const handleRefresh = () => {
     refreshConnection();
@@ -417,12 +418,12 @@ function ActionButton({
     <button
       onClick={onClick}
       disabled={loading}
-      className="w-full p-2.5 bg-gray-800 hover:bg-gray-750 border border-gray-700 rounded text-left transition-colors disabled:opacity-50"
+      className="w-full p-2.5 bg-gray-800 hover:bg-gray-700 border border-gray-700 rounded text-left transition-colors disabled:opacity-50"
     >
       <div className="flex items-center justify-between">
         <span className="text-sm text-gray-200">{label}</span>
         {loading && <span className="text-xs text-blue-400">Running...</span>}
-        {result && <span className="text-xs text-green-400">{result}</span>}
+        {result && <span className={`text-xs ${result === 'Snapshot created' ? 'text-green-400' : 'text-red-400'}`}>{result}</span>}
       </div>
       <p className="text-xs text-gray-500 mt-0.5">{description}</p>
     </button>

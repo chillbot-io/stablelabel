@@ -12,7 +12,7 @@ export default function DlpRuleDetail({ ruleName, onEdit, onDeleted, onOpenPolic
 
   useEffect(() => {
     setLoading(true);
-    invoke<DlpRule>(`Get-SLDlpRule -Identity '${ruleName}'`).then(r => {
+    invoke<DlpRule>(`Get-SLDlpRule -Identity '${ruleName.replace(/'/g, "''")}'`).then(r => {
       if (r.success && r.data) setRule(r.data);
       else setError(r.error ?? 'Not found');
       setLoading(false);

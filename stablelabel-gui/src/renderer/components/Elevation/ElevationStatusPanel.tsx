@@ -35,13 +35,13 @@ export default function ElevationStatusPanel() {
       </div>
 
       {/* Active job */}
-      {status?.ActiveJob ? (
+      {status?.State?.ActiveJob ? (
         <div className="bg-yellow-500/5 border border-yellow-500/20 rounded-lg p-4 space-y-3">
           <div className="flex items-center justify-between">
             <h4 className="text-xs font-semibold text-yellow-400 uppercase tracking-wider">Active Elevated Job</h4>
             <span className="px-2 py-0.5 text-[10px] bg-yellow-500/20 text-yellow-400 rounded-full animate-pulse">Active</span>
           </div>
-          <JobCard job={status.ActiveJob} />
+          <JobCard job={status.State.ActiveJob} />
         </div>
       ) : (
         <div className="bg-gray-900 border border-gray-800 rounded-lg p-4">
@@ -51,17 +51,17 @@ export default function ElevationStatusPanel() {
 
       {/* Super user status */}
       {superUser && (
-        <div className={`rounded-lg p-4 ${superUser.Enabled ? 'bg-yellow-500/5 border border-yellow-500/20' : 'bg-gray-900 border border-gray-800'}`}>
+        <div className={`rounded-lg p-4 ${superUser.FeatureEnabled ? 'bg-yellow-500/5 border border-yellow-500/20' : 'bg-gray-900 border border-gray-800'}`}>
           <h4 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">AIP Super User</h4>
           <div className="flex items-center gap-2">
-            <span className={`text-sm font-medium ${superUser.Enabled ? 'text-yellow-400' : 'text-gray-400'}`}>
-              {superUser.Enabled ? 'Enabled' : 'Disabled'}
+            <span className={`text-sm font-medium ${superUser.FeatureEnabled ? 'text-yellow-400' : 'text-gray-400'}`}>
+              {superUser.FeatureEnabled ? 'Enabled' : 'Disabled'}
             </span>
             {superUser.SuperUsers?.length > 0 && (
               <span className="text-xs text-gray-500">({superUser.SuperUsers.length} super users)</span>
             )}
           </div>
-          {superUser.Enabled && superUser.SuperUsers?.length > 0 && (
+          {superUser.FeatureEnabled && superUser.SuperUsers?.length > 0 && (
             <div className="mt-2 space-y-1">
               {superUser.SuperUsers.map((u, i) => (
                 <div key={i} className="px-2 py-1 bg-gray-800 rounded text-xs text-gray-300 font-mono">{u}</div>
@@ -72,11 +72,11 @@ export default function ElevationStatusPanel() {
       )}
 
       {/* Completed jobs */}
-      {status?.CompletedJobs && status.CompletedJobs.length > 0 && (
+      {status?.State?.CompletedJobs && status.State.CompletedJobs.length > 0 && (
         <div className="bg-gray-900 border border-gray-800 rounded-lg p-4 space-y-3">
-          <h4 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Recent Jobs ({status.CompletedJobs.length})</h4>
+          <h4 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Recent Jobs ({status.State.CompletedJobs.length})</h4>
           <div className="space-y-2 max-h-64 overflow-auto">
-            {status.CompletedJobs.map((job, i) => <JobCard key={i} job={job} compact />)}
+            {status.State.CompletedJobs.map((job) => <JobCard key={job.JobId} job={job} compact />)}
           </div>
         </div>
       )}

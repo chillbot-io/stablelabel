@@ -2,13 +2,14 @@ import React, { useState } from 'react';
 import { usePowerShell } from '../../hooks/usePowerShell';
 
 interface ConflictResult {
-  PolicyType: string;
+  PoliciesChecked: number;
   Conflicts: Array<{
-    Policies: string[];
+    PolicyA: string;
+    PolicyB: string;
     ConflictType: string;
     Detail: string;
-    Severity: string;
   }>;
+  HasConflicts: boolean;
 }
 
 export default function PolicyConflicts() {
@@ -53,23 +54,27 @@ export default function PolicyConflicts() {
       {error && <div className="p-3 bg-red-900/20 border border-red-800 rounded text-sm text-red-300">{error}</div>}
 
       {result && (
-        <div className="space-y-2">
-          {result.Conflicts && result.Conflicts.length > 0 ? result.Conflicts.map((conflict, i) => (
-            <div key={i} className={`p-3 rounded border ${conflict.Severity === 'High' ? 'bg-red-500/5 border-red-500/20' : conflict.Severity === 'Medium' ? 'bg-yellow-500/5 border-yellow-500/20' : 'bg-gray-900 border-gray-800'}`}>
-              <div className="flex items-center justify-between mb-1">
-                <span className="text-xs font-medium text-gray-300">{conflict.ConflictType}</span>
-                <span className={`text-[10px] px-1.5 py-0.5 rounded ${conflict.Severity === 'High' ? 'bg-red-500/10 text-red-400' : conflict.Severity === 'Medium' ? 'bg-yellow-500/10 text-yellow-400' : 'bg-gray-700 text-gray-400'}`}>{conflict.Severity}</span>
-              </div>
-              <p className="text-xs text-gray-400">{conflict.Detail}</p>
-              <div className="flex items-center gap-1.5 mt-1.5">
-                {conflict.Policies.map((p, j) => (
-                  <span key={j} className="text-[10px] px-1.5 py-0.5 bg-gray-800 text-gray-300 rounded">{p}</span>
-                ))}
-              </div>
-            </div>
-          )) : (
+        <div className="space-y-3">
+          <div className="text-xs text-gray-500">{result.PoliciesChecked} policies checked</div>
+          {!result.HasConflicts ? (
             <div className="bg-green-500/5 border border-green-500/20 rounded p-4 text-center">
               <p className="text-sm text-green-400">No policy conflicts detected.</p>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {result.Conflicts.map((conflict, i) => (
+                <div key={i} className="p-3 rounded border bg-yellow-500/5 border-yellow-500/20">
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-xs font-medium text-gray-300">{conflict.ConflictType}</span>
+                  </div>
+                  <p className="text-xs text-gray-400">{conflict.Detail}</p>
+                  <div className="flex items-center gap-1.5 mt-1.5">
+                    <span className="text-[10px] px-1.5 py-0.5 bg-gray-800 text-gray-300 rounded">{conflict.PolicyA}</span>
+                    <span className="text-[10px] text-gray-600">vs</span>
+                    <span className="text-[10px] px-1.5 py-0.5 bg-gray-800 text-gray-300 rounded">{conflict.PolicyB}</span>
+                  </div>
+                </div>
+              ))}
             </div>
           )}
         </div>

@@ -217,8 +217,12 @@ export interface ProtectionAdmin {
 }
 
 export interface ElevationStatus {
-  ActiveJob: ElevatedJob | null;
-  CompletedJobs: ElevatedJob[];
+  StatePath: string;
+  Exists: boolean;
+  State: {
+    ActiveJob: ElevatedJob | null;
+    CompletedJobs: ElevatedJob[];
+  } | null;
 }
 
 export interface ElevatedJob {
@@ -236,7 +240,7 @@ export interface ElevatedJob {
 }
 
 export interface SuperUserStatus {
-  Enabled: boolean;
+  FeatureEnabled: boolean;
   SuperUsers: string[];
 }
 
@@ -278,6 +282,7 @@ export interface PolicyHealth {
   DistributionStatus: string;
   HasRules: boolean;
   LastModified: string;
+  HealthStatus: string;
 }
 
 export type Page =

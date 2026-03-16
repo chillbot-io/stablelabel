@@ -19,9 +19,9 @@ export default function PolicyHealth() {
     setLoading(false);
   };
 
-  const healthy = results?.filter(p => p.Status === 'Healthy').length ?? 0;
-  const warning = results?.filter(p => p.Status === 'Warning').length ?? 0;
-  const errCount = results?.filter(p => p.Status === 'Error').length ?? 0;
+  const healthy = results?.filter(p => p.HealthStatus === 'Healthy').length ?? 0;
+  const warning = results?.filter(p => p.HealthStatus === 'Warning').length ?? 0;
+  const errCount = results?.filter(p => p.HealthStatus === 'Error').length ?? 0;
 
   return (
     <div className="space-y-4">
@@ -81,7 +81,7 @@ export default function PolicyHealth() {
                     <span>Modified: {policy.LastModified}</span>
                   </div>
                 </div>
-                <StatusBadge status={policy.Status} />
+                <StatusBadge status={policy.HealthStatus} />
               </div>
             ))}
           </div>

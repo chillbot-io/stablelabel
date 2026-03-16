@@ -22,9 +22,10 @@ export default function DlpPolicyDetail({ policyName, onEdit, onDeleted, onOpenR
 
   useEffect(() => {
     setLoading(true);
+    const escaped = policyName.replace(/'/g, "''");
     Promise.all([
-      invoke<DlpPolicy>(`Get-SLDlpPolicy -Identity '${policyName}'`),
-      invoke<DlpRule[]>(`Get-SLDlpRule -Policy '${policyName}'`),
+      invoke<DlpPolicy>(`Get-SLDlpPolicy -Identity '${escaped}'`),
+      invoke<DlpRule[]>(`Get-SLDlpRule -Policy '${escaped}'`),
     ]).then(([pRes, rRes]) => {
       if (pRes.success && pRes.data) setPolicy(pRes.data);
       else setError(pRes.error ?? 'Not found');
@@ -51,7 +52,7 @@ export default function DlpPolicyDetail({ policyName, onEdit, onDeleted, onOpenR
         </div>
       </div>
 
-      {mi.desc && <div className={`rounded-lg p-3 border ${policy.Mode?.toLowerCase() === 'enable' ? 'bg-green-500/5 border-green-500/20' : policy.Mode?.toLowerCase().includes('notifications') ? 'bg-yellow-500/5 border-yellow-500/20' : 'bg-blue-500/5 border-blue-500/20'}`}><p className="text-xs text-gray-300">{mi.desc}</p></div>}
+      {mi.desc && <div className={`rounded-lg p-3 border ${policy.Mode?.toLowerCase() === 'enable' ? 'bg-green-500/5 border-green-500/20' : policy.Mode?.toLowerCase() === 'testwithnotifications' ? 'bg-yellow-500/5 border-yellow-500/20' : 'bg-blue-500/5 border-blue-500/20'}`}><p className="text-xs text-gray-300">{mi.desc}</p></div>}
 
       <div className="grid grid-cols-2 gap-4">
         <Card label="GUID" value={policy.Guid} mono />
@@ -65,7 +66,7 @@ export default function DlpPolicyDetail({ policyName, onEdit, onDeleted, onOpenR
         {rules.length === 0 ? <p className="text-sm text-gray-500">No rules configured. Add rules to define what this policy detects.</p> : (
           <div className="space-y-2">
             {rules.map(rule => (
-              <button key={rule.Guid ?? rule.Name} onClick={() => onOpenRule(rule.Name)} className="w-full text-left p-2.5 bg-gray-800 hover:bg-gray-750 border border-gray-700 rounded transition-colors">
+              <button key={rule.Guid ?? rule.Name} onClick={() => onOpenRule(rule.Name)} className="w-full text-left p-2.5 bg-gray-800 hover:bg-gray-700 border border-gray-700 rounded transition-colors">
                 <div className="flex items-center justify-between">
                   <span className="text-sm text-gray-200">{rule.Name}</span>
                   <div className="flex items-center gap-1.5">

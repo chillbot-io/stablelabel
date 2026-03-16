@@ -21,6 +21,8 @@ const kindColors: Record<string, string> = {
   autolabel: 'bg-teal-500',
   retention: 'bg-amber-500',
   dlp: 'bg-red-500',
+  rule: 'bg-orange-500',
+  sit: 'bg-yellow-500',
 };
 
 export default function TabBar({ tabs, activeTabId, onSelect, onClose }: TabBarProps) {

@@ -2,9 +2,11 @@ import React, { useState } from 'react';
 import { usePowerShell } from '../../hooks/usePowerShell';
 
 interface MismatchResult {
-  GraphOnly: string[];
-  PolicyOnly: string[];
-  Matched: string[];
+  InGraphOnly: Array<{ LabelId: string; LabelName: string }>;
+  InPolicyOnly: Array<{ Reference: string; PolicyName: string }>;
+  Matched: number;
+  TotalGraphLabels: number;
+  TotalPolicyReferences: number;
 }
 
 export default function LabelMismatch() {
@@ -23,7 +25,7 @@ export default function LabelMismatch() {
     setLoading(false);
   };
 
-  const hasMismatches = result && ((result.GraphOnly?.length ?? 0) > 0 || (result.PolicyOnly?.length ?? 0) > 0);
+  const hasMismatches = result && ((result.InGraphOnly?.length ?? 0) > 0 || (result.InPolicyOnly?.length ?? 0) > 0);
 
   return (
     <div className="space-y-4">
@@ -43,44 +45,40 @@ export default function LabelMismatch() {
           {!hasMismatches ? (
             <div className="bg-green-500/5 border border-green-500/20 rounded-lg p-4 text-center">
               <p className="text-sm text-green-400">All labels are properly matched between Graph and policies.</p>
-              <p className="text-xs text-gray-500 mt-1">{result.Matched?.length ?? 0} labels aligned</p>
+              <p className="text-xs text-gray-500 mt-1">{result.Matched} labels aligned</p>
             </div>
           ) : (
             <>
-              {result.GraphOnly && result.GraphOnly.length > 0 && (
+              {result.InGraphOnly && result.InGraphOnly.length > 0 && (
                 <div className="bg-yellow-500/5 border border-yellow-500/20 rounded-lg p-4">
-                  <h4 className="text-xs font-semibold text-yellow-400 uppercase tracking-wider mb-2">Graph Only ({result.GraphOnly.length})</h4>
+                  <h4 className="text-xs font-semibold text-yellow-400 uppercase tracking-wider mb-2">Graph Only ({result.InGraphOnly.length})</h4>
                   <p className="text-xs text-gray-500 mb-2">Labels in Graph API but not referenced by any policy.</p>
                   <div className="flex flex-wrap gap-1.5">
-                    {result.GraphOnly.map((l, i) => (
-                      <span key={i} className="text-xs px-2 py-1 bg-gray-800 text-gray-300 rounded">{l}</span>
+                    {result.InGraphOnly.map((l, i) => (
+                      <span key={i} className="text-xs px-2 py-1 bg-gray-800 text-gray-300 rounded" title={l.LabelId}>{l.LabelName}</span>
                     ))}
                   </div>
                 </div>
               )}
 
-              {result.PolicyOnly && result.PolicyOnly.length > 0 && (
+              {result.InPolicyOnly && result.InPolicyOnly.length > 0 && (
                 <div className="bg-red-500/5 border border-red-500/20 rounded-lg p-4">
-                  <h4 className="text-xs font-semibold text-red-400 uppercase tracking-wider mb-2">Policy Only ({result.PolicyOnly.length})</h4>
+                  <h4 className="text-xs font-semibold text-red-400 uppercase tracking-wider mb-2">Policy Only ({result.InPolicyOnly.length})</h4>
                   <p className="text-xs text-gray-500 mb-2">Labels referenced by policies but not found in Graph.</p>
-                  <div className="flex flex-wrap gap-1.5">
-                    {result.PolicyOnly.map((l, i) => (
-                      <span key={i} className="text-xs px-2 py-1 bg-gray-800 text-red-300 rounded">{l}</span>
+                  <div className="space-y-1">
+                    {result.InPolicyOnly.map((l, i) => (
+                      <div key={i} className="flex items-center justify-between px-2 py-1.5 bg-gray-800 rounded text-xs">
+                        <span className="text-red-300">{l.Reference}</span>
+                        <span className="text-gray-500">{l.PolicyName}</span>
+                      </div>
                     ))}
                   </div>
                 </div>
               )}
 
-              {result.Matched && result.Matched.length > 0 && (
-                <div className="bg-gray-900 border border-gray-800 rounded-lg p-4">
-                  <h4 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Matched ({result.Matched.length})</h4>
-                  <div className="flex flex-wrap gap-1.5">
-                    {result.Matched.map((l, i) => (
-                      <span key={i} className="text-xs px-2 py-1 bg-green-500/5 text-green-400 rounded">{l}</span>
-                    ))}
-                  </div>
-                </div>
-              )}
+              <div className="bg-gray-900 border border-gray-800 rounded-lg p-4 text-center">
+                <span className="text-xs text-gray-500">{result.Matched} matched | {result.TotalGraphLabels} in Graph | {result.TotalPolicyReferences} in policies</span>
+              </div>
             </>
           )}
         </div>

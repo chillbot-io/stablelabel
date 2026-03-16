@@ -2,12 +2,13 @@ import React, { useState } from 'react';
 import { usePowerShell } from '../../hooks/usePowerShell';
 
 interface ReadinessResult {
-  OverallStatus: string;
+  Ready: boolean;
   Checks: Array<{
     Name: string;
     Status: string;
-    Detail: string | null;
+    Message: string;
   }>;
+  Summary: string;
 }
 
 export default function DeploymentReadiness() {
@@ -42,13 +43,16 @@ export default function DeploymentReadiness() {
       {result && (
         <div className="space-y-3">
           {/* Overall status */}
-          <div className={`p-4 rounded-lg border ${result.OverallStatus === 'Pass' ? 'bg-green-500/5 border-green-500/20' : result.OverallStatus === 'Fail' ? 'bg-red-500/5 border-red-500/20' : 'bg-yellow-500/5 border-yellow-500/20'}`}>
+          <div className={`p-4 rounded-lg border ${result.Ready ? 'bg-green-500/5 border-green-500/20' : 'bg-red-500/5 border-red-500/20'}`}>
             <div className="flex items-center gap-2">
-              <span className={`text-lg ${result.OverallStatus === 'Pass' ? 'text-green-400' : result.OverallStatus === 'Fail' ? 'text-red-400' : 'text-yellow-400'}`}>
-                {result.OverallStatus === 'Pass' ? '●' : result.OverallStatus === 'Fail' ? '●' : '●'}
+              <span className={`text-lg ${result.Ready ? 'text-green-400' : 'text-red-400'}`}>
+                {result.Ready ? '\u2714' : '\u2716'}
               </span>
-              <span className="text-sm font-medium text-gray-200">Overall: {result.OverallStatus}</span>
+              <span className="text-sm font-medium text-gray-200">
+                {result.Ready ? 'Ready to deploy' : 'Not ready'}
+              </span>
             </div>
+            {result.Summary && <p className="text-xs text-gray-400 mt-1">{result.Summary}</p>}
           </div>
 
           {/* Individual checks */}
@@ -57,7 +61,7 @@ export default function DeploymentReadiness() {
               <div key={i} className="flex items-center justify-between px-3 py-2.5 bg-gray-900 border border-gray-800 rounded">
                 <div>
                   <span className="text-sm text-gray-200">{check.Name}</span>
-                  {check.Detail && <p className="text-xs text-gray-500 mt-0.5">{check.Detail}</p>}
+                  {check.Message && <p className="text-xs text-gray-500 mt-0.5">{check.Message}</p>}
                 </div>
                 <StatusBadge status={check.Status} />
               </div>

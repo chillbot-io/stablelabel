@@ -25,6 +25,8 @@ export class PowerShellBridge {
   }> = [];
   private processing = false;
   private outputBuffer = '';
+  private currentMarker: string | null = null;
+  private currentResolve: ((output: string) => void) | null = null;
 
   constructor(modulePath: string) {
     this.modulePath = modulePath;
@@ -82,6 +84,15 @@ export class PowerShellBridge {
 
     this.process.stdout?.on('data', (data: Buffer) => {
       this.outputBuffer += data.toString();
+      // Check if the current command's marker has arrived
+      if (this.currentMarker && this.outputBuffer.includes(this.currentMarker)) {
+        const output = this.outputBuffer.split(this.currentMarker)[0].trim();
+        this.outputBuffer = '';
+        const resolve = this.currentResolve;
+        this.currentMarker = null;
+        this.currentResolve = null;
+        resolve?.(output);
+      }
     });
 
     this.process.stderr?.on('data', (data: Buffer) => {
@@ -101,35 +112,50 @@ export class PowerShellBridge {
   }
 
   private sendRaw(command: string): Promise<string> {
-    return new Promise((resolve, reject) => {
+    return new Promise<string>((resolve, reject) => {
       if (!this.process?.stdin) {
         reject(new Error('PowerShell process not available'));
         return;
       }
+      this.commandQueue.push({ command, resolve: resolve as (value: PsResult) => void, reject });
+      this.processQueue();
+    }) as Promise<string>;
+  }
 
-      this.outputBuffer = '';
+  private processQueue(): void {
+    if (this.processing || this.commandQueue.length === 0) return;
+    this.processing = true;
 
-      // Use a unique marker to know when output is complete
-      const marker = `___SL_DONE_${Date.now()}___`;
-      const wrappedCommand = `${command}\nWrite-Output '${marker}'\n`;
+    const { command, resolve, reject } = this.commandQueue.shift()!;
 
-      const checkOutput = setInterval(() => {
-        if (this.outputBuffer.includes(marker)) {
-          clearInterval(checkOutput);
-          const output = this.outputBuffer.split(marker)[0].trim();
-          this.outputBuffer = '';
-          resolve(output);
-        }
-      }, 50);
+    if (!this.process?.stdin) {
+      this.processing = false;
+      reject(new Error('PowerShell process not available'));
+      this.processQueue();
+      return;
+    }
 
-      // Timeout after 5 minutes
-      setTimeout(() => {
-        clearInterval(checkOutput);
-        reject(new Error(`Command timed out: ${command.substring(0, 100)}`));
-      }, 300000);
+    this.outputBuffer = '';
+    const marker = `___SL_DONE_${Date.now()}_${Math.random().toString(36).slice(2)}___`;
+    const wrappedCommand = `${command}\nWrite-Output '${marker}'\n`;
 
-      this.process.stdin.write(wrappedCommand);
-    });
+    const timeout = setTimeout(() => {
+      this.currentMarker = null;
+      this.currentResolve = null;
+      this.processing = false;
+      reject(new Error(`Command timed out: ${command.substring(0, 100)}`));
+      this.processQueue();
+    }, 300000);
+
+    this.currentMarker = marker;
+    this.currentResolve = (output: string) => {
+      clearTimeout(timeout);
+      this.processing = false;
+      (resolve as unknown as (value: string) => void)(output);
+      this.processQueue();
+    };
+
+    this.process.stdin.write(wrappedCommand);
   }
 
   async invoke(command: string): Promise<PsResult> {

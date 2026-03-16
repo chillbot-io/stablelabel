@@ -1,6 +1,7 @@
 import React, { useState, useCallback } from 'react';
 import { usePowerShell } from '../../hooks/usePowerShell';
 import TabBar, { type Tab } from '../common/TabBar';
+import type { DlpPolicy, DlpRule } from '../../lib/types';
 import DlpPolicyList from './DlpPolicyList';
 import DlpPolicyDetail from './DlpPolicyDetail';
 import DlpPolicyForm from './DlpPolicyForm';
@@ -223,15 +224,15 @@ function TabContent({
 
 function DlpPolicyFormWithData({ policyName, onSaved, onCancel, onDeleted }: { policyName: string; onSaved: (name: string) => void; onCancel: () => void; onDeleted: () => void }) {
   const { invoke } = usePowerShell();
-  const [policy, setPolicy] = React.useState(null);
+  const [policy, setPolicy] = React.useState<DlpPolicy | null>(null);
   const [loading, setLoading] = React.useState(true);
 
   React.useEffect(() => {
-    invoke(`Get-SLDlpPolicy -Identity '${policyName}'`).then((r) => {
-      if (r.success && r.data) setPolicy(r.data as never);
+    invoke<DlpPolicy>(`Get-SLDlpPolicy -Identity '${esc(policyName)}'`).then((r) => {
+      if (r.success && r.data) setPolicy(r.data);
       setLoading(false);
     });
-  }, [policyName]);
+  }, [policyName, invoke]);
 
   if (loading) return <div className="p-6"><div className="h-32 bg-gray-800 rounded animate-pulse" /></div>;
   return <DlpPolicyForm existing={policy} onSaved={onSaved} onCancel={onCancel} onDeleted={onDeleted} />;
@@ -239,15 +240,15 @@ function DlpPolicyFormWithData({ policyName, onSaved, onCancel, onDeleted }: { p
 
 function DlpRuleFormWithData({ ruleName, onSaved, onCancel, onDeleted }: { ruleName: string; onSaved: (name: string) => void; onCancel: () => void; onDeleted: () => void }) {
   const { invoke } = usePowerShell();
-  const [rule, setRule] = React.useState(null);
+  const [rule, setRule] = React.useState<DlpRule | null>(null);
   const [loading, setLoading] = React.useState(true);
 
   React.useEffect(() => {
-    invoke(`Get-SLDlpRule -Identity '${ruleName}'`).then((r) => {
-      if (r.success && r.data) setRule(r.data as never);
+    invoke<DlpRule>(`Get-SLDlpRule -Identity '${esc(ruleName)}'`).then((r) => {
+      if (r.success && r.data) setRule(r.data);
       setLoading(false);
     });
-  }, [ruleName]);
+  }, [ruleName, invoke]);
 
   if (loading) return <div className="p-6"><div className="h-32 bg-gray-800 rounded animate-pulse" /></div>;
   return <DlpRuleForm existing={rule} onSaved={onSaved} onCancel={onCancel} onDeleted={onDeleted} />;
@@ -316,4 +317,8 @@ function QuickLink({ label, description, color, onClick }: { label: string; desc
       <div className="text-xs text-gray-500 mt-0.5">{description}</div>
     </button>
   );
+}
+
+function esc(s: string): string {
+  return s.replace(/'/g, "''");
 }

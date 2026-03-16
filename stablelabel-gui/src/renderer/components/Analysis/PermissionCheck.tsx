@@ -2,8 +2,10 @@ import React, { useState } from 'react';
 import { usePowerShell } from '../../hooks/usePowerShell';
 
 interface PermissionResult {
-  Scope: string;
-  Checks: Array<{ Name: string; Status: string; Detail: string | null }>;
+  UserPrincipalName: string;
+  ScopesChecked: string[];
+  GroupMemberships: string[];
+  Results: Array<{ Scope: string; HasAccess: boolean; Details: string }>;
 }
 
 export default function PermissionCheck() {
@@ -48,26 +50,29 @@ export default function PermissionCheck() {
 
       {error && <div className="p-3 bg-red-900/20 border border-red-800 rounded text-sm text-red-300">{error}</div>}
 
-      {result?.Checks && (
-        <div className="space-y-1.5">
-          {result.Checks.map((check, i) => (
-            <div key={i} className="flex items-center justify-between px-3 py-2 bg-gray-900 border border-gray-800 rounded">
-              <div>
-                <span className="text-sm text-gray-200">{check.Name}</span>
-                {check.Detail && <p className="text-xs text-gray-500 mt-0.5">{check.Detail}</p>}
+      {result && (
+        <div className="space-y-3">
+          {result.UserPrincipalName && (
+            <div className="text-xs text-gray-500">User: <span className="text-gray-300">{result.UserPrincipalName}</span></div>
+          )}
+          <div className="space-y-1.5">
+            {result.Results.map((check, i) => (
+              <div key={i} className="flex items-center justify-between px-3 py-2 bg-gray-900 border border-gray-800 rounded">
+                <div>
+                  <span className="text-sm text-gray-200">{check.Scope}</span>
+                  {check.Details && <p className="text-xs text-gray-500 mt-0.5">{check.Details}</p>}
+                </div>
+                <StatusBadge hasAccess={check.HasAccess} />
               </div>
-              <StatusBadge status={check.Status} />
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
       )}
     </div>
   );
 }
 
-function StatusBadge({ status }: { status: string }) {
-  const cls = status === 'Pass' ? 'bg-green-500/10 text-green-400'
-    : status === 'Fail' ? 'bg-red-500/10 text-red-400'
-    : 'bg-yellow-500/10 text-yellow-400';
-  return <span className={`text-[10px] px-1.5 py-0.5 rounded ${cls}`}>{status}</span>;
+function StatusBadge({ hasAccess }: { hasAccess: boolean }) {
+  const cls = hasAccess ? 'bg-green-500/10 text-green-400' : 'bg-red-500/10 text-red-400';
+  return <span className={`text-[10px] px-1.5 py-0.5 rounded ${cls}`}>{hasAccess ? 'Pass' : 'Fail'}</span>;
 }

@@ -7,7 +7,7 @@ interface LabelReportResult {
   InactiveLabels: number;
   ParentLabels: number;
   SubLabels: number;
-  PolicyAssignments: Array<{ Policy: string; Labels: string[] }>;
+  PoliciesUsingLabels: Array<{ PolicyName: string; LabelCount: number }>;
   UnassignedLabels: string[];
 }
 
@@ -52,17 +52,13 @@ export default function LabelReport() {
           </div>
 
           {/* Policy assignments */}
-          {report.PolicyAssignments && report.PolicyAssignments.length > 0 && (
+          {report.PoliciesUsingLabels && report.PoliciesUsingLabels.length > 0 && (
             <div className="bg-gray-900 border border-gray-800 rounded-lg p-4 space-y-2">
-              <h4 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Policy Assignments</h4>
-              {report.PolicyAssignments.map((pa, i) => (
-                <div key={i} className="p-2.5 bg-gray-800 rounded">
-                  <div className="text-sm text-gray-200 mb-1">{pa.Policy}</div>
-                  <div className="flex flex-wrap gap-1">
-                    {pa.Labels.map((l, j) => (
-                      <span key={j} className="text-[10px] px-1.5 py-0.5 bg-blue-500/10 text-blue-400 rounded">{l}</span>
-                    ))}
-                  </div>
+              <h4 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Policies Using Labels</h4>
+              {report.PoliciesUsingLabels.map((pa, i) => (
+                <div key={i} className="flex items-center justify-between px-2.5 py-2 bg-gray-800 rounded">
+                  <span className="text-sm text-gray-200">{pa.PolicyName}</span>
+                  <span className="text-xs text-gray-500">{pa.LabelCount} label{pa.LabelCount !== 1 ? 's' : ''}</span>
                 </div>
               ))}
             </div>

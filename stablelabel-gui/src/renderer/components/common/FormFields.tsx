@@ -49,6 +49,7 @@ export function TextArea({
   placeholder,
   rows = 3,
   disabled,
+  helpText,
 }: {
   label: string;
   value: string;
@@ -56,6 +57,7 @@ export function TextArea({
   placeholder?: string;
   rows?: number;
   disabled?: boolean;
+  helpText?: string;
 }) {
   return (
     <div>
@@ -68,6 +70,7 @@ export function TextArea({
         disabled={disabled}
         className="w-full px-3 py-2 text-sm bg-gray-800 border border-gray-700 rounded text-gray-200 placeholder-gray-500 focus:outline-none focus:border-blue-500 disabled:opacity-50 resize-y"
       />
+      {helpText && <p className="text-xs text-gray-600 mt-1">{helpText}</p>}
     </div>
   );
 }

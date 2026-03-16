@@ -19,9 +19,11 @@ export default function LabelDetail({ labelId, onOpenPolicy }: LabelDetailProps)
       setLoading(true);
       setError(null);
 
+      let labelData: SensitivityLabel | null = null;
       try {
         const result = await invoke<SensitivityLabel>(`Get-SLLabel -Id '${labelId}'`);
         if (result.success && result.data) {
+          labelData = result.data;
           setLabel(result.data);
         } else {
           setError(result.error ?? 'Label not found');
@@ -35,7 +37,7 @@ export default function LabelDetail({ labelId, onOpenPolicy }: LabelDetailProps)
         const policyResult = await invoke<Array<{ Name: string; Labels: string[] }>>('Get-SLLabelPolicy');
         if (policyResult.success && Array.isArray(policyResult.data)) {
           const matching = policyResult.data
-            .filter((p) => p.Labels?.some((l: string) => l === labelId || l === label?.name))
+            .filter((p) => p.Labels?.some((l: string) => l === labelId || l === labelData?.name))
             .map((p) => p.Name);
           setPolicies(matching);
         }
@@ -68,10 +70,6 @@ export default function LabelDetail({ labelId, onOpenPolicy }: LabelDetailProps)
       </div>
     );
   }
-
-  const parentName = label.parent
-    ? label.displayName ?? label.name
-    : null;
 
   return (
     <div className="p-6 space-y-6 max-w-3xl">

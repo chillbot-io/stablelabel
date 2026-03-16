@@ -1,6 +1,7 @@
 import React, { useState, useCallback } from 'react';
 import { usePowerShell } from '../../hooks/usePowerShell';
 import TabBar, { type Tab } from '../common/TabBar';
+import type { LabelPolicy, AutoLabelPolicy } from '../../lib/types';
 import LabelList from './LabelList';
 import LabelDetail from './LabelDetail';
 import PolicyList from './PolicyList';
@@ -227,15 +228,15 @@ function TabContent({
 /** Fetches existing policy data before rendering the edit form */
 function PolicyFormWithData({ policyName, onSaved, onCancel, onDeleted }: { policyName: string; onSaved: (name: string) => void; onCancel: () => void; onDeleted: () => void }) {
   const { invoke } = usePowerShell();
-  const [policy, setPolicy] = React.useState(null);
+  const [policy, setPolicy] = React.useState<LabelPolicy | null>(null);
   const [loading, setLoading] = React.useState(true);
 
   React.useEffect(() => {
-    invoke(`Get-SLLabelPolicy -Identity '${policyName}'`).then((r) => {
-      if (r.success && r.data) setPolicy(r.data as never);
+    invoke<LabelPolicy>(`Get-SLLabelPolicy -Identity '${policyName.replace(/'/g, "''")}'`).then((r) => {
+      if (r.success && r.data) setPolicy(r.data);
       setLoading(false);
     });
-  }, [policyName]);
+  }, [policyName, invoke]);
 
   if (loading) return <div className="p-6"><div className="h-32 bg-gray-800 rounded animate-pulse" /></div>;
   return <PolicyForm existing={policy} onSaved={onSaved} onCancel={onCancel} onDeleted={onDeleted} />;
@@ -244,15 +245,15 @@ function PolicyFormWithData({ policyName, onSaved, onCancel, onDeleted }: { poli
 /** Fetches existing auto-label policy data before rendering the edit form */
 function AutoLabelFormWithData({ policyName, onSaved, onCancel, onDeleted }: { policyName: string; onSaved: (name: string) => void; onCancel: () => void; onDeleted: () => void }) {
   const { invoke } = usePowerShell();
-  const [policy, setPolicy] = React.useState(null);
+  const [policy, setPolicy] = React.useState<AutoLabelPolicy | null>(null);
   const [loading, setLoading] = React.useState(true);
 
   React.useEffect(() => {
-    invoke(`Get-SLAutoLabelPolicy -Identity '${policyName}'`).then((r) => {
-      if (r.success && r.data) setPolicy(r.data as never);
+    invoke<AutoLabelPolicy>(`Get-SLAutoLabelPolicy -Identity '${policyName.replace(/'/g, "''")}'`).then((r) => {
+      if (r.success && r.data) setPolicy(r.data);
       setLoading(false);
     });
-  }, [policyName]);
+  }, [policyName, invoke]);
 
   if (loading) return <div className="p-6"><div className="h-32 bg-gray-800 rounded animate-pulse" /></div>;
   return <AutoLabelForm existing={policy} onSaved={onSaved} onCancel={onCancel} onDeleted={onDeleted} />;

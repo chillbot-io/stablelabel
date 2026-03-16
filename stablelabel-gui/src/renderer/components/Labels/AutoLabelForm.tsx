@@ -69,7 +69,6 @@ export default function AutoLabelForm({ existing, onSaved, onCancel, onDeleted }
       } else {
         const parts = [`Set-SLAutoLabelPolicy -Identity '${esc(existing!.Name)}'`];
         if (mode !== existing!.Mode) parts.push(`-Mode '${mode}'`);
-        if (comment !== (existing!.Comment ?? '')) parts.push(`-Comment '${esc(comment)}'`);
         parts.push('-Confirm:$false');
         command = parts.join(' ');
       }

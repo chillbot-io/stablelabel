@@ -114,18 +114,19 @@ function FormWithData({ type, name, invoke, onSaved, onCancel, onDeleted }: {
   onCancel: () => void;
   onDeleted: () => void;
 }) {
-  const [data, setData] = React.useState(null);
+  const [data, setData] = React.useState<unknown>(null);
   const [loading, setLoading] = React.useState(true);
 
   React.useEffect(() => {
+    const escaped = name.replace(/'/g, "''");
     const cmd = type === 'label'
-      ? `Get-SLRetentionLabel -Identity '${name}'`
-      : `Get-SLRetentionPolicy -Identity '${name}'`;
+      ? `Get-SLRetentionLabel -Identity '${escaped}'`
+      : `Get-SLRetentionPolicy -Identity '${escaped}'`;
     invoke(cmd).then(r => {
-      if (r.success && r.data) setData(r.data as never);
+      if (r.success && r.data) setData(r.data);
       setLoading(false);
     });
-  }, [name, type]);
+  }, [name, type, invoke]);
 
   if (loading) return <div className="p-6"><div className="h-32 bg-gray-800 rounded animate-pulse" /></div>;
 
