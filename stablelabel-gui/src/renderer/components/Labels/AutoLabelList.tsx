@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { usePowerShell } from '../../hooks/usePowerShell';
+import { usePagination } from '../../hooks/usePagination';
 import type { AutoLabelPolicy } from '../../lib/types';
 
 interface AutoLabelListProps {
@@ -37,6 +38,8 @@ export default function AutoLabelList({ onOpenAutoLabel, onNewAutoLabel }: AutoL
   const filtered = search.trim()
     ? policies.filter((p) => p.Name.toLowerCase().includes(search.toLowerCase()))
     : policies;
+
+  const { visible: paginated, hasMore, remaining, loadMore } = usePagination(filtered);
 
   const modeLabel = (mode: string | null) => {
     if (!mode) return { text: 'Unknown', color: 'bg-gray-700 text-gray-400' };
@@ -90,10 +93,11 @@ export default function AutoLabelList({ onOpenAutoLabel, onNewAutoLabel }: AutoL
       </div>
 
       <div className="flex-1 overflow-y-auto py-1">
-        {filtered.length === 0 ? (
+        {paginated.length === 0 ? (
           <p className="p-4 text-xs text-gray-600">No auto-label policies found.</p>
         ) : (
-          filtered.map((policy) => {
+          <>
+          {paginated.map((policy) => {
             const mode = modeLabel(policy.Mode);
             return (
               <button
@@ -123,7 +127,13 @@ export default function AutoLabelList({ onOpenAutoLabel, onNewAutoLabel }: AutoL
                 </div>
               </button>
             );
-          })
+          })}
+          {hasMore && (
+            <button onClick={loadMore} className="w-full py-2 text-xs text-blue-400 hover:text-blue-300 hover:bg-gray-800/50 transition-colors">
+              Show {remaining} more...
+            </button>
+          )}
+          </>
         )}
       </div>
 

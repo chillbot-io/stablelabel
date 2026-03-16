@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { usePowerShell } from '../../hooks/usePowerShell';
+import { usePagination } from '../../hooks/usePagination';
 import type { LabelTreeNode } from '../../lib/types';
 
 interface LabelListProps {
@@ -57,6 +58,8 @@ export default function LabelList({ onOpenLabel }: LabelListProps) {
       })
     : tree;
 
+  const { visible: paginatedTree, hasMore, remaining, loadMore } = usePagination(filteredTree);
+
   if (loading) {
     return (
       <div className="p-4">
@@ -100,10 +103,11 @@ export default function LabelList({ onOpenLabel }: LabelListProps) {
 
       {/* Tree */}
       <div className="flex-1 overflow-y-auto py-1">
-        {filteredTree.length === 0 ? (
+        {paginatedTree.length === 0 ? (
           <p className="p-4 text-xs text-gray-600">No labels found.</p>
         ) : (
-          filteredTree.map((node) => (
+          <>
+          {paginatedTree.map((node) => (
             <LabelTreeItem
               key={node.Id}
               node={node}
@@ -112,7 +116,13 @@ export default function LabelList({ onOpenLabel }: LabelListProps) {
               onOpen={onOpenLabel}
               searchQuery={search}
             />
-          ))
+          ))}
+          {hasMore && (
+            <button onClick={loadMore} className="w-full py-2 text-xs text-blue-400 hover:text-blue-300 hover:bg-gray-800/50 transition-colors">
+              Show {remaining} more...
+            </button>
+          )}
+          </>
         )}
       </div>
 

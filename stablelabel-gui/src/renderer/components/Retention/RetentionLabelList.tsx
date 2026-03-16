@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { usePowerShell } from '../../hooks/usePowerShell';
+import { usePagination } from '../../hooks/usePagination';
 import type { RetentionLabel } from '../../lib/types';
 
 interface RetentionLabelListProps {
@@ -41,6 +42,7 @@ export default function RetentionLabelList({ onOpenLabel, onNewLabel }: Retentio
   const filtered = search.trim()
     ? labels.filter((l) => l.Name.toLowerCase().includes(search.toLowerCase()))
     : labels;
+  const { visible: paginated, hasMore, remaining, loadMore } = usePagination(filtered);
 
   if (loading) return <div className="p-4 space-y-2">{[1,2,3].map(i => <div key={i} className="h-10 bg-gray-800 rounded animate-pulse" />)}</div>;
   if (error) return <div className="p-4"><div className="text-sm text-red-400 mb-2">{error}</div><button onClick={fetch} className="text-xs text-blue-400">Retry</button></div>;
@@ -52,7 +54,7 @@ export default function RetentionLabelList({ onOpenLabel, onNewLabel }: Retentio
       </div>
       <div className="px-3 py-1.5 text-xs text-gray-500 border-b border-gray-800/50">{labels.length} retention {labels.length === 1 ? 'label' : 'labels'}</div>
       <div className="flex-1 overflow-y-auto py-1">
-        {filtered.length === 0 ? <p className="p-4 text-xs text-gray-600">No retention labels found.</p> : filtered.map(label => {
+        {paginated.length === 0 ? <p className="p-4 text-xs text-gray-600">No retention labels found.</p> : <>{paginated.map(label => {
           const badge = actionBadge(label.RetentionAction);
           return (
             <button key={label.Guid ?? label.Name} onClick={() => onOpenLabel(label.Name)} className="w-full text-left px-3 py-2 hover:bg-gray-800 transition-colors group">
@@ -66,7 +68,9 @@ export default function RetentionLabelList({ onOpenLabel, onNewLabel }: Retentio
               </div>
             </button>
           );
-        })}
+        })}{hasMore && (
+            <button onClick={loadMore} className="w-full py-2 text-xs text-blue-400 hover:text-blue-300 hover:bg-gray-800/50 transition-colors">Show {remaining} more...</button>
+          )}</>}
       </div>
       <div className="p-2 border-t border-gray-800 space-y-1.5">
         <button onClick={onNewLabel} className="w-full py-1.5 text-xs text-amber-300 hover:text-amber-200 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/20 rounded transition-colors">+ New Retention Label</button>

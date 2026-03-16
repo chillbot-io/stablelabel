@@ -12,6 +12,7 @@ import SnapshotsPage from './components/Snapshots/SnapshotsPage';
 import AnalysisPage from './components/Analysis/AnalysisPage';
 import TemplatesPage from './components/Templates/TemplatesPage';
 import FileSharesPage from './components/FileShares/FileSharesPage';
+import SettingsPage from './components/Settings/SettingsPage';
 import type { Page } from './lib/types';
 
 export default function App() {
@@ -41,6 +42,8 @@ export default function App() {
         return <AnalysisPage />;
       case 'templates':
         return <TemplatesPage />;
+      case 'settings':
+        return <SettingsPage />;
       default:
         return <DashboardPage />;
     }

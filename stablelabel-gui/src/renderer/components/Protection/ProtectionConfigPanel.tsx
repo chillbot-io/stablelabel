@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { usePowerShell } from '../../hooks/usePowerShell';
+import ConfirmDialog from '../common/ConfirmDialog';
 import type { ProtectionConfig, ProtectionAdmin } from '../../lib/types';
 
 export default function ProtectionConfigPanel() {
@@ -9,6 +10,11 @@ export default function ProtectionConfigPanel() {
   const [keys, setKeys] = useState<unknown[] | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [removingSuperUser, setRemovingSuperUser] = useState<string | null>(null);
+  const [addAdminEmail, setAddAdminEmail] = useState('');
+  const [addAdminRole, setAddAdminRole] = useState('GlobalAdministrator');
+  const [actionLoading, setActionLoading] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   useEffect(() => {
     const load = async () => {
@@ -28,6 +34,42 @@ export default function ProtectionConfigPanel() {
     };
     load();
   }, []);
+
+  const reload = async () => {
+    setLoading(true); setError(null);
+    try {
+      const [configR, adminsR, keysR] = await Promise.all([
+        invoke<ProtectionConfig>('Get-SLProtectionConfig'),
+        invoke<ProtectionAdmin[]>('Get-SLProtectionAdmin'),
+        invoke<unknown[]>('Get-SLProtectionKey'),
+      ]);
+      if (configR.success && configR.data) setConfig(configR.data);
+      if (adminsR.success && Array.isArray(adminsR.data)) setAdmins(adminsR.data);
+      if (keysR.success && keysR.data) setKeys(Array.isArray(keysR.data) ? keysR.data : [keysR.data]);
+    } catch { /* ignore */ }
+    setLoading(false);
+  };
+
+  const handleRemoveSuperUser = async (email: string) => {
+    setActionLoading(true); setActionError(null);
+    try {
+      const r = await invoke(`Disable-SLSuperUser -UserPrincipalName '${email.replace(/'/g, "''")}' -Confirm:$false`);
+      if (r.success) { setRemovingSuperUser(null); await reload(); }
+      else setActionError(r.error ?? 'Failed to remove super user');
+    } catch (e) { setActionError(e instanceof Error ? e.message : 'Failed'); }
+    setActionLoading(false);
+  };
+
+  const handleAddAdmin = async () => {
+    if (!addAdminEmail.trim()) return;
+    setActionLoading(true); setActionError(null);
+    try {
+      const r = await invoke(`Grant-SLSiteAdmin -UserPrincipalName '${addAdminEmail.replace(/'/g, "''")}' -Role '${addAdminRole}' -Confirm:$false`);
+      if (r.success) { setAddAdminEmail(''); await reload(); }
+      else setActionError(r.error ?? 'Failed to add admin');
+    } catch (e) { setActionError(e instanceof Error ? e.message : 'Failed'); }
+    setActionLoading(false);
+  };
 
   if (loading) return <div className="space-y-3">{[1,2,3].map(i => <div key={i} className="h-20 bg-gray-800 rounded animate-pulse" />)}</div>;
   if (error) return <div className="p-3 bg-red-900/20 border border-red-800 rounded text-sm text-red-300">{error}</div>;
@@ -68,17 +110,37 @@ export default function ProtectionConfigPanel() {
           <h4 className="text-xs font-semibold text-yellow-400 uppercase tracking-wider mb-3">Super Users ({config.SuperUsers.length})</h4>
           <div className="space-y-1">
             {config.SuperUsers.map((u, i) => (
-              <div key={i} className="px-2.5 py-1.5 bg-gray-800 rounded text-xs text-gray-300 font-mono">{u}</div>
+              <div key={i} className="flex items-center justify-between px-2.5 py-1.5 bg-gray-800 rounded">
+                <span className="text-xs text-gray-300 font-mono">{u}</span>
+                <button
+                  onClick={() => setRemovingSuperUser(u)}
+                  className="text-[10px] px-1.5 py-0.5 text-red-400 hover:text-red-300 bg-red-500/10 hover:bg-red-500/20 rounded transition-colors"
+                >
+                  Remove
+                </button>
+              </div>
             ))}
           </div>
         </div>
       )}
 
+      {removingSuperUser && (
+        <ConfirmDialog
+          title="Remove Super User"
+          message={`Remove super user access for "${removingSuperUser}"? They will lose the ability to decrypt all content.`}
+          confirmLabel="Remove Super User"
+          variant="danger"
+          loading={actionLoading}
+          onConfirm={() => handleRemoveSuperUser(removingSuperUser)}
+          onCancel={() => setRemovingSuperUser(null)}
+        />
+      )}
+
       {/* Admins */}
-      {admins.length > 0 && (
-        <div className="bg-gray-900 border border-gray-800 rounded-lg p-4">
-          <h4 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Role-Based Administrators ({admins.length})</h4>
-          <div className="space-y-1">
+      <div className="bg-gray-900 border border-gray-800 rounded-lg p-4">
+        <h4 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Role-Based Administrators ({admins.length})</h4>
+        {admins.length > 0 && (
+          <div className="space-y-1 mb-3">
             {admins.map((a, i) => (
               <div key={i} className="flex items-center justify-between px-2.5 py-1.5 bg-gray-800 rounded">
                 <span className="text-xs text-gray-300">{a.EmailAddress}</span>
@@ -86,14 +148,60 @@ export default function ProtectionConfigPanel() {
               </div>
             ))}
           </div>
+        )}
+
+        {/* Add admin form */}
+        <div className="flex items-end gap-2 pt-2 border-t border-gray-800">
+          <div className="flex-1">
+            <label className="block text-[10px] text-gray-500 mb-1">Email</label>
+            <input
+              type="email"
+              value={addAdminEmail}
+              onChange={(e) => setAddAdminEmail(e.target.value)}
+              placeholder="admin@contoso.com"
+              className="w-full px-2 py-1.5 text-xs bg-gray-800 border border-gray-700 rounded text-gray-200 placeholder-gray-600 focus:outline-none focus:border-blue-500"
+            />
+          </div>
+          <div>
+            <label className="block text-[10px] text-gray-500 mb-1">Role</label>
+            <select
+              value={addAdminRole}
+              onChange={(e) => setAddAdminRole(e.target.value)}
+              className="px-2 py-1.5 text-xs bg-gray-800 border border-gray-700 rounded text-gray-200 focus:outline-none focus:border-blue-500"
+            >
+              <option value="GlobalAdministrator">Global Admin</option>
+              <option value="ConnectorAdministrator">Connector Admin</option>
+            </select>
+          </div>
+          <button
+            onClick={handleAddAdmin}
+            disabled={actionLoading || !addAdminEmail.trim()}
+            className="px-3 py-1.5 text-xs font-medium text-purple-300 bg-purple-500/10 hover:bg-purple-500/20 border border-purple-500/20 rounded transition-colors disabled:opacity-50"
+          >
+            Add
+          </button>
         </div>
-      )}
+      </div>
+
+      {actionError && <div className="p-3 bg-red-900/20 border border-red-800 rounded text-sm text-red-300">{actionError}</div>}
 
       {/* Keys */}
       {keys && keys.length > 0 && (
         <div className="bg-gray-900 border border-gray-800 rounded-lg p-4">
-          <h4 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Tenant Keys</h4>
-          <RawJson data={keys} />
+          <h4 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Tenant Keys ({keys.length})</h4>
+          <div className="space-y-2">
+            {keys.map((key, i) => {
+              const k = key as Record<string, unknown>;
+              return (
+                <div key={i} className="p-2.5 bg-gray-800 rounded space-y-1">
+                  {k.KeyId && <div className="flex items-center justify-between"><span className="text-[10px] text-gray-500">Key ID</span><span className="text-xs text-gray-300 font-mono">{String(k.KeyId)}</span></div>}
+                  {k.KeyType && <div className="flex items-center justify-between"><span className="text-[10px] text-gray-500">Type</span><span className="text-xs text-gray-300">{String(k.KeyType)}</span></div>}
+                  {k.Status && <div className="flex items-center justify-between"><span className="text-[10px] text-gray-500">Status</span><span className={`text-xs ${k.Status === 'Active' ? 'text-green-400' : 'text-gray-400'}`}>{String(k.Status)}</span></div>}
+                  {k.CreatedDateTime && <div className="flex items-center justify-between"><span className="text-[10px] text-gray-500">Created</span><span className="text-xs text-gray-400">{String(k.CreatedDateTime)}</span></div>}
+                </div>
+              );
+            })}
+          </div>
         </div>
       )}
 

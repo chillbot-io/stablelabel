@@ -225,7 +225,7 @@ describe('ProtectionConfigPanel', () => {
     expect(screen.getByText('ConnectorAdministrator')).toBeInTheDocument();
   });
 
-  it('hides admins section when empty', async () => {
+  it('shows admins section with add form even when empty', async () => {
     mockInvoke
       .mockResolvedValueOnce({ success: true, data: mockConfig })
       .mockResolvedValueOnce({ success: true, data: [] })
@@ -234,7 +234,8 @@ describe('ProtectionConfigPanel', () => {
     await waitFor(() => {
       expect(screen.getByText('Service Configuration')).toBeInTheDocument();
     });
-    expect(screen.queryByText(/Role-Based Administrators/)).not.toBeInTheDocument();
+    expect(screen.getByText('Role-Based Administrators (0)')).toBeInTheDocument();
+    expect(screen.getByPlaceholderText('admin@contoso.com')).toBeInTheDocument();
   });
 
   it('renders keys section when keys are returned', async () => {
@@ -244,8 +245,10 @@ describe('ProtectionConfigPanel', () => {
       .mockResolvedValueOnce({ success: true, data: mockKeys });
     render(<ProtectionConfigPanel />);
     await waitFor(() => {
-      expect(screen.getByText('Tenant Keys')).toBeInTheDocument();
+      expect(screen.getByText('Tenant Keys (2)')).toBeInTheDocument();
     });
+    expect(screen.getByText('key-001')).toBeInTheDocument();
+    expect(screen.getByText('key-002')).toBeInTheDocument();
   });
 
   it('wraps non-array keys data into array', async () => {
@@ -256,8 +259,9 @@ describe('ProtectionConfigPanel', () => {
       .mockResolvedValueOnce({ success: true, data: singleKey });
     render(<ProtectionConfigPanel />);
     await waitFor(() => {
-      expect(screen.getByText('Tenant Keys')).toBeInTheDocument();
+      expect(screen.getByText('Tenant Keys (1)')).toBeInTheDocument();
     });
+    expect(screen.getByText('key-single')).toBeInTheDocument();
   });
 
   it('hides keys section when keys are null', async () => {
@@ -294,22 +298,17 @@ describe('ProtectionConfigPanel', () => {
     expect(screen.queryByText(/Hide.*raw JSON|Hide.*Full config/)).not.toBeInTheDocument();
   });
 
-  it('toggles raw JSON display for keys section', async () => {
-    const user = userEvent.setup();
+  it('renders formatted keys with status', async () => {
     mockInvoke
       .mockResolvedValueOnce({ success: true, data: mockConfig })
       .mockResolvedValueOnce({ success: true, data: [] })
       .mockResolvedValueOnce({ success: true, data: mockKeys });
     render(<ProtectionConfigPanel />);
     await waitFor(() => {
-      expect(screen.getByText('Tenant Keys')).toBeInTheDocument();
+      expect(screen.getByText('Tenant Keys (2)')).toBeInTheDocument();
     });
-
-    // There should be multiple "Show" buttons now (keys + full config)
-    const showButtons = screen.getAllByText(/Show/);
-    expect(showButtons.length).toBeGreaterThanOrEqual(2);
-    await user.click(showButtons[0]);
-    expect(screen.getByText(/Hide/)).toBeInTheDocument();
+    expect(screen.getByText('Active')).toBeInTheDocument();
+    expect(screen.getByText('Archived')).toBeInTheDocument();
   });
 
   it('calls correct PowerShell commands on mount', async () => {
@@ -325,7 +324,7 @@ describe('ProtectionConfigPanel', () => {
     });
   });
 
-  it('handles admins fetch failure gracefully (only config error shown)', async () => {
+  it('handles admins fetch failure gracefully (shows empty admin section)', async () => {
     mockInvoke
       .mockResolvedValueOnce({ success: true, data: mockConfig })
       .mockResolvedValueOnce({ success: false, data: null, error: 'No admin access' })
@@ -334,8 +333,8 @@ describe('ProtectionConfigPanel', () => {
     await waitFor(() => {
       expect(screen.getByText('Service Configuration')).toBeInTheDocument();
     });
-    // Admins section should not appear since data wasn't set
-    expect(screen.queryByText(/Role-Based Administrators/)).not.toBeInTheDocument();
+    // Admins section still renders with 0 count and add form
+    expect(screen.getByText('Role-Based Administrators (0)')).toBeInTheDocument();
   });
 
   it('renders StatusCard with green color for enabled state', async () => {

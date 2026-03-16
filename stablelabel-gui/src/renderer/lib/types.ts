@@ -387,4 +387,5 @@ export type Page =
   | 'elevation'
   | 'snapshots'
   | 'analysis'
-  | 'templates';
+  | 'templates'
+  | 'settings';
