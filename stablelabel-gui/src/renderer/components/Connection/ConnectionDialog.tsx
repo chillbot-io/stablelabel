@@ -48,9 +48,9 @@ export default function ConnectionDialog({ onClose, onConnected }: ConnectionDia
     }
 
     const data = result.data;
-    if (!data) {
+    if (!data || typeof data === 'string') {
       setStage('error');
-      setError('No response from Connect-SLAll');
+      setError(typeof data === 'string' ? data : 'No response from Connect-SLAll. Check that PowerShell 7 and required modules are installed.');
       return;
     }
 
