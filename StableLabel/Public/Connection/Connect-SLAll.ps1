@@ -146,7 +146,14 @@ function Connect-SLAll {
 
         try {
             Write-Verbose "Connecting to Security & Compliance as $upn..."
-            Connect-SLCompliance -UserPrincipalName $upn -ErrorAction Stop
+            $complianceParams = @{
+                UserPrincipalName = $upn
+                ErrorAction       = 'Stop'
+            }
+            if ($UseDeviceCode) {
+                $complianceParams['UseDeviceCode'] = $true
+            }
+            Connect-SLCompliance @complianceParams
 
             $steps.Add([PSCustomObject]@{
                 Step   = 'Compliance'

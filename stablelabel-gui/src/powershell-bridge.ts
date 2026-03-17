@@ -179,9 +179,10 @@ export class PowerShellBridge {
     this.outputBuffer = '';
     this.stderrBuffer = '';
     const marker = `___SL_DONE_${Date.now()}_${Math.random().toString(36).slice(2)}___`;
-    // Redirect Information stream (6>&1) so Write-Host output (e.g. device code prompts
-    // from Connect-MgGraph -UseDeviceCode) is captured on stdout.
-    const wrappedCommand = `${command} 6>&1\nWrite-Output '${marker}'\n`;
+    // Wrap in a script block with 6>&1 so Write-Host output from nested calls
+    // (e.g. device code prompt from Connect-MgGraph inside Connect-SLAll) is
+    // redirected to stdout where the bridge can capture it.
+    const wrappedCommand = `& { ${command} } 6>&1\nWrite-Output '${marker}'\n`;
 
     const timeout = setTimeout(() => {
       this.currentMarker = null;

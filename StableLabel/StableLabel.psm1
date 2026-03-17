@@ -9,6 +9,7 @@ $script:SLConnection = @{
     ProtectionConnected = $false
     UserPrincipalName   = $null
     TenantId            = $null
+    UseDeviceCode       = $false
     ConnectedAt         = @{
         Graph      = $null
         Compliance = $null

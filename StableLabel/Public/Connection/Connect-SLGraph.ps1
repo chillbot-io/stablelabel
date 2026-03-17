@@ -80,6 +80,7 @@ function Connect-SLGraph {
             $script:SLConnection['GraphConnected']    = $true
             $script:SLConnection['UserPrincipalName'] = $context.Account
             $script:SLConnection['TenantId']          = $context.TenantId
+            $script:SLConnection['UseDeviceCode']     = [bool]$UseDeviceCode
             $script:SLConnection['ConnectedAt']['Graph'] = [datetime]::UtcNow
 
             $result = [PSCustomObject]@{
