@@ -25,6 +25,7 @@ export class PowerShellBridge {
   }> = [];
   private processing = false;
   private outputBuffer = '';
+  private stderrBuffer = '';
   private currentMarker: string | null = null;
   private currentResolve: ((output: string) => void) | null = null;
 
@@ -96,7 +97,9 @@ export class PowerShellBridge {
     });
 
     this.process.stderr?.on('data', (data: Buffer) => {
-      console.error('[PS STDERR]', data.toString());
+      const text = data.toString();
+      console.error('[PS STDERR]', text);
+      this.stderrBuffer += text;
     });
 
     this.process.on('close', (code) => {
@@ -136,6 +139,7 @@ export class PowerShellBridge {
     }
 
     this.outputBuffer = '';
+    this.stderrBuffer = '';
     const marker = `___SL_DONE_${Date.now()}_${Math.random().toString(36).slice(2)}___`;
     const wrappedCommand = `${command}\nWrite-Output '${marker}'\n`;
 
@@ -166,12 +170,17 @@ export class PowerShellBridge {
       const psCommand = command.includes('-AsJson') ? command : `${command} -AsJson`;
       const output = await this.sendRaw(psCommand);
 
+      // If stdout is empty but stderr has content, the command likely errored
+      if (!output && this.stderrBuffer.trim()) {
+        return { success: false, data: null, error: this.stderrBuffer.trim() };
+      }
+
       try {
         const data = JSON.parse(output);
         return { success: true, data };
       } catch {
         // If not valid JSON, return as string
-        return { success: true, data: output };
+        return { success: true, data: output || null };
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
