@@ -44,14 +44,16 @@ export class PowerShellBridge {
 
   /**
    * Check a text chunk for a device-code authentication prompt and fire the callback.
-   * Connect-MgGraph -UseDeviceCode outputs via Write-Host (Information stream)
-   * which may arrive on stdout (if redirected) or stderr depending on the environment.
+   * Connect-MgGraph uses WriteWarning (stream 3) and Connect-IPPSSession may use
+   * Write-Host (stream 6). With 3>&1 6>&1 both reach stdout, but we also check
+   * stderr as a fallback.
    */
   private checkForDeviceCode(text: string): void {
     if (!this.onDeviceCode) return;
     const clean = stripAnsi(text);
+    // Primary pattern: standard MSAL device-code message
     const match = clean.match(
-      /open the page (https:\/\/\S+) and enter the code ([A-Z0-9]{6,12})/i,
+      /(?:open the page|visit|go to)\s+(https:\/\/\S+)\s+and\s+(?:enter|use)\s+(?:the\s+)?code:?\s+([A-Z0-9]{5,15})/i,
     );
     if (match) {
       this.onDeviceCode({
@@ -59,8 +61,6 @@ export class PowerShellBridge {
         userCode: match[2],
         message: clean.trim(),
       });
-      // Only fire once per command
-      this.onDeviceCode = null;
     }
   }
 
@@ -136,8 +136,8 @@ export class PowerShellBridge {
       console.error('[PS STDERR]', text);
       this.stderrBuffer += text;
 
-      // Device code prompt may arrive via stderr (Warning stream) in some environments
-      this.checkForDeviceCode(text);
+      // Fallback: check accumulated stderr in case warnings bypass 3>&1 redirect
+      this.checkForDeviceCode(this.stderrBuffer);
     });
 
     this.process.on('close', (code) => {
@@ -179,10 +179,10 @@ export class PowerShellBridge {
     this.outputBuffer = '';
     this.stderrBuffer = '';
     const marker = `___SL_DONE_${Date.now()}_${Math.random().toString(36).slice(2)}___`;
-    // Wrap in a script block with 6>&1 so Write-Host output from nested calls
-    // (e.g. device code prompt from Connect-MgGraph inside Connect-SLAll) is
-    // redirected to stdout where the bridge can capture it.
-    const wrappedCommand = `& { ${command} } 6>&1\nWrite-Output '${marker}'\n`;
+    // Redirect Warning (3) and Information (6) streams to stdout so device-code
+    // prompts from Connect-MgGraph (WriteWarning) and Connect-IPPSSession reach
+    // the bridge regardless of which stream the cmdlet uses.
+    const wrappedCommand = `& { ${command} } 3>&1 6>&1\nWrite-Output '${marker}'\n`;
 
     const timeout = setTimeout(() => {
       this.currentMarker = null;
