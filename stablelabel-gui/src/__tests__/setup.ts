@@ -4,6 +4,7 @@ import '@testing-library/jest-dom/vitest';
 const mockInvoke = vi.fn().mockResolvedValue({ success: true, data: null });
 const mockCheckPwsh = vi.fn().mockResolvedValue({ available: true, path: 'pwsh' });
 const mockGetStatus = vi.fn().mockResolvedValue({ initialized: false });
+const mockOnDeviceCode = vi.fn().mockReturnValue(() => {});
 
 // Only set up window mock in jsdom environment
 if (typeof window !== 'undefined') {
@@ -12,10 +13,11 @@ if (typeof window !== 'undefined') {
       invoke: mockInvoke,
       checkPwsh: mockCheckPwsh,
       getStatus: mockGetStatus,
+      onDeviceCode: mockOnDeviceCode,
       platform: 'win32',
     },
     writable: true,
   });
 }
 
-export { mockInvoke, mockCheckPwsh, mockGetStatus };
+export { mockInvoke, mockCheckPwsh, mockGetStatus, mockOnDeviceCode };

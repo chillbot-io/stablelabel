@@ -17,6 +17,13 @@ contextBridge.exposeInMainWorld('stablelabel', {
   getStatus: (): Promise<{ initialized: boolean; modulePath?: string }> =>
     ipcRenderer.invoke('ps:get-status'),
 
+  /** Listen for device-code authentication prompts from Connect-MgGraph */
+  onDeviceCode: (callback: (info: { userCode: string; verificationUrl: string; message: string }) => void): (() => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, info: { userCode: string; verificationUrl: string; message: string }) => callback(info);
+    ipcRenderer.on('ps:device-code', handler);
+    return () => ipcRenderer.removeListener('ps:device-code', handler);
+  },
+
   /** Current platform (win32, darwin, linux) */
   platform: process.platform,
 });

@@ -1,12 +1,19 @@
 import { useState, useCallback } from 'react';
 import type { PsResult } from '../lib/types';
 
+export interface DeviceCodeInfo {
+  userCode: string;
+  verificationUrl: string;
+  message: string;
+}
+
 declare global {
   interface Window {
     stablelabel: {
       invoke: (command: string) => Promise<PsResult>;
       checkPwsh: () => Promise<{ available: boolean; path?: string; error?: string }>;
       getStatus: () => Promise<{ initialized: boolean; modulePath?: string }>;
+      onDeviceCode: (callback: (info: DeviceCodeInfo) => void) => () => void;
       platform: string;
     };
   }
