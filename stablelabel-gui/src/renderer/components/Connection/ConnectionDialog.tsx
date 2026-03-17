@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { usePowerShell } from '../../hooks/usePowerShell';
+import type { DeviceCodeInfo } from '../../hooks/usePowerShell';
 
 type ConnectStage = 'idle' | 'connecting' | 'done' | 'error';
 
@@ -57,17 +58,31 @@ export default function ConnectionDialog({ onClose, onConnected }: ConnectionDia
   const [error, setError] = useState<string | null>(null);
   const [upn, setUpn] = useState<string | null>(null);
   const [lastConnection, setLastConnection] = useState<LastConnection | null>(null);
+  const [deviceCode, setDeviceCode] = useState<DeviceCodeInfo | null>(null);
+  const [copied, setCopied] = useState(false);
+  const cleanupRef = useRef<(() => void) | null>(null);
 
   useEffect(() => {
     setLastConnection(loadLastConnection());
+    return () => { cleanupRef.current?.(); };
   }, []);
 
   const handleConnect = async () => {
     setStage('connecting');
     setError(null);
     setSteps([]);
+    setDeviceCode(null);
+    setCopied(false);
 
-    const result = await invoke<ConnectAllResult>('Connect-SLAll');
+    // Listen for device-code prompts emitted during Connect-MgGraph -UseDeviceCode
+    cleanupRef.current?.();
+    cleanupRef.current = window.stablelabel.onDeviceCode((info) => {
+      setDeviceCode(info);
+    });
+
+    const result = await invoke<ConnectAllResult>('Connect-SLAll -UseDeviceCode');
+    cleanupRef.current?.();
+    cleanupRef.current = null;
 
     if (!result.success) {
       setStage('error');
@@ -179,13 +194,55 @@ export default function ConnectionDialog({ onClose, onConnected }: ConnectionDia
 
         {isConnecting && (
           <div className="space-y-3">
-            <div className="flex items-center gap-3 p-3 bg-blue-500/[0.06] rounded-lg">
-              <Spinner />
-              <span className="text-[13px] text-blue-300">Connecting...</span>
-            </div>
-            <p className="text-[11px] text-zinc-500">
-              A Microsoft sign-in window will appear. Complete authentication there to continue.
-            </p>
+            {deviceCode ? (
+              <div className="space-y-3">
+                <div className="p-4 bg-white/[0.03] rounded-lg space-y-3">
+                  <p className="text-[10px] font-semibold text-zinc-400 uppercase tracking-widest">Sign in with device code</p>
+                  <p className="text-[12px] text-zinc-400 leading-relaxed">
+                    Open{' '}
+                    <a
+                      href={deviceCode.verificationUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-blue-400 hover:text-blue-300 underline"
+                    >
+                      {deviceCode.verificationUrl}
+                    </a>
+                    {' '}in your browser and enter the code:
+                  </p>
+                  <div className="flex items-center gap-3">
+                    <code className="text-2xl font-bold tracking-[0.2em] text-white bg-white/[0.06] px-4 py-2 rounded-lg select-all">
+                      {deviceCode.userCode}
+                    </code>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        navigator.clipboard.writeText(deviceCode.userCode);
+                        setCopied(true);
+                        setTimeout(() => setCopied(false), 2000);
+                      }}
+                      className="text-[11px] text-zinc-400 hover:text-zinc-200 transition-colors px-2 py-1 rounded bg-white/[0.04] hover:bg-white/[0.08]"
+                    >
+                      {copied ? 'Copied!' : 'Copy'}
+                    </button>
+                  </div>
+                </div>
+                <div className="flex items-center gap-3 p-3 bg-blue-500/[0.06] rounded-lg">
+                  <Spinner />
+                  <span className="text-[13px] text-blue-300">Waiting for sign-in...</span>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                <div className="flex items-center gap-3 p-3 bg-blue-500/[0.06] rounded-lg">
+                  <Spinner />
+                  <span className="text-[13px] text-blue-300">Preparing authentication...</span>
+                </div>
+                <p className="text-[11px] text-zinc-500">
+                  Installing prerequisites and generating a sign-in code. This may take a moment.
+                </p>
+              </div>
+            )}
           </div>
         )}
 

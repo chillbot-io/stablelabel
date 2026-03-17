@@ -35,6 +35,9 @@ export class PowerShellBridge {
   private currentMarker: string | null = null;
   private currentResolve: ((output: string) => void) | null = null;
 
+  /** Callback invoked when a device-code authentication message is detected in stdout. */
+  onDeviceCode: ((info: { userCode: string; verificationUrl: string; message: string }) => void) | null = null;
+
   constructor(modulePath: string) {
     this.modulePath = modulePath;
   }
@@ -91,6 +94,23 @@ export class PowerShellBridge {
 
     this.process.stdout?.on('data', (data: Buffer) => {
       this.outputBuffer += data.toString();
+
+      // Detect device-code auth prompt emitted by Connect-MgGraph -UseDeviceCode
+      // Typical message: "To sign in, use a web browser to open the page https://microsoft.com/devicelogin and enter the code XXXXXXXX to authenticate."
+      const clean = stripAnsi(this.outputBuffer);
+      const deviceCodeMatch = clean.match(
+        /open the page (https:\/\/\S+) and enter the code ([A-Z0-9]{6,12})/i,
+      );
+      if (deviceCodeMatch && this.onDeviceCode) {
+        this.onDeviceCode({
+          verificationUrl: deviceCodeMatch[1],
+          userCode: deviceCodeMatch[2],
+          message: clean.trim(),
+        });
+        // Only fire once per command
+        this.onDeviceCode = null;
+      }
+
       // Check if the current command's marker has arrived
       if (this.currentMarker && this.outputBuffer.includes(this.currentMarker)) {
         const output = this.outputBuffer.split(this.currentMarker)[0].trim();

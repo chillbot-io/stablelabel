@@ -50,6 +50,12 @@ app.whenReady().then(() => {
   // Register IPC handlers
   ipcMain.handle('ps:invoke', async (_event, command: string) => {
     if (!psBridge) throw new Error('PowerShell bridge not initialized');
+
+    // Wire device-code callback to forward to renderer via IPC
+    psBridge.onDeviceCode = (info) => {
+      mainWindow?.webContents.send('ps:device-code', info);
+    };
+
     return psBridge.invoke(command);
   });
 

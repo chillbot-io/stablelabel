@@ -56,7 +56,7 @@ describe('ConnectionDialog', () => {
 
     await user.click(screen.getByRole('button', { name: 'Sign in with Microsoft' }));
 
-    expect(mockInvoke).toHaveBeenCalledWith('Connect-SLAll');
+    expect(mockInvoke).toHaveBeenCalledWith('Connect-SLAll -UseDeviceCode');
   });
 
   it('shows connected state on success', async () => {
@@ -177,7 +177,7 @@ describe('ConnectionDialog', () => {
 
     await user.click(screen.getByRole('button', { name: 'Sign in with Microsoft' }));
 
-    expect(screen.getByText('Connecting...')).toBeInTheDocument();
+    expect(screen.getByText('Preparing authentication...')).toBeInTheDocument();
 
     resolveInvoke!({
       success: true,
