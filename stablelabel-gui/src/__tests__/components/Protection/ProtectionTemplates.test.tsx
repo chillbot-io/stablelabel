@@ -116,7 +116,7 @@ describe('ProtectionTemplates', () => {
     render(<ProtectionTemplates />);
     await waitFor(() => {
       const badge = screen.getByText('Published');
-      expect(badge.className).toContain('text-green-400');
+      expect(badge.className).toContain('text-emerald-400');
     });
   });
 
@@ -125,7 +125,7 @@ describe('ProtectionTemplates', () => {
     render(<ProtectionTemplates />);
     await waitFor(() => {
       const badge = screen.getByText('Archived');
-      expect(badge.className).toContain('text-gray-400');
+      expect(badge.className).toContain('text-zinc-400');
     });
   });
 

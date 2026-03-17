@@ -173,7 +173,7 @@ describe('LabelReport', () => {
     });
 
     const activeValue = screen.getByText('15');
-    expect(activeValue.className).toContain('text-green-400');
+    expect(activeValue.className).toContain('text-emerald-400');
   });
 
   it('applies yellow color to Inactive stat when > 0', async () => {
@@ -205,7 +205,7 @@ describe('LabelReport', () => {
     // Inactive is 0, should use default gray color
     const inactiveCard = screen.getByText('Inactive').closest('div');
     const valueElement = inactiveCard?.querySelector('dd');
-    expect(valueElement?.className).toContain('text-gray-200');
+    expect(valueElement?.className).toContain('text-zinc-200');
   });
 
   it('shows error on failure', async () => {

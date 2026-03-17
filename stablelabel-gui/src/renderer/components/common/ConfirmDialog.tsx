@@ -29,22 +29,22 @@ export default function ConfirmDialog({
         : 'bg-blue-600 hover:bg-blue-500 text-white';
 
   return (
-    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
-      <div className="bg-gray-900 border border-gray-700 rounded-lg p-6 w-96 shadow-xl">
+    <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50">
+      <div className="bg-zinc-900 border border-white/[0.06] rounded-xl p-6 w-96">
         <h3 className="text-lg font-semibold text-white mb-2">{title}</h3>
-        <p className="text-sm text-gray-400 mb-6">{message}</p>
+        <p className="text-[13px] text-zinc-400 mb-6 leading-relaxed">{message}</p>
         <div className="flex gap-3 justify-end">
           <button
             onClick={onCancel}
             disabled={loading}
-            className="px-4 py-2 text-sm text-gray-400 hover:text-gray-200 bg-gray-800 hover:bg-gray-700 rounded border border-gray-700 transition-colors disabled:opacity-50"
+            className="px-4 py-2 text-[13px] text-zinc-400 hover:text-zinc-200 bg-white/[0.04] hover:bg-white/[0.08] rounded-lg transition-colors disabled:opacity-40"
           >
             {cancelLabel}
           </button>
           <button
             onClick={onConfirm}
             disabled={loading}
-            className={`px-4 py-2 text-sm rounded transition-colors disabled:opacity-50 ${confirmColors}`}
+            className={`px-4 py-2 text-[13px] rounded-lg transition-colors disabled:opacity-40 ${confirmColors}`}
           >
             {loading ? 'Working...' : confirmLabel}
           </button>

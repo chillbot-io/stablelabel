@@ -34,8 +34,8 @@ export default function FileShareInventory() {
   return (
     <div className="space-y-4">
       <div>
-        <h3 className="text-sm font-semibold text-gray-300 mb-1">File Share Inventory</h3>
-        <p className="text-xs text-gray-500">Browse files and their label status on a CIFS/SMB share.</p>
+        <h3 className="text-sm font-semibold text-zinc-300 mb-1">File Share Inventory</h3>
+        <p className="text-xs text-zinc-500">Browse files and their label status on a CIFS/SMB share.</p>
       </div>
 
       <div className="space-y-3">
@@ -48,9 +48,9 @@ export default function FileShareInventory() {
         </div>
       </div>
 
-      {error && <div className="p-3 bg-red-900/20 border border-red-800 rounded text-sm text-red-300">{error}</div>}
+      {error && <div className="p-3 bg-red-900/20 border border-red-800 rounded-lg text-sm text-red-300">{error}</div>}
 
-      <button onClick={handleInventory} disabled={loading} className="px-4 py-2 text-xs font-medium text-white bg-blue-600 hover:bg-blue-500 disabled:bg-blue-600/50 rounded transition-colors">
+      <button onClick={handleInventory} disabled={loading} className="px-4 py-2 text-xs font-medium text-white bg-blue-600 hover:bg-blue-500 disabled:bg-blue-600/50 rounded-lg transition-colors">
         {loading ? 'Scanning...' : 'Get Inventory'}
       </button>
 
@@ -65,13 +65,13 @@ export default function FileShareInventory() {
 
           {/* Label distribution */}
           {Object.keys(result.Summary.LabelDistribution).length > 0 && (
-            <div className="bg-gray-900 border border-gray-800 rounded-lg p-4">
-              <h4 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Label Distribution</h4>
+            <div className="bg-white/[0.03] rounded-xl p-4">
+              <h4 className="text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-2">Label Distribution</h4>
               <div className="space-y-1">
                 {Object.entries(result.Summary.LabelDistribution).map(([label, count]) => (
                   <div key={label} className="flex justify-between text-sm">
-                    <span className="text-gray-300">{label}</span>
-                    <span className="text-gray-500">{count}</span>
+                    <span className="text-zinc-300">{label}</span>
+                    <span className="text-zinc-500">{count}</span>
                   </div>
                 ))}
               </div>
@@ -79,35 +79,35 @@ export default function FileShareInventory() {
           )}
 
           {/* Files list */}
-          <div className="bg-gray-900 border border-gray-800 rounded-lg p-4">
+          <div className="bg-white/[0.03] rounded-xl p-4">
             <div className="flex items-center justify-between mb-3">
-              <h4 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Files ({filteredItems.length})</h4>
+              <h4 className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">Files ({filteredItems.length})</h4>
               <input
                 type="text"
                 placeholder="Filter files..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                className="px-2 py-1 text-xs bg-gray-800 border border-gray-700 rounded text-gray-300 placeholder-gray-600 w-48"
+                className="px-2 py-1 text-xs bg-white/[0.06] border border-white/[0.08] rounded-lg text-zinc-300 placeholder-gray-600 w-48"
               />
             </div>
             <div className="space-y-1 max-h-96 overflow-auto">
               {filteredItems.slice(0, 100).map((item, i) => (
-                <div key={i} className="flex items-center justify-between p-2 bg-gray-800 rounded text-xs">
+                <div key={i} className="flex items-center justify-between p-2 bg-white/[0.06] rounded-lg text-xs">
                   <div className="flex-1 min-w-0">
-                    <span className="text-gray-200 truncate block">{item.FileName}</span>
-                    <span className="text-gray-500">{item.Extension} &middot; {item.SizeKB} KB</span>
+                    <span className="text-zinc-200 truncate block">{item.FileName}</span>
+                    <span className="text-zinc-500">{item.Extension} &middot; {item.SizeKB} KB</span>
                   </div>
                   <div className="flex items-center gap-2 ml-3">
                     {item.IsLabeled ? (
-                      <span className="px-1.5 py-0.5 bg-green-900/30 text-green-400 rounded text-[10px]">{item.LabelName}</span>
+                      <span className="px-1.5 py-0.5 bg-green-900/30 text-emerald-400 rounded-lg text-[10px]">{item.LabelName}</span>
                     ) : (
-                      <span className="px-1.5 py-0.5 bg-yellow-900/30 text-yellow-400 rounded text-[10px]">Unlabeled</span>
+                      <span className="px-1.5 py-0.5 bg-yellow-900/30 text-yellow-400 rounded-lg text-[10px]">Unlabeled</span>
                     )}
                   </div>
                 </div>
               ))}
               {filteredItems.length > 100 && (
-                <p className="text-xs text-gray-500 text-center py-2">Showing 100 of {filteredItems.length} files</p>
+                <p className="text-xs text-zinc-500 text-center py-2">Showing 100 of {filteredItems.length} files</p>
               )}
             </div>
           </div>
@@ -118,11 +118,11 @@ export default function FileShareInventory() {
 }
 
 function SummaryCard({ label, value, color }: { label: string; value: number; color?: string }) {
-  const colorClass = color === 'green' ? 'text-green-400' : color === 'yellow' ? 'text-yellow-400' : 'text-blue-400';
+  const colorClass = color === 'green' ? 'text-emerald-400' : color === 'yellow' ? 'text-yellow-400' : 'text-blue-400';
   return (
-    <div className="bg-gray-900 border border-gray-800 rounded-lg p-3 text-center">
+    <div className="bg-white/[0.03] rounded-xl p-3 text-center">
       <div className={`text-lg font-bold ${colorClass}`}>{value}</div>
-      <div className="text-[10px] text-gray-500 uppercase tracking-wider">{label}</div>
+      <div className="text-[10px] text-zinc-500 uppercase tracking-wider">{label}</div>
     </div>
   );
 }

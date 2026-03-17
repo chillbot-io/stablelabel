@@ -477,7 +477,7 @@ describe('DocumentLabelBulk', () => {
       await waitFor(() => {
         const failedDt = screen.getByText('Failed', { selector: 'dt' });
         const failedDd = failedDt.closest('div')!.querySelector('dd')!;
-        expect(failedDd).toHaveClass('text-gray-400');
+        expect(failedDd).toHaveClass('text-zinc-400');
       });
     });
   });

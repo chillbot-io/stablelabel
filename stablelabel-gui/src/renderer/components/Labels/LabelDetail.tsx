@@ -55,7 +55,7 @@ export default function LabelDetail({ labelId, onOpenPolicy }: LabelDetailProps)
     return (
       <div className="p-6 space-y-4">
         {[1, 2, 3].map((i) => (
-          <div key={i} className="h-16 bg-gray-800 rounded animate-pulse" />
+          <div key={i} className="h-16 bg-white/[0.06] rounded-lg animate-pulse" />
         ))}
       </div>
     );
@@ -64,7 +64,7 @@ export default function LabelDetail({ labelId, onOpenPolicy }: LabelDetailProps)
   if (error || !label) {
     return (
       <div className="p-6">
-        <div className="bg-red-900/20 border border-red-800 rounded p-4 text-sm text-red-300">
+        <div className="bg-red-900/20 border border-red-800 rounded-lg p-4 text-sm text-red-300">
           {error ?? 'Label not found'}
         </div>
       </div>
@@ -78,7 +78,7 @@ export default function LabelDetail({ labelId, onOpenPolicy }: LabelDetailProps)
         <div>
           <h2 className="text-xl font-bold text-white">{label.displayName ?? label.name}</h2>
           {label.description && (
-            <p className="text-sm text-gray-400 mt-1">{label.description}</p>
+            <p className="text-sm text-zinc-400 mt-1">{label.description}</p>
           )}
         </div>
         <StatusBadge active={label.isActive} />
@@ -92,7 +92,7 @@ export default function LabelDetail({ labelId, onOpenPolicy }: LabelDetailProps)
         <PropertyCard label="Color" value={label.color ?? 'None'}>
           {label.color && (
             <div
-              className="w-4 h-4 rounded border border-gray-600"
+              className="w-4 h-4 rounded-lg border border-gray-600"
               style={{ backgroundColor: label.color }}
             />
           )}
@@ -108,21 +108,21 @@ export default function LabelDetail({ labelId, onOpenPolicy }: LabelDetailProps)
 
       {/* Tooltip */}
       {label.tooltip && (
-        <div className="bg-gray-900 border border-gray-800 rounded-lg p-4">
-          <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">
+        <div className="bg-white/[0.03] rounded-xl p-4">
+          <h3 className="text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-2">
             Tooltip (shown to users)
           </h3>
-          <p className="text-sm text-gray-300">{label.tooltip}</p>
+          <p className="text-sm text-zinc-300">{label.tooltip}</p>
         </div>
       )}
 
       {/* Policies containing this label */}
-      <div className="bg-gray-900 border border-gray-800 rounded-lg p-4">
-        <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">
+      <div className="bg-white/[0.03] rounded-xl p-4">
+        <h3 className="text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-2">
           Published In Policies
         </h3>
         {policies.length === 0 ? (
-          <p className="text-sm text-gray-500">
+          <p className="text-sm text-zinc-500">
             Not found in any label policies. This label may not be published to users yet.
           </p>
         ) : (
@@ -131,7 +131,7 @@ export default function LabelDetail({ labelId, onOpenPolicy }: LabelDetailProps)
               <button
                 key={p}
                 onClick={() => onOpenPolicy(p)}
-                className="px-2.5 py-1 text-xs bg-purple-500/10 text-purple-300 border border-purple-500/20 rounded hover:bg-purple-500/20 transition-colors"
+                className="px-2.5 py-1 text-xs bg-purple-500/10 text-purple-300 border border-purple-500/20 rounded-lg hover:bg-purple-500/20 transition-colors"
               >
                 {p}
               </button>
@@ -149,10 +149,10 @@ export default function LabelDetail({ labelId, onOpenPolicy }: LabelDetailProps)
 function StatusBadge({ active }: { active: boolean }) {
   return (
     <span
-      className={`px-2 py-1 text-xs rounded ${
+      className={`px-2 py-1 text-xs rounded-lg ${
         active
-          ? 'bg-green-500/10 text-green-400 border border-green-500/20'
-          : 'bg-gray-700/50 text-gray-400 border border-gray-600'
+          ? 'bg-emerald-400/10 text-emerald-400 border border-green-500/20'
+          : 'bg-white/[0.08]/50 text-zinc-400 border border-gray-600'
       }`}
     >
       {active ? 'Active' : 'Inactive'}
@@ -172,9 +172,9 @@ function PropertyCard({
   children?: React.ReactNode;
 }) {
   return (
-    <div className="bg-gray-900 border border-gray-800 rounded p-3">
-      <dt className="text-xs text-gray-500 mb-1">{label}</dt>
-      <dd className={`text-sm text-gray-200 flex items-center gap-2 ${mono ? 'font-mono text-xs' : ''}`}>
+    <div className="bg-white/[0.03] rounded-lg p-3">
+      <dt className="text-xs text-zinc-500 mb-1">{label}</dt>
+      <dd className={`text-sm text-zinc-200 flex items-center gap-2 ${mono ? 'font-mono text-xs' : ''}`}>
         {children}
         <span className="truncate" title={value}>{value}</span>
       </dd>
@@ -186,15 +186,15 @@ function RawJsonSection({ data }: { data: unknown }) {
   const [expanded, setExpanded] = useState(false);
 
   return (
-    <div className="border-t border-gray-800 pt-4">
+    <div className="border-t border-white/[0.06] pt-4">
       <button
         onClick={() => setExpanded(!expanded)}
-        className="text-xs text-gray-500 hover:text-gray-300 transition-colors"
+        className="text-xs text-zinc-500 hover:text-zinc-300 transition-colors"
       >
         {expanded ? '▾ Hide' : '▸ Show'} raw JSON
       </button>
       {expanded && (
-        <pre className="mt-2 p-3 bg-gray-950 border border-gray-800 rounded text-xs text-gray-400 overflow-x-auto max-h-64 overflow-y-auto">
+        <pre className="mt-2 p-3 bg-zinc-950 rounded-lg text-xs text-zinc-400 overflow-x-auto max-h-64 overflow-y-auto">
           {JSON.stringify(data, null, 2)}
         </pre>
       )}

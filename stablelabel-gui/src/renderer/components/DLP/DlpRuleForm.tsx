@@ -59,14 +59,14 @@ export default function DlpRuleForm({ existing, onSaved, onCancel, onDeleted }: 
 
   return (
     <div className="p-6 max-w-3xl space-y-5">
-      <div><h2 className="text-xl font-bold text-white">{isNew ? 'New DLP Rule' : `Edit: ${existing!.Name}`}</h2><p className="text-sm text-gray-500 mt-1">{isNew ? 'Define what sensitive content to detect and what action to take.' : 'Modify this DLP rule.'}</p></div>
-      {error && <div className="p-3 bg-red-900/20 border border-red-800 rounded text-sm text-red-300">{error}</div>}
+      <div><h2 className="text-xl font-bold text-white">{isNew ? 'New DLP Rule' : `Edit: ${existing!.Name}`}</h2><p className="text-sm text-zinc-500 mt-1">{isNew ? 'Define what sensitive content to detect and what action to take.' : 'Modify this DLP rule.'}</p></div>
+      {error && <div className="p-3 bg-red-900/20 border border-red-800 rounded-lg text-sm text-red-300">{error}</div>}
       <TextField label="Rule Name" value={name} onChange={setName} required disabled={!isNew} placeholder="e.g., Block Credit Card Sharing" />
       <TextField label="Parent Policy" value={policy} onChange={setPolicy} required disabled={!isNew} placeholder="e.g., PII Protection Policy" helpText="The DLP policy this rule belongs to." />
       <TextArea label="Comment" value={comment} onChange={setComment} placeholder="Describe what this rule detects..." />
 
-      <div className="border-t border-gray-800 pt-4">
-        <h3 className="text-sm font-semibold text-gray-300 mb-3">Actions</h3>
+      <div className="border-t border-white/[0.06] pt-4">
+        <h3 className="text-sm font-semibold text-zinc-300 mb-3">Actions</h3>
         <div className="space-y-4">
           <ToggleField label="Block Access" checked={blockAccess} onChange={setBlockAccess} helpText="Prevent users from accessing content that matches this rule." />
           <TagInput label="Notify Users" values={notifyUser} onChange={setNotifyUser} placeholder="Email addresses..." helpText="Users to notify when a match is found." disabled={!isNew} />

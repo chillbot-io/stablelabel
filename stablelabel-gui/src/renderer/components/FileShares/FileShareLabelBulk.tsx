@@ -44,8 +44,8 @@ export default function FileShareLabelBulk() {
   return (
     <div className="space-y-4">
       <div>
-        <h3 className="text-sm font-semibold text-gray-300 mb-1">Bulk Apply Labels</h3>
-        <p className="text-xs text-gray-500">Apply a sensitivity label to multiple files in a directory.</p>
+        <h3 className="text-sm font-semibold text-zinc-300 mb-1">Bulk Apply Labels</h3>
+        <p className="text-xs text-zinc-500">Apply a sensitivity label to multiple files in a directory.</p>
       </div>
 
       <TextField label="Directory Path" value={path} onChange={setPath} placeholder="\\\\server\\share\\folder or Z:\\folder" required />
@@ -64,14 +64,14 @@ export default function FileShareLabelBulk() {
         <ToggleField label="Dry Run" checked={dryRun} onChange={setDryRun} helpText="Simulate without making changes" />
       </div>
 
-      {error && <div className="p-3 bg-red-900/20 border border-red-800 rounded text-sm text-red-300">{error}</div>}
+      {error && <div className="p-3 bg-red-900/20 border border-red-800 rounded-lg text-sm text-red-300">{error}</div>}
 
       <div className="flex items-center gap-3">
-        <button onClick={handleBulk} disabled={loading} className="px-4 py-2 text-xs font-medium text-white bg-blue-600 hover:bg-blue-500 disabled:bg-blue-600/50 rounded transition-colors">
+        <button onClick={handleBulk} disabled={loading} className="px-4 py-2 text-xs font-medium text-white bg-blue-600 hover:bg-blue-500 disabled:bg-blue-600/50 rounded-lg transition-colors">
           {loading ? 'Processing...' : dryRun ? 'Dry Run — Bulk Apply' : 'Bulk Apply Labels'}
         </button>
         {loading && (
-          <span className="flex items-center gap-2 text-xs text-gray-400">
+          <span className="flex items-center gap-2 text-xs text-zinc-400">
             <span className="inline-block w-3 h-3 border-2 border-blue-400 border-t-transparent rounded-full animate-spin" />
             {elapsed || 'Starting...'}
           </span>
@@ -89,22 +89,22 @@ export default function FileShareLabelBulk() {
           </div>
 
           {result.DryRun && (
-            <div className="p-3 bg-blue-900/20 border border-blue-800 rounded text-xs text-blue-300">
+            <div className="p-3 bg-blue-900/20 border border-blue-800 rounded-lg text-xs text-blue-300">
               Dry run complete — no changes were made.
             </div>
           )}
 
           {/* Results */}
           {result.Results && result.Results.length > 0 && (
-            <div className="bg-gray-900 border border-gray-800 rounded-lg p-4">
-              <h4 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Results</h4>
+            <div className="bg-white/[0.03] rounded-xl p-4">
+              <h4 className="text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-2">Results</h4>
               <div className="space-y-1 max-h-64 overflow-auto">
                 {result.Results.map((r, i) => (
-                  <div key={i} className="flex items-center justify-between p-2 bg-gray-800 rounded text-xs">
-                    <span className="text-gray-300 truncate flex-1">{r.Path}</span>
-                    <span className={`ml-2 px-1.5 py-0.5 rounded text-[10px] ${
+                  <div key={i} className="flex items-center justify-between p-2 bg-white/[0.06] rounded-lg text-xs">
+                    <span className="text-zinc-300 truncate flex-1">{r.Path}</span>
+                    <span className={`ml-2 px-1.5 py-0.5 rounded-lg text-[10px] ${
                       r.Status === 'Success' || r.Status === 'DryRun'
-                        ? 'bg-green-900/30 text-green-400'
+                        ? 'bg-green-900/30 text-emerald-400'
                         : 'bg-red-900/30 text-red-400'
                     }`}>
                       {r.Status}
@@ -121,11 +121,11 @@ export default function FileShareLabelBulk() {
 }
 
 function StatCard({ label, value, color }: { label: string; value: number; color?: string }) {
-  const colorClass = color === 'green' ? 'text-green-400' : color === 'red' ? 'text-red-400' : color === 'yellow' ? 'text-yellow-400' : 'text-blue-400';
+  const colorClass = color === 'green' ? 'text-emerald-400' : color === 'red' ? 'text-red-400' : color === 'yellow' ? 'text-yellow-400' : 'text-blue-400';
   return (
-    <div className="bg-gray-900 border border-gray-800 rounded-lg p-2 text-center">
+    <div className="bg-white/[0.03] rounded-xl p-2 text-center">
       <div className={`text-sm font-bold ${colorClass}`}>{value}</div>
-      <div className="text-[10px] text-gray-500">{label}</div>
+      <div className="text-[10px] text-zinc-500">{label}</div>
     </div>
   );
 }

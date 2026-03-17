@@ -48,10 +48,7 @@ export default function DashboardPage({ onNavigate }: DashboardPageProps) {
     if (!anyConnected) return;
     setLoading(true);
 
-    // Use functional updater to avoid stale closure over stats
     const updates: Partial<DashboardStats> = {};
-
-    // Fire all queries in parallel
     const promises: Promise<void>[] = [];
 
     if (graphConnected) {
@@ -76,14 +73,12 @@ export default function DashboardPage({ onNavigate }: DashboardPageProps) {
       );
     }
 
-    // Snapshots are local — always available
     promises.push(
       invoke('Get-SLSnapshot').then((r) => {
         if (r.success && Array.isArray(r.data)) updates.snapshots = r.data.length;
       }).catch(() => {}),
     );
 
-    // Elevation status
     promises.push(
       invoke('Get-SLElevationStatus').then((r) => {
         if (r.success && r.data) {
@@ -96,7 +91,6 @@ export default function DashboardPage({ onNavigate }: DashboardPageProps) {
     await Promise.all(promises);
     setStats((prev) => ({ ...prev, ...updates }));
 
-    // Fetch recent audit activity
     try {
       const auditResult = await invoke<AuditEntry[]>('Get-SLAuditLog -Last 5');
       if (auditResult.success && Array.isArray(auditResult.data)) {
@@ -125,7 +119,7 @@ export default function DashboardPage({ onNavigate }: DashboardPageProps) {
 
   if (!anyConnected) {
     return (
-      <div className="space-y-6">
+      <div className="space-y-8">
         <PageHeader />
         <WelcomeCard onConnect={() => setShowConnect(true)} />
         {showConnect && (
@@ -144,71 +138,38 @@ export default function DashboardPage({ onNavigate }: DashboardPageProps) {
         <PageHeader />
         <div className="flex items-center gap-3">
           {lastRefreshed && (
-            <span className="text-xs text-gray-600">
-              Updated {lastRefreshed.toLocaleTimeString()}
+            <span className="text-[11px] text-zinc-600">
+              {lastRefreshed.toLocaleTimeString()}
             </span>
           )}
           <button
             onClick={handleRefresh}
             disabled={loading}
-            className="px-3 py-1.5 text-xs bg-gray-800 hover:bg-gray-700 text-gray-300 rounded border border-gray-700 transition-colors disabled:opacity-50"
+            className="px-3 py-1.5 text-[11px] text-zinc-400 hover:text-zinc-200 bg-white/[0.04] hover:bg-white/[0.08] rounded-lg transition-colors disabled:opacity-40"
           >
             {loading ? 'Refreshing...' : 'Refresh'}
           </button>
         </div>
       </div>
 
-      {/* Connection status strip */}
       <ConnectionStrip status={status} />
 
-      {/* Stats grid */}
-      <div className="grid grid-cols-3 gap-4">
-        <StatCard
-          title="Sensitivity Labels"
-          value={stats.labels}
-          loading={loading}
-          color="blue"
-          onClick={() => onNavigate?.('labels')}
-        />
-        <StatCard
-          title="DLP Policies"
-          value={stats.dlpPolicies}
-          loading={loading}
-          color="purple"
-          onClick={() => onNavigate?.('dlp')}
-        />
-        <StatCard
-          title="Retention Policies"
-          value={stats.retentionPolicies}
-          loading={loading}
-          color="amber"
-          onClick={() => onNavigate?.('retention')}
-        />
-        <StatCard
-          title="Auto-Label Policies"
-          value={stats.autoLabelPolicies}
-          loading={loading}
-          color="teal"
-          onClick={() => onNavigate?.('labels')}
-        />
-        <StatCard
-          title="Snapshots"
-          value={stats.snapshots}
-          loading={loading}
-          color="green"
-          onClick={() => onNavigate?.('snapshots')}
-        />
+      <div className="grid grid-cols-3 gap-3">
+        <StatCard title="Sensitivity Labels" value={stats.labels} loading={loading} onClick={() => onNavigate?.('labels')} />
+        <StatCard title="DLP Policies" value={stats.dlpPolicies} loading={loading} onClick={() => onNavigate?.('dlp')} />
+        <StatCard title="Retention Policies" value={stats.retentionPolicies} loading={loading} onClick={() => onNavigate?.('retention')} />
+        <StatCard title="Auto-Label Policies" value={stats.autoLabelPolicies} loading={loading} onClick={() => onNavigate?.('labels')} />
+        <StatCard title="Snapshots" value={stats.snapshots} loading={loading} onClick={() => onNavigate?.('snapshots')} />
         <StatCard
           title="Active Elevations"
           value={stats.activeElevations}
           loading={loading}
-          color={stats.activeElevations && stats.activeElevations > 0 ? 'red' : 'gray'}
+          alert={!!stats.activeElevations && stats.activeElevations > 0}
           onClick={() => onNavigate?.('elevation')}
         />
       </div>
 
-      {/* Bottom row: recent activity + quick actions */}
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-2 gap-3">
         <RecentActivity entries={recentActivity} />
         <QuickActions onNavigate={onNavigate} invoke={invoke} />
       </div>
@@ -219,26 +180,26 @@ export default function DashboardPage({ onNavigate }: DashboardPageProps) {
 function PageHeader() {
   return (
     <div>
-      <h1 className="text-2xl font-bold text-white">Dashboard</h1>
-      <p className="text-gray-500 mt-1">Tenant compliance overview</p>
+      <h1 className="text-2xl font-semibold text-white tracking-tight">Dashboard</h1>
+      <p className="text-zinc-500 text-sm mt-0.5">Tenant compliance overview</p>
     </div>
   );
 }
 
 function WelcomeCard({ onConnect }: { onConnect: () => void }) {
   return (
-    <div className="bg-gray-900 border border-gray-800 rounded-lg p-8 text-center">
-      <h2 className="text-xl font-semibold text-gray-300 mb-2">Not Connected</h2>
-      <p className="text-gray-500 mb-6">
+    <div className="bg-white/[0.03] rounded-xl p-10 text-center max-w-lg mx-auto">
+      <h2 className="text-xl font-semibold text-zinc-200 mb-2">Not Connected</h2>
+      <p className="text-zinc-500 text-sm mb-8 leading-relaxed">
         Connect to Microsoft Purview to manage sensitivity labels, DLP policies, retention, and more.
       </p>
       <button
         onClick={onConnect}
-        className="px-6 py-3 bg-blue-600 hover:bg-blue-500 text-white font-medium rounded-lg transition-colors text-sm"
+        className="px-6 py-2.5 bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium rounded-lg transition-colors"
       >
         Connect to StableLabel
       </button>
-      <p className="text-xs text-gray-600 mt-4">
+      <p className="text-[11px] text-zinc-600 mt-5">
         Requires PowerShell 7+, Global Administrator, and Compliance Administrator roles.
       </p>
     </div>
@@ -255,60 +216,52 @@ function ConnectionStrip({ status }: { status: { GraphConnected: boolean; Compli
   ];
 
   return (
-    <div className="bg-gray-900 border border-gray-800 rounded-lg px-4 py-3 flex items-center justify-between">
-      <div className="flex items-center gap-4">
+    <div className="bg-white/[0.02] rounded-xl px-5 py-3 flex items-center justify-between">
+      <div className="flex items-center gap-5">
         {services.map((svc) => (
           <div key={svc.name} className="flex items-center gap-2">
-            <div className={`w-2 h-2 rounded-full ${svc.connected ? 'bg-green-500' : 'bg-gray-600'}`} />
-            <span className={`text-xs ${svc.connected ? 'text-gray-300' : 'text-gray-600'}`}>
+            <div className={`w-1.5 h-1.5 rounded-full ${svc.connected ? 'bg-emerald-400' : 'bg-zinc-700'}`} />
+            <span className={`text-[12px] ${svc.connected ? 'text-zinc-300' : 'text-zinc-600'}`}>
               {svc.name}
             </span>
           </div>
         ))}
       </div>
-      <div className="flex items-center gap-3 text-xs text-gray-500">
+      <div className="flex items-center gap-3 text-[11px] text-zinc-500">
         {status.UserPrincipalName && <span>{status.UserPrincipalName}</span>}
-        {status.TenantId && <span className="text-gray-700">|</span>}
-        {status.TenantId && <span className="font-mono">{status.TenantId.substring(0, 8)}...</span>}
+        {status.TenantId && (
+          <>
+            <span className="text-zinc-700">|</span>
+            <span className="font-mono">{status.TenantId.substring(0, 8)}...</span>
+          </>
+        )}
       </div>
     </div>
   );
 }
 
-const colorMap: Record<string, { bg: string; text: string; border: string }> = {
-  blue:   { bg: 'bg-blue-500/10',   text: 'text-blue-400',   border: 'border-blue-500/20' },
-  purple: { bg: 'bg-purple-500/10', text: 'text-purple-400', border: 'border-purple-500/20' },
-  amber:  { bg: 'bg-amber-500/10',  text: 'text-amber-400',  border: 'border-amber-500/20' },
-  teal:   { bg: 'bg-teal-500/10',   text: 'text-teal-400',   border: 'border-teal-500/20' },
-  green:  { bg: 'bg-green-500/10',  text: 'text-green-400',  border: 'border-green-500/20' },
-  red:    { bg: 'bg-red-500/10',    text: 'text-red-400',    border: 'border-red-500/20' },
-  gray:   { bg: 'bg-gray-500/10',   text: 'text-gray-400',   border: 'border-gray-500/20' },
-};
-
 function StatCard({
   title,
   value,
   loading,
-  color,
+  alert,
   onClick,
 }: {
   title: string;
   value: number | null;
   loading: boolean;
-  color: string;
+  alert?: boolean;
   onClick?: () => void;
 }) {
-  const c = colorMap[color] ?? colorMap.gray;
-
   return (
     <button
       onClick={onClick}
-      className={`${c.bg} border ${c.border} rounded-lg p-4 text-left transition-all hover:brightness-125 cursor-pointer`}
+      className="bg-white/[0.03] hover:bg-white/[0.05] rounded-xl p-5 text-left transition-colors cursor-pointer"
     >
-      <p className="text-sm text-gray-400">{title}</p>
-      <p className={`text-3xl font-bold mt-1 ${c.text}`}>
+      <p className="text-[12px] text-zinc-500">{title}</p>
+      <p className={`text-3xl font-semibold mt-1.5 tracking-tight ${alert ? 'text-red-400' : 'text-white'}`}>
         {loading && value === null ? (
-          <span className="inline-block w-8 h-8 bg-gray-800 rounded animate-pulse" />
+          <span className="inline-block w-8 h-8 bg-white/[0.06] rounded animate-pulse" />
         ) : (
           value ?? '--'
         )}
@@ -319,17 +272,17 @@ function StatCard({
 
 function RecentActivity({ entries }: { entries: AuditEntry[] }) {
   const resultColor = (result: string) => {
-    if (result === 'success') return 'text-green-400';
+    if (result === 'success') return 'text-emerald-400';
     if (result === 'failed') return 'text-red-400';
-    if (result === 'dry-run') return 'text-yellow-400';
+    if (result === 'dry-run') return 'text-amber-400';
     if (result === 'partial') return 'text-amber-400';
-    return 'text-gray-400';
+    return 'text-zinc-400';
   };
 
   return (
-    <div className="bg-gray-900 border border-gray-800 rounded-lg p-4">
-      <div className="flex items-center justify-between mb-3">
-        <h3 className="text-sm font-semibold text-gray-300">Recent Activity</h3>
+    <div className="bg-white/[0.03] rounded-xl p-5">
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="text-[13px] font-medium text-zinc-300">Recent Activity</h3>
         {entries.length > 0 && (
           <ExportButton
             data={entries}
@@ -340,19 +293,19 @@ function RecentActivity({ entries }: { entries: AuditEntry[] }) {
         )}
       </div>
       {entries.length === 0 ? (
-        <p className="text-xs text-gray-600">No recent activity recorded.</p>
+        <p className="text-[12px] text-zinc-600">No recent activity recorded.</p>
       ) : (
-        <div className="space-y-2">
+        <div className="space-y-2.5">
           {entries.map((entry, i) => (
-            <div key={i} className="flex items-center justify-between text-xs">
+            <div key={i} className="flex items-center justify-between text-[12px]">
               <div className="flex items-center gap-2 min-w-0">
                 <span className={`font-medium ${resultColor(entry.Result)}`}>
                   {entry.Result === 'success' ? '+' : entry.Result === 'failed' ? '!' : '~'}
                 </span>
-                <span className="text-gray-300 truncate">{entry.Action}</span>
-                <span className="text-gray-600 truncate">{entry.Target}</span>
+                <span className="text-zinc-300 truncate">{entry.Action}</span>
+                <span className="text-zinc-600 truncate">{entry.Target}</span>
               </div>
-              <span className="text-gray-600 whitespace-nowrap ml-2">
+              <span className="text-zinc-600 whitespace-nowrap ml-2">
                 {formatRelativeTime(entry.Timestamp)}
               </span>
             </div>
@@ -391,8 +344,8 @@ function QuickActions({
   };
 
   return (
-    <div className="bg-gray-900 border border-gray-800 rounded-lg p-4">
-      <h3 className="text-sm font-semibold text-gray-300 mb-3">Quick Actions</h3>
+    <div className="bg-white/[0.03] rounded-xl p-5">
+      <h3 className="text-[13px] font-medium text-zinc-300 mb-4">Quick Actions</h3>
       <div className="space-y-2">
         <ActionButton
           label="Take Snapshot"
@@ -433,14 +386,14 @@ function ActionButton({
     <button
       onClick={onClick}
       disabled={loading}
-      className="w-full p-2.5 bg-gray-800 hover:bg-gray-700 border border-gray-700 rounded text-left transition-colors disabled:opacity-50"
+      className="w-full p-3 bg-white/[0.03] hover:bg-white/[0.06] rounded-lg text-left transition-colors disabled:opacity-40"
     >
       <div className="flex items-center justify-between">
-        <span className="text-sm text-gray-200">{label}</span>
-        {loading && <span className="text-xs text-blue-400">Running...</span>}
-        {result && <span className={`text-xs ${result === 'Snapshot created' ? 'text-green-400' : 'text-red-400'}`}>{result}</span>}
+        <span className="text-[13px] text-zinc-200">{label}</span>
+        {loading && <span className="text-[11px] text-blue-400">Running...</span>}
+        {result && <span className={`text-[11px] ${result === 'Snapshot created' ? 'text-emerald-400' : 'text-red-400'}`}>{result}</span>}
       </div>
-      <p className="text-xs text-gray-500 mt-0.5">{description}</p>
+      <p className="text-[11px] text-zinc-500 mt-0.5">{description}</p>
     </button>
   );
 }

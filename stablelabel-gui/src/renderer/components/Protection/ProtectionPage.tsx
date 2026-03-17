@@ -23,13 +23,13 @@ export default function ProtectionPage() {
   return (
     <div className="flex h-full">
       {/* Left nav */}
-      <div className="w-56 flex-shrink-0 border-r border-gray-800 bg-gray-950 flex flex-col">
-        <div className="p-3 border-b border-gray-800">
-          <h2 className="text-sm font-semibold text-gray-300">AIP Protection</h2>
-          <p className="text-[10px] text-gray-500 mt-0.5">Azure Information Protection service management</p>
+      <div className="w-56 flex-shrink-0 border-r border-white/[0.06] bg-zinc-950 flex flex-col">
+        <div className="p-3 border-b border-white/[0.06]">
+          <h2 className="text-sm font-semibold text-zinc-300">AIP Protection</h2>
+          <p className="text-[10px] text-zinc-500 mt-0.5">Azure Information Protection service management</p>
         </div>
         {!isWindows && (
-          <div className="mx-2 mt-2 p-2.5 bg-amber-500/5 border border-amber-500/20 rounded text-[10px] text-amber-400">
+          <div className="mx-2 mt-2 p-2.5 bg-amber-500/5 border border-amber-500/20 rounded-lg text-[10px] text-amber-400">
             AIPService requires Windows with PowerShell 5.1. Some operations may not be available on this platform.
           </div>
         )}
@@ -38,15 +38,15 @@ export default function ProtectionPage() {
             <button
               key={s.id}
               onClick={() => setActive(s.id)}
-              className={`w-full text-left px-3 py-2.5 transition-colors ${active === s.id ? 'bg-gray-800 border-l-2 border-blue-400' : 'hover:bg-gray-800/50 border-l-2 border-transparent'}`}
+              className={`w-full text-left px-3 py-2.5 transition-colors ${active === s.id ? 'bg-white/[0.06] border-l-2 border-blue-400' : 'hover:bg-white/[0.04] border-l-2 border-transparent'}`}
             >
-              <div className="text-sm text-gray-200">{s.label}</div>
-              <div className="text-[10px] text-gray-500 mt-0.5">{s.description}</div>
+              <div className="text-sm text-zinc-200">{s.label}</div>
+              <div className="text-[10px] text-zinc-500 mt-0.5">{s.description}</div>
             </button>
           ))}
         </div>
-        <div className="p-3 border-t border-gray-800">
-          <div className="text-[10px] text-gray-600 space-y-1">
+        <div className="p-3 border-t border-white/[0.06]">
+          <div className="text-[10px] text-zinc-600 space-y-1">
             <p>Requires AIPService connection.</p>
             <p>Windows-only for some operations.</p>
           </div>

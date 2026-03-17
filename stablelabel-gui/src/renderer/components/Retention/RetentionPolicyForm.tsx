@@ -79,24 +79,24 @@ export default function RetentionPolicyForm({ existing, onSaved, onCancel, onDel
     <div className="p-6 max-w-3xl space-y-5">
       <div>
         <h2 className="text-xl font-bold text-white">{isNew ? 'New Retention Policy' : `Edit: ${existing!.Name}`}</h2>
-        <p className="text-sm text-gray-500 mt-1">{isNew ? 'Create a policy that applies retention settings to locations.' : 'Modify this retention policy.'}</p>
+        <p className="text-sm text-zinc-500 mt-1">{isNew ? 'Create a policy that applies retention settings to locations.' : 'Modify this retention policy.'}</p>
       </div>
 
-      {error && <div className="p-3 bg-red-900/20 border border-red-800 rounded text-sm text-red-300">{error}</div>}
+      {error && <div className="p-3 bg-red-900/20 border border-red-800 rounded-lg text-sm text-red-300">{error}</div>}
 
       <TextField label="Policy Name" value={name} onChange={setName} required disabled={!isNew} placeholder="e.g., Exchange 7-Year Retention" />
       <TextArea label="Comment" value={comment} onChange={setComment} placeholder="Describe the retention requirement..." />
       <ToggleField label="Enabled" checked={enabled} onChange={setEnabled} helpText="Disabled policies are not enforced." />
 
-      <div className="border-t border-gray-800 pt-4">
-        <h3 className="text-sm font-semibold text-gray-300 mb-3">Scope Locations</h3>
+      <div className="border-t border-white/[0.06] pt-4">
+        <h3 className="text-sm font-semibold text-zinc-300 mb-3">Scope Locations</h3>
         <div className="space-y-4">
           <TagInput label="Exchange" values={exchangeLocation} onChange={setExchangeLocation} placeholder="'All' or specific addresses..." disabled={!isNew} />
           <TagInput label="SharePoint" values={sharePointLocation} onChange={setSharePointLocation} placeholder="'All' or site URLs..." disabled={!isNew} />
           <TagInput label="OneDrive" values={oneDriveLocation} onChange={setOneDriveLocation} placeholder="'All' or site URLs..." disabled={!isNew} />
           <TagInput label="M365 Groups" values={modernGroupLocation} onChange={setModernGroupLocation} placeholder="'All' or group URLs..." disabled={!isNew} />
         </div>
-        {!isNew && <p className="text-xs text-gray-600 mt-2">Location scoping can only be set during creation. Use Add/Remove location parameters in PowerShell.</p>}
+        {!isNew && <p className="text-xs text-zinc-600 mt-2">Location scoping can only be set during creation. Use Add/Remove location parameters in PowerShell.</p>}
       </div>
 
       <FormActions onSave={handleSave} onCancel={onCancel} onDelete={existing ? () => setShowDelete(true) : undefined} saving={saving} saveLabel={isNew ? 'Create Policy' : 'Save Changes'} isNew={isNew} />

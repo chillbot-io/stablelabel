@@ -75,7 +75,7 @@ describe('SettingsPage', () => {
   it('Info log level is active by default', () => {
     render(<SettingsPage />);
     const infoBtn = screen.getByText('Info');
-    expect(infoBtn.className).toContain('bg-blue-600/20');
+    expect(infoBtn.className).toContain('bg-blue-500/[0.15]');
   });
 
   it('changes log level when clicking a different level', async () => {
@@ -83,9 +83,9 @@ describe('SettingsPage', () => {
     render(<SettingsPage />);
 
     await user.click(screen.getByText('Debug'));
-    expect(screen.getByText('Debug').className).toContain('bg-blue-600/20');
+    expect(screen.getByText('Debug').className).toContain('bg-blue-500/[0.15]');
     // Info should no longer be active
-    expect(screen.getByText('Info').className).not.toContain('bg-blue-600/20');
+    expect(screen.getByText('Info').className).not.toContain('bg-blue-500/[0.15]');
   });
 
   it('saves settings to localStorage', async () => {
@@ -126,7 +126,7 @@ describe('SettingsPage', () => {
 
     await waitFor(() => {
       // Debug should be the active log level
-      expect(screen.getByText('Debug').className).toContain('bg-blue-600/20');
+      expect(screen.getByText('Debug').className).toContain('bg-blue-500/[0.15]');
     });
   });
 

@@ -42,16 +42,16 @@ export default function AutoLabelList({ onOpenAutoLabel, onNewAutoLabel }: AutoL
   const { visible: paginated, hasMore, remaining, loadMore } = usePagination(filtered);
 
   const modeLabel = (mode: string | null) => {
-    if (!mode) return { text: 'Unknown', color: 'bg-gray-700 text-gray-400' };
+    if (!mode) return { text: 'Unknown', color: 'bg-white/[0.08] text-zinc-400' };
     switch (mode.toLowerCase()) {
       case 'enable':
-        return { text: 'Enforcing', color: 'bg-green-500/10 text-green-400' };
+        return { text: 'Enforcing', color: 'bg-emerald-400/10 text-emerald-400' };
       case 'testwithnotifications':
         return { text: 'Simulation + Notify', color: 'bg-yellow-500/10 text-yellow-400' };
       case 'testwithoutnotifications':
         return { text: 'Simulation', color: 'bg-blue-500/10 text-blue-400' };
       default:
-        return { text: mode, color: 'bg-gray-700 text-gray-400' };
+        return { text: mode, color: 'bg-white/[0.08] text-zinc-400' };
     }
   };
 
@@ -59,7 +59,7 @@ export default function AutoLabelList({ onOpenAutoLabel, onNewAutoLabel }: AutoL
     return (
       <div className="p-4 space-y-2">
         {[1, 2, 3].map((i) => (
-          <div key={i} className="h-12 bg-gray-800 rounded animate-pulse" />
+          <div key={i} className="h-12 bg-white/[0.06] rounded-lg animate-pulse" />
         ))}
       </div>
     );
@@ -78,23 +78,23 @@ export default function AutoLabelList({ onOpenAutoLabel, onNewAutoLabel }: AutoL
 
   return (
     <div className="flex flex-col h-full">
-      <div className="p-2 border-b border-gray-800">
+      <div className="p-2 border-b border-white/[0.06]">
         <input
           type="text"
           placeholder="Search auto-label policies..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          className="w-full px-2.5 py-1.5 text-xs bg-gray-800 border border-gray-700 rounded text-gray-200 placeholder-gray-500 focus:outline-none focus:border-teal-500"
+          className="w-full px-2.5 py-1.5 text-xs bg-white/[0.06] border border-white/[0.08] rounded-lg text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-teal-500"
         />
       </div>
 
-      <div className="px-3 py-1.5 text-xs text-gray-500 border-b border-gray-800/50">
+      <div className="px-3 py-1.5 text-xs text-zinc-500 border-b border-white/[0.04]">
         {policies.length} auto-label {policies.length === 1 ? 'policy' : 'policies'}
       </div>
 
       <div className="flex-1 overflow-y-auto py-1">
         {paginated.length === 0 ? (
-          <p className="p-4 text-xs text-gray-600">No auto-label policies found.</p>
+          <p className="p-4 text-xs text-zinc-600">No auto-label policies found.</p>
         ) : (
           <>
           {paginated.map((policy) => {
@@ -103,13 +103,13 @@ export default function AutoLabelList({ onOpenAutoLabel, onNewAutoLabel }: AutoL
               <button
                 key={policy.Guid ?? policy.Name}
                 onClick={() => onOpenAutoLabel(policy.Name)}
-                className="w-full text-left px-3 py-2 hover:bg-gray-800 transition-colors group"
+                className="w-full text-left px-3 py-2 hover:bg-white/[0.06] transition-colors group"
               >
                 <div className="flex items-center justify-between">
-                  <span className="text-sm text-gray-200 group-hover:text-white truncate">
+                  <span className="text-sm text-zinc-200 group-hover:text-white truncate">
                     {policy.Name}
                   </span>
-                  <span className={`text-[10px] px-1.5 py-0.5 rounded ${mode.color}`}>
+                  <span className={`text-[10px] px-1.5 py-0.5 rounded-lg ${mode.color}`}>
                     {mode.text}
                   </span>
                 </div>
@@ -120,7 +120,7 @@ export default function AutoLabelList({ onOpenAutoLabel, onNewAutoLabel }: AutoL
                     </span>
                   )}
                   {policy.Priority != null && (
-                    <span className="text-[10px] text-gray-600">
+                    <span className="text-[10px] text-zinc-600">
                       Priority {policy.Priority}
                     </span>
                   )}
@@ -129,7 +129,7 @@ export default function AutoLabelList({ onOpenAutoLabel, onNewAutoLabel }: AutoL
             );
           })}
           {hasMore && (
-            <button onClick={loadMore} className="w-full py-2 text-xs text-blue-400 hover:text-blue-300 hover:bg-gray-800/50 transition-colors">
+            <button onClick={loadMore} className="w-full py-2 text-xs text-blue-400 hover:text-blue-300 hover:bg-white/[0.04] transition-colors">
               Show {remaining} more...
             </button>
           )}
@@ -137,16 +137,16 @@ export default function AutoLabelList({ onOpenAutoLabel, onNewAutoLabel }: AutoL
         )}
       </div>
 
-      <div className="p-2 border-t border-gray-800 space-y-1.5">
+      <div className="p-2 border-t border-white/[0.06] space-y-1.5">
         <button
           onClick={onNewAutoLabel}
-          className="w-full py-1.5 text-xs text-teal-300 hover:text-teal-200 bg-teal-500/10 hover:bg-teal-500/20 border border-teal-500/20 rounded transition-colors"
+          className="w-full py-1.5 text-xs text-teal-300 hover:text-teal-200 bg-teal-500/10 hover:bg-teal-500/20 border border-teal-500/20 rounded-lg transition-colors"
         >
           + New Auto-Label Policy
         </button>
         <button
           onClick={fetchPolicies}
-          className="w-full py-1.5 text-xs text-gray-400 hover:text-gray-200 bg-gray-800 hover:bg-gray-700 rounded transition-colors"
+          className="w-full py-1.5 text-xs text-zinc-400 hover:text-zinc-200 bg-white/[0.06] hover:bg-white/[0.08] rounded-lg transition-colors"
         >
           Refresh
         </button>

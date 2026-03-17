@@ -27,21 +27,21 @@ export default function PolicyHealth() {
   return (
     <div className="space-y-4">
       <div>
-        <h3 className="text-sm font-semibold text-gray-300 mb-1">Policy Health</h3>
-        <p className="text-xs text-gray-500">Health status of label, DLP, and retention policies.</p>
+        <h3 className="text-sm font-semibold text-zinc-300 mb-1">Policy Health</h3>
+        <p className="text-xs text-zinc-500">Health status of label, DLP, and retention policies.</p>
       </div>
 
       <div className="flex items-end gap-3">
         <div>
-          <label className="block text-xs text-gray-400 mb-1">Policy Type</label>
-          <select value={policyType} onChange={e => setPolicyType(e.target.value)} className="px-2.5 py-1.5 text-xs bg-gray-800 border border-gray-700 rounded text-gray-200 focus:outline-none focus:border-blue-500">
+          <label className="block text-xs text-zinc-400 mb-1">Policy Type</label>
+          <select value={policyType} onChange={e => setPolicyType(e.target.value)} className="px-2.5 py-1.5 text-xs bg-white/[0.06] border border-white/[0.08] rounded-lg text-zinc-200 focus:outline-none focus:border-blue-500">
             <option value="All">All</option>
             <option value="Label">Label</option>
             <option value="DLP">DLP</option>
             <option value="Retention">Retention</option>
           </select>
         </div>
-        <button onClick={handleRun} disabled={loading} className="px-4 py-1.5 text-xs font-medium text-white bg-blue-600 hover:bg-blue-500 disabled:bg-blue-600/50 rounded transition-colors">
+        <button onClick={handleRun} disabled={loading} className="px-4 py-1.5 text-xs font-medium text-white bg-blue-600 hover:bg-blue-500 disabled:bg-blue-600/50 rounded-lg transition-colors">
           {loading ? 'Checking...' : 'Check Health'}
         </button>
         {results && results.length > 0 && (
@@ -54,22 +54,22 @@ export default function PolicyHealth() {
         )}
       </div>
 
-      {error && <div className="p-3 bg-red-900/20 border border-red-800 rounded text-sm text-red-300">{error}</div>}
+      {error && <div className="p-3 bg-red-900/20 border border-red-800 rounded-lg text-sm text-red-300">{error}</div>}
 
       {results && (
         <div className="space-y-3">
           {/* Summary */}
           <div className="grid grid-cols-3 gap-2">
-            <div className="bg-green-500/5 border border-green-500/20 rounded p-2.5 text-center">
-              <dt className="text-[10px] text-gray-500">Healthy</dt>
-              <dd className="text-lg font-bold text-green-400">{healthy}</dd>
+            <div className="bg-emerald-400/5 border border-green-500/20 rounded-lg p-2.5 text-center">
+              <dt className="text-[10px] text-zinc-500">Healthy</dt>
+              <dd className="text-lg font-bold text-emerald-400">{healthy}</dd>
             </div>
-            <div className="bg-yellow-500/5 border border-yellow-500/20 rounded p-2.5 text-center">
-              <dt className="text-[10px] text-gray-500">Warning</dt>
+            <div className="bg-yellow-500/5 border border-yellow-500/20 rounded-lg p-2.5 text-center">
+              <dt className="text-[10px] text-zinc-500">Warning</dt>
               <dd className="text-lg font-bold text-yellow-400">{warning}</dd>
             </div>
-            <div className="bg-red-500/5 border border-red-500/20 rounded p-2.5 text-center">
-              <dt className="text-[10px] text-gray-500">Error</dt>
+            <div className="bg-red-500/5 border border-red-500/20 rounded-lg p-2.5 text-center">
+              <dt className="text-[10px] text-zinc-500">Error</dt>
               <dd className="text-lg font-bold text-red-400">{errCount}</dd>
             </div>
           </div>
@@ -77,13 +77,13 @@ export default function PolicyHealth() {
           {/* Per-policy */}
           <div className="space-y-1.5">
             {results.map((policy, i) => (
-              <div key={i} className="flex items-center justify-between px-3 py-2.5 bg-gray-900 border border-gray-800 rounded">
+              <div key={i} className="flex items-center justify-between px-3 py-2.5 bg-white/[0.03] rounded-lg">
                 <div>
                   <div className="flex items-center gap-2">
-                    <span className="text-sm text-gray-200">{policy.Name}</span>
-                    <span className="text-[10px] px-1 py-0.5 bg-gray-700 text-gray-400 rounded">{policy.Type}</span>
+                    <span className="text-sm text-zinc-200">{policy.Name}</span>
+                    <span className="text-[10px] px-1 py-0.5 bg-white/[0.08] text-zinc-400 rounded-lg">{policy.Type}</span>
                   </div>
-                  <div className="flex items-center gap-3 mt-0.5 text-[10px] text-gray-500">
+                  <div className="flex items-center gap-3 mt-0.5 text-[10px] text-zinc-500">
                     <span>Mode: {policy.Mode}</span>
                     <span>Rules: {policy.HasRules ? 'Yes' : 'No'}</span>
                     <span>Dist: {policy.DistributionStatus}</span>
@@ -101,8 +101,8 @@ export default function PolicyHealth() {
 }
 
 function StatusBadge({ status }: { status: string }) {
-  const cls = status === 'Healthy' ? 'bg-green-500/10 text-green-400'
+  const cls = status === 'Healthy' ? 'bg-emerald-400/10 text-emerald-400'
     : status === 'Error' ? 'bg-red-500/10 text-red-400'
     : 'bg-yellow-500/10 text-yellow-400';
-  return <span className={`text-[10px] px-1.5 py-0.5 rounded ${cls}`}>{status}</span>;
+  return <span className={`text-[10px] px-1.5 py-0.5 rounded-lg ${cls}`}>{status}</span>;
 }

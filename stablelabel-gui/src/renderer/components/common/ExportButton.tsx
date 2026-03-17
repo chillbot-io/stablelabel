@@ -46,7 +46,7 @@ export default function ExportButton({ data, filename, csvHeaders, csvRowMapper,
         <select
           value={format}
           onChange={(e) => setFormat(e.target.value as Format)}
-          className="px-1.5 py-1 text-[10px] bg-gray-800 border border-gray-700 rounded text-gray-300 focus:outline-none"
+          className="px-1.5 py-1 text-[10px] bg-white/[0.05] border border-white/[0.08] rounded-md text-zinc-300 focus:outline-none"
         >
           <option value="json">JSON</option>
           <option value="csv">CSV</option>
@@ -54,7 +54,7 @@ export default function ExportButton({ data, filename, csvHeaders, csvRowMapper,
       )}
       <button
         onClick={handleExport}
-        className="px-2.5 py-1 text-[10px] text-gray-400 hover:text-gray-200 bg-gray-800 hover:bg-gray-700 border border-gray-700 rounded transition-colors"
+        className="px-2.5 py-1 text-[10px] text-zinc-400 hover:text-zinc-200 bg-white/[0.04] hover:bg-white/[0.08] rounded-md transition-colors"
       >
         {label}
       </button>

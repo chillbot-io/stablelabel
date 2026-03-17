@@ -348,7 +348,7 @@ describe('ProtectionConfigPanel', () => {
     });
     // Enabled state should have green text
     const enabledValues = screen.getAllByText('Enabled');
-    const greenEnabled = enabledValues.find(el => el.className.includes('text-green-400'));
+    const greenEnabled = enabledValues.find(el => el.className.includes('text-emerald-400'));
     expect(greenEnabled).toBeTruthy();
   });
 

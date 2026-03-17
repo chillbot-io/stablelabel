@@ -37,14 +37,13 @@ describe('TabBar', () => {
   it('highlights the active tab', () => {
     render(<TabBar {...defaultProps} />);
     const activeTab = screen.getByText('Confidential').closest('div');
-    expect(activeTab?.className).toContain('bg-gray-900');
-    expect(activeTab?.className).toContain('border-gray-700');
+    expect(activeTab?.className).toContain('bg-white/[0.04]');
   });
 
   it('applies inactive styling to non-active tabs', () => {
     render(<TabBar {...defaultProps} />);
     const inactiveTab = screen.getByText('DLP Policy A').closest('div');
-    expect(inactiveTab?.className).toContain('border-transparent');
+    expect(inactiveTab?.className).not.toContain('bg-white/[0.04]');
   });
 
   it('shows dirty indicator for dirty tabs', () => {
@@ -88,18 +87,18 @@ describe('TabBar', () => {
 
   it('renders color dot for each tab kind', () => {
     const { container } = render(<TabBar {...defaultProps} />);
-    const blueDots = container.querySelectorAll('.bg-blue-500');
-    const purpleDots = container.querySelectorAll('.bg-purple-500');
-    const tealDots = container.querySelectorAll('.bg-teal-500');
+    const blueDots = container.querySelectorAll('.bg-blue-400');
+    const violetDots = container.querySelectorAll('.bg-violet-400');
+    const tealDots = container.querySelectorAll('.bg-teal-400');
     expect(blueDots.length).toBe(1); // label
-    expect(purpleDots.length).toBe(1); // policy
+    expect(violetDots.length).toBe(1); // policy
     expect(tealDots.length).toBe(1); // autolabel
   });
 
   it('renders gray dot for unknown kind', () => {
     const tabs: Tab[] = [{ id: 'unknown', label: 'Unknown', kind: 'unknown' }];
     const { container } = render(<TabBar {...defaultProps} tabs={tabs} />);
-    const grayDots = container.querySelectorAll('.bg-gray-500');
+    const grayDots = container.querySelectorAll('.bg-zinc-500');
     expect(grayDots.length).toBe(1);
   });
 
@@ -114,19 +113,19 @@ describe('TabBar', () => {
       { id: '7', label: 'SIT', kind: 'sit' },
     ];
     const { container } = render(<TabBar {...defaultProps} tabs={allKinds} />);
-    expect(container.querySelectorAll('.bg-blue-500').length).toBe(1);
-    expect(container.querySelectorAll('.bg-purple-500').length).toBe(1);
-    expect(container.querySelectorAll('.bg-teal-500').length).toBe(1);
-    expect(container.querySelectorAll('.bg-amber-500').length).toBe(1);
-    expect(container.querySelectorAll('.bg-red-500').length).toBe(1);
-    expect(container.querySelectorAll('.bg-orange-500').length).toBe(1);
-    expect(container.querySelectorAll('.bg-yellow-500').length).toBe(1);
+    expect(container.querySelectorAll('.bg-blue-400').length).toBe(1);
+    expect(container.querySelectorAll('.bg-violet-400').length).toBe(1);
+    expect(container.querySelectorAll('.bg-teal-400').length).toBe(1);
+    expect(container.querySelectorAll('.bg-amber-400').length).toBe(1);
+    expect(container.querySelectorAll('.bg-red-400').length).toBe(1);
+    expect(container.querySelectorAll('.bg-orange-400').length).toBe(1);
+    expect(container.querySelectorAll('.bg-yellow-400').length).toBe(1);
   });
 
   it('handles null activeTabId', () => {
     render(<TabBar {...defaultProps} activeTabId={null} />);
     // All tabs should be inactive
     const tab1 = screen.getByText('Confidential').closest('div');
-    expect(tab1?.className).toContain('border-transparent');
+    expect(tab1?.className).not.toContain('bg-white/[0.04]');
   });
 });

@@ -87,22 +87,22 @@ export default function RetentionLabelForm({ existing, onSaved, onCancel, onDele
     <div className="p-6 max-w-3xl space-y-5">
       <div>
         <h2 className="text-xl font-bold text-white">{isNew ? 'New Retention Label' : `Edit: ${existing!.Name}`}</h2>
-        <p className="text-sm text-gray-500 mt-1">{isNew ? 'Define how long content should be retained and what happens after.' : 'Modify this retention label.'}</p>
+        <p className="text-sm text-zinc-500 mt-1">{isNew ? 'Define how long content should be retained and what happens after.' : 'Modify this retention label.'}</p>
       </div>
 
-      {error && <div className="p-3 bg-red-900/20 border border-red-800 rounded text-sm text-red-300">{error}</div>}
+      {error && <div className="p-3 bg-red-900/20 border border-red-800 rounded-lg text-sm text-red-300">{error}</div>}
 
       <TextField label="Label Name" value={name} onChange={setName} required disabled={!isNew} placeholder="e.g., Financial Records - 7 Year" />
       <TextArea label="Comment" value={comment} onChange={setComment} placeholder="Describe the retention requirement..." />
 
-      <div className="border-t border-gray-800 pt-4">
-        <h3 className="text-sm font-semibold text-gray-300 mb-3">Retention Settings</h3>
+      <div className="border-t border-white/[0.06] pt-4">
+        <h3 className="text-sm font-semibold text-zinc-300 mb-3">Retention Settings</h3>
         <div className="grid grid-cols-3 gap-4">
           <NumberField label="Duration (days)" value={retentionDuration} onChange={setRetentionDuration} min={0} placeholder="e.g., 2555" helpText="Leave empty for unlimited" disabled={!isNew} />
           <SelectField label="Action" value={retentionAction} onChange={setRetentionAction} options={actionOptions} helpText="What happens when the period expires" disabled={!isNew} />
           <SelectField label="Based On" value={retentionType} onChange={setRetentionType} options={typeOptions} helpText="When the retention period starts" disabled={!isNew} />
         </div>
-        {!isNew && <p className="text-xs text-gray-600 mt-2">Retention duration, action, and type cannot be changed after creation. Create a new label instead.</p>}
+        {!isNew && <p className="text-xs text-zinc-600 mt-2">Retention duration, action, and type cannot be changed after creation. Create a new label instead.</p>}
       </div>
 
       <FormActions onSave={handleSave} onCancel={onCancel} onDelete={existing ? () => setShowDelete(true) : undefined} saving={saving} saveLabel={isNew ? 'Create Label' : 'Save Changes'} isNew={isNew} />
