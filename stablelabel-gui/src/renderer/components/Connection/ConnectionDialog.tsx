@@ -1,7 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { usePowerShell } from '../../hooks/usePowerShell';
 
 type ConnectStage = 'idle' | 'connecting' | 'done' | 'error';
+
+const LAST_CONNECTION_KEY = 'stablelabel-last-connection';
 
 interface StepInfo {
   Step: string;
@@ -22,9 +24,30 @@ interface ConnectAllResult {
   Steps?: StepInfo[];
 }
 
+interface LastConnection {
+  upn: string;
+  tenantId: string;
+  connectedAt: string;
+}
+
 interface ConnectionDialogProps {
   onClose: () => void;
   onConnected?: () => void;
+}
+
+function loadLastConnection(): LastConnection | null {
+  try {
+    const raw = localStorage.getItem(LAST_CONNECTION_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw) as LastConnection;
+  } catch {
+    return null;
+  }
+}
+
+function saveLastConnection(upn: string, tenantId: string): void {
+  const entry: LastConnection = { upn, tenantId, connectedAt: new Date().toISOString() };
+  localStorage.setItem(LAST_CONNECTION_KEY, JSON.stringify(entry));
 }
 
 export default function ConnectionDialog({ onClose, onConnected }: ConnectionDialogProps) {
@@ -33,23 +56,18 @@ export default function ConnectionDialog({ onClose, onConnected }: ConnectionDia
   const [steps, setSteps] = useState<StepInfo[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [upn, setUpn] = useState<string | null>(null);
-  const [tenantId, setTenantId] = useState('');
+  const [lastConnection, setLastConnection] = useState<LastConnection | null>(null);
+
+  useEffect(() => {
+    setLastConnection(loadLastConnection());
+  }, []);
 
   const handleConnect = async () => {
     setStage('connecting');
     setError(null);
     setSteps([]);
 
-    // Build command with parameters
-    const parts = ['Connect-SLAll'];
-    const trimmedTenant = tenantId.trim();
-    if (trimmedTenant) {
-      parts.push(`-TenantId '${trimmedTenant}'`);
-    }
-    parts.push('-UseDeviceCode');
-    const command = parts.join(' ');
-
-    const result = await invoke<ConnectAllResult>(command);
+    const result = await invoke<ConnectAllResult>('Connect-SLAll');
 
     if (!result.success) {
       setStage('error');
@@ -71,11 +89,17 @@ export default function ConnectionDialog({ onClose, onConnected }: ConnectionDia
     if (data.Status === 'Connected') {
       setUpn(data.UserPrincipalName || null);
       setStage('done');
+      if (data.UserPrincipalName && data.TenantId) {
+        saveLastConnection(data.UserPrincipalName, data.TenantId);
+      }
       onConnected?.();
     } else if (data.Status === 'PartiallyConnected') {
       setUpn(data.UserPrincipalName || null);
       setStage('done');
       setError(data.Error || null);
+      if (data.UserPrincipalName && data.TenantId) {
+        saveLastConnection(data.UserPrincipalName, data.TenantId);
+      }
       onConnected?.();
     } else {
       setStage('error');
@@ -90,33 +114,24 @@ export default function ConnectionDialog({ onClose, onConnected }: ConnectionDia
       <div className="bg-gray-900 border border-gray-700 rounded-lg p-6 w-[440px]">
         <h2 className="text-lg font-bold text-white mb-1">Connect to StableLabel</h2>
         <p className="text-sm text-gray-500 mb-5">
-          Installs prerequisites, then connects to Microsoft Graph and Security &amp; Compliance.
-          Sign in via the device-code flow when prompted.
+          Sign in with your Microsoft account. Prerequisites are installed automatically
+          and all services are connected in the background.
         </p>
 
         {stage === 'idle' && (
           <div className="space-y-4">
-            <div>
-              <label htmlFor="sl-tenant-id" className="block text-xs font-medium text-gray-400 mb-1.5">
-                Tenant ID <span className="text-gray-600">(optional)</span>
-              </label>
-              <input
-                id="sl-tenant-id"
-                type="text"
-                value={tenantId}
-                onChange={(e) => setTenantId(e.target.value)}
-                placeholder="e.g. contoso.onmicrosoft.com"
-                className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-sm text-gray-200 placeholder-gray-600 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
-              />
-              <p className="text-xs text-gray-600 mt-1">
-                Leave blank to use your default tenant.
-              </p>
-            </div>
+            {lastConnection && (
+              <div className="p-2.5 bg-gray-800/50 border border-gray-700/50 rounded-lg">
+                <p className="text-xs text-gray-500">Last session</p>
+                <p className="text-sm text-gray-300">{lastConnection.upn}</p>
+                <p className="text-xs text-gray-600 font-mono">{lastConnection.tenantId}</p>
+              </div>
+            )}
             <button
               onClick={handleConnect}
               className="w-full py-3 bg-blue-600 hover:bg-blue-500 text-white font-medium rounded-lg transition-colors"
             >
-              Connect
+              Sign in with Microsoft
             </button>
           </div>
         )}
@@ -128,7 +143,7 @@ export default function ConnectionDialog({ onClose, onConnected }: ConnectionDia
               <span className="text-sm text-blue-300">Connecting...</span>
             </div>
             <p className="text-xs text-gray-500">
-              A device-code prompt may appear in the background. Complete authentication in your browser to continue.
+              A Microsoft sign-in window will appear. Complete authentication there to continue.
             </p>
           </div>
         )}

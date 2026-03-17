@@ -10,23 +10,18 @@ describe('ConnectionDialog', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    localStorage.clear();
   });
 
-  it('renders the title and connect button', () => {
+  it('renders the title and sign-in button', () => {
     render(<ConnectionDialog onClose={onClose} />);
     expect(screen.getByText('Connect to StableLabel')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Connect' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Sign in with Microsoft' })).toBeInTheDocument();
   });
 
   it('renders description text', () => {
     render(<ConnectionDialog onClose={onClose} />);
-    expect(screen.getByText(/Installs prerequisites/)).toBeInTheDocument();
-  });
-
-  it('renders the Tenant ID input field', () => {
-    render(<ConnectionDialog onClose={onClose} />);
-    expect(screen.getByLabelText(/Tenant ID/)).toBeInTheDocument();
-    expect(screen.getByPlaceholderText(/contoso.onmicrosoft.com/)).toBeInTheDocument();
+    expect(screen.getByText(/Sign in with your Microsoft account/)).toBeInTheDocument();
   });
 
   it('calls onClose when Cancel button is clicked', async () => {
@@ -37,7 +32,7 @@ describe('ConnectionDialog', () => {
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
-  it('invokes Connect-SLAll with -UseDeviceCode when connect button is clicked', async () => {
+  it('invokes Connect-SLAll when sign-in button is clicked', async () => {
     mockInvoke.mockResolvedValue({
       success: true,
       data: {
@@ -51,31 +46,9 @@ describe('ConnectionDialog', () => {
 
     render(<ConnectionDialog onClose={onClose} onConnected={onConnected} />);
 
-    await user.click(screen.getByRole('button', { name: 'Connect' }));
+    await user.click(screen.getByRole('button', { name: 'Sign in with Microsoft' }));
 
-    expect(mockInvoke).toHaveBeenCalledWith('Connect-SLAll -UseDeviceCode');
-  });
-
-  it('passes TenantId when provided', async () => {
-    mockInvoke.mockResolvedValue({
-      success: true,
-      data: {
-        Status: 'Connected',
-        UserPrincipalName: 'admin@contoso.com',
-        TenantId: 'abc123',
-        Steps: [],
-      },
-    });
-    const user = userEvent.setup();
-
-    render(<ConnectionDialog onClose={onClose} onConnected={onConnected} />);
-
-    await user.type(screen.getByLabelText(/Tenant ID/), 'contoso.onmicrosoft.com');
-    await user.click(screen.getByRole('button', { name: 'Connect' }));
-
-    expect(mockInvoke).toHaveBeenCalledWith(
-      "Connect-SLAll -TenantId 'contoso.onmicrosoft.com' -UseDeviceCode"
-    );
+    expect(mockInvoke).toHaveBeenCalledWith('Connect-SLAll');
   });
 
   it('shows connected state on success', async () => {
@@ -96,13 +69,53 @@ describe('ConnectionDialog', () => {
 
     render(<ConnectionDialog onClose={onClose} onConnected={onConnected} />);
 
-    await user.click(screen.getByRole('button', { name: 'Connect' }));
+    await user.click(screen.getByRole('button', { name: 'Sign in with Microsoft' }));
 
     await waitFor(() => {
       expect(screen.getByText('Connected successfully')).toBeInTheDocument();
     });
     expect(screen.getByText(/Signed in as/)).toBeInTheDocument();
     expect(onConnected).toHaveBeenCalled();
+  });
+
+  it('saves connection info to localStorage on success', async () => {
+    mockInvoke.mockResolvedValue({
+      success: true,
+      data: {
+        Status: 'Connected',
+        UserPrincipalName: 'admin@contoso.com',
+        TenantId: 'tenant-abc',
+        Steps: [],
+      },
+    });
+    const user = userEvent.setup();
+
+    render(<ConnectionDialog onClose={onClose} onConnected={onConnected} />);
+
+    await user.click(screen.getByRole('button', { name: 'Sign in with Microsoft' }));
+
+    await waitFor(() => {
+      expect(screen.getByText('Connected successfully')).toBeInTheDocument();
+    });
+
+    const saved = JSON.parse(localStorage.getItem('stablelabel-last-connection')!);
+    expect(saved.upn).toBe('admin@contoso.com');
+    expect(saved.tenantId).toBe('tenant-abc');
+    expect(saved.connectedAt).toBeDefined();
+  });
+
+  it('displays last session info when available', () => {
+    localStorage.setItem('stablelabel-last-connection', JSON.stringify({
+      upn: 'user@contoso.com',
+      tenantId: 'abc-123-def',
+      connectedAt: '2026-01-01T00:00:00.000Z',
+    }));
+
+    render(<ConnectionDialog onClose={onClose} />);
+
+    expect(screen.getByText('Last session')).toBeInTheDocument();
+    expect(screen.getByText('user@contoso.com')).toBeInTheDocument();
+    expect(screen.getByText('abc-123-def')).toBeInTheDocument();
   });
 
   it('displays error when connection fails', async () => {
@@ -119,14 +132,14 @@ describe('ConnectionDialog', () => {
 
     render(<ConnectionDialog onClose={onClose} />);
 
-    await user.click(screen.getByRole('button', { name: 'Connect' }));
+    await user.click(screen.getByRole('button', { name: 'Sign in with Microsoft' }));
 
     await waitFor(() => {
       expect(screen.getByText('Auth failed')).toBeInTheDocument();
     });
   });
 
-  it('shows Try Again button after failure and returns to idle form', async () => {
+  it('shows Try Again button after failure and returns to idle', async () => {
     mockInvoke.mockResolvedValue({
       success: true,
       data: { Status: 'Failed', Stage: 'Graph', Error: 'Timeout', Steps: [] },
@@ -135,16 +148,14 @@ describe('ConnectionDialog', () => {
 
     render(<ConnectionDialog onClose={onClose} />);
 
-    await user.click(screen.getByRole('button', { name: 'Connect' }));
+    await user.click(screen.getByRole('button', { name: 'Sign in with Microsoft' }));
 
     await waitFor(() => {
       expect(screen.getByText('Try Again')).toBeInTheDocument();
     });
 
-    // Clicking Try Again returns to the idle form with inputs
     await user.click(screen.getByText('Try Again'));
-    expect(screen.getByLabelText(/Tenant ID/)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Connect' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Sign in with Microsoft' })).toBeInTheDocument();
   });
 
   it('shows connecting text while in progress', async () => {
@@ -156,11 +167,10 @@ describe('ConnectionDialog', () => {
 
     render(<ConnectionDialog onClose={onClose} />);
 
-    await user.click(screen.getByRole('button', { name: 'Connect' }));
+    await user.click(screen.getByRole('button', { name: 'Sign in with Microsoft' }));
 
     expect(screen.getByText('Connecting...')).toBeInTheDocument();
 
-    // Resolve the promise to clean up
     resolveInvoke!({
       success: true,
       data: { Status: 'Connected', Steps: [] },
@@ -185,7 +195,7 @@ describe('ConnectionDialog', () => {
 
     render(<ConnectionDialog onClose={onClose} />);
 
-    await user.click(screen.getByRole('button', { name: 'Connect' }));
+    await user.click(screen.getByRole('button', { name: 'Sign in with Microsoft' }));
 
     await waitFor(() => {
       expect(screen.getByText(/Microsoft.Graph.Authentication v2.15.0/)).toBeInTheDocument();
