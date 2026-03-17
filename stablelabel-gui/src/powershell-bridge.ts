@@ -7,6 +7,12 @@ interface PsResult {
   error?: string;
 }
 
+/** Strip ANSI escape sequences (colors, cursor moves, etc.) from a string. */
+function stripAnsi(text: string): string {
+  // eslint-disable-next-line no-control-regex
+  return text.replace(/\x1b\[[0-9;]*[A-Za-z]/g, '');
+}
+
 /**
  * Manages a persistent PowerShell 7 process for communicating with the StableLabel module.
  * Commands are sent via stdin, JSON responses read from stdout.
@@ -172,7 +178,7 @@ export class PowerShellBridge {
 
       // If stdout is empty but stderr has content, the command likely errored
       if (!output && this.stderrBuffer.trim()) {
-        return { success: false, data: null, error: this.stderrBuffer.trim() };
+        return { success: false, data: null, error: stripAnsi(this.stderrBuffer.trim()) };
       }
 
       try {
@@ -184,7 +190,7 @@ export class PowerShellBridge {
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      return { success: false, data: null, error: message };
+      return { success: false, data: null, error: stripAnsi(message) };
     }
   }
 
