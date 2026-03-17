@@ -113,13 +113,53 @@ export default function ConnectionDialog({ onClose, onConnected }: ConnectionDia
     <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
       <div className="bg-gray-900 border border-gray-700 rounded-lg p-6 w-[440px]">
         <h2 className="text-lg font-bold text-white mb-1">Connect to StableLabel</h2>
-        <p className="text-sm text-gray-500 mb-5">
-          Sign in with your Microsoft account. Prerequisites are installed automatically
-          and all services are connected in the background.
+        <p className="text-sm text-gray-500 mb-4">
+          Sign in with your Microsoft account. PowerShell modules are installed
+          automatically and all services connect in the background.
         </p>
 
+        {/* Requirements banner — always visible in idle state */}
         {stage === 'idle' && (
           <div className="space-y-4">
+            <div className="p-3 bg-gray-800/60 border border-gray-700/50 rounded-lg space-y-2">
+              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Before you connect</p>
+              <ul className="text-xs text-gray-400 space-y-1.5 list-none">
+                <li className="flex items-start gap-2">
+                  <span className="text-gray-500 mt-px shrink-0">1.</span>
+                  <span>
+                    <span className="text-gray-300">PowerShell 7+</span> must be installed on this machine.{' '}
+                    <a
+                      href="https://learn.microsoft.com/powershell/scripting/install/installing-powershell"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-blue-400 hover:text-blue-300 underline"
+                    >
+                      Install guide
+                    </a>
+                  </span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <span className="text-gray-500 mt-px shrink-0">2.</span>
+                  <span>
+                    The signing-in account needs{' '}
+                    <span className="text-gray-300">Global Administrator</span> (or Global Reader){' '}
+                    for Microsoft Graph access.
+                  </span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <span className="text-gray-500 mt-px shrink-0">3.</span>
+                  <span>
+                    The account also needs{' '}
+                    <span className="text-gray-300">Compliance Administrator</span> for Security
+                    &amp; Compliance Center access (labels, DLP, retention).
+                  </span>
+                </li>
+              </ul>
+              <p className="text-[11px] text-gray-600 pt-1 border-t border-gray-700/50">
+                PowerShell modules (Microsoft.Graph, ExchangeOnlineManagement) are installed automatically if missing.
+              </p>
+            </div>
+
             {lastConnection && (
               <div className="p-2.5 bg-gray-800/50 border border-gray-700/50 rounded-lg">
                 <p className="text-xs text-gray-500">Last session</p>
@@ -127,6 +167,7 @@ export default function ConnectionDialog({ onClose, onConnected }: ConnectionDia
                 <p className="text-xs text-gray-600 font-mono">{lastConnection.tenantId}</p>
               </div>
             )}
+
             <button
               onClick={handleConnect}
               className="w-full py-3 bg-blue-600 hover:bg-blue-500 text-white font-medium rounded-lg transition-colors"

@@ -239,7 +239,7 @@ function WelcomeCard({ onConnect }: { onConnect: () => void }) {
         Connect to StableLabel
       </button>
       <p className="text-xs text-gray-600 mt-4">
-        Installs prerequisites automatically and prompts you to sign in with Microsoft.
+        Requires PowerShell 7+, Global Administrator, and Compliance Administrator roles.
       </p>
     </div>
   );

@@ -24,6 +24,14 @@ describe('ConnectionDialog', () => {
     expect(screen.getByText(/Sign in with your Microsoft account/)).toBeInTheDocument();
   });
 
+  it('displays role and prerequisite requirements', () => {
+    render(<ConnectionDialog onClose={onClose} />);
+    expect(screen.getByText('Before you connect')).toBeInTheDocument();
+    expect(screen.getByText(/PowerShell 7\+/)).toBeInTheDocument();
+    expect(screen.getByText(/Global Administrator/)).toBeInTheDocument();
+    expect(screen.getByText(/Compliance Administrator/)).toBeInTheDocument();
+  });
+
   it('calls onClose when Cancel button is clicked', async () => {
     const user = userEvent.setup();
     render(<ConnectionDialog onClose={onClose} />);
