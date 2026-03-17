@@ -176,17 +176,31 @@ export class PowerShellBridge {
       const psCommand = command.includes('-AsJson') ? command : `${command} -AsJson`;
       const output = await this.sendRaw(psCommand);
 
+      // Strip ANSI escape codes from output (PowerShell may emit colored warnings)
+      const cleanOutput = stripAnsi(output);
+
       // If stdout is empty but stderr has content, the command likely errored
-      if (!output && this.stderrBuffer.trim()) {
+      if (!cleanOutput && this.stderrBuffer.trim()) {
         return { success: false, data: null, error: stripAnsi(this.stderrBuffer.trim()) };
       }
 
       try {
-        const data = JSON.parse(output);
+        const data = JSON.parse(cleanOutput);
         return { success: true, data };
       } catch {
+        // PowerShell may emit warnings before JSON — try to extract JSON object/array
+        const jsonStart = cleanOutput.search(/[{\[]/);
+        if (jsonStart > 0) {
+          const jsonCandidate = cleanOutput.slice(jsonStart);
+          try {
+            const data = JSON.parse(jsonCandidate);
+            return { success: true, data };
+          } catch {
+            // fall through
+          }
+        }
         // If not valid JSON, return as string
-        return { success: true, data: output || null };
+        return { success: true, data: cleanOutput || null };
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);

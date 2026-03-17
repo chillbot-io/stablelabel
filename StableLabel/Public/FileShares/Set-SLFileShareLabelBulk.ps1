@@ -125,7 +125,7 @@ function Set-SLFileShareLabelBulk {
             $percentComplete = [math]::Floor(($i / $totalFiles) * 100)
 
             Write-Progress -Activity 'Assigning sensitivity labels to file share' `
-                -Status "Processing file $($i + 1) of $totalFiles: $($file.Name)" `
+                -Status "Processing file $($i + 1) of ${totalFiles}: $($file.Name)" `
                 -PercentComplete $percentComplete
 
             try {
