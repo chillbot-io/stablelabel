@@ -35,7 +35,7 @@ export default function SnapshotDetail({ snapshotName, onDeleted, onCompare }: P
   const handleDelete = async () => {
     setDeleting(true);
     try {
-      const r = await invoke(`Remove-SLSnapshot -Name '${esc(snapshotName)}' -Confirm:$false`);
+      const r = await invoke('Remove-SLSnapshot', { Name: snapshotName });
       if (r.success) { setShowDelete(false); onDeleted(); }
       else setError(r.error ?? 'Delete failed');
     } catch (e) { setError(e instanceof Error ? e.message : 'Failed'); }
@@ -45,7 +45,7 @@ export default function SnapshotDetail({ snapshotName, onDeleted, onCompare }: P
   const handleCompareLive = async () => {
     setComparing(true); setCompareError(null);
     try {
-      const r = await invoke<SnapshotDiff>(`Compare-SLSnapshot -Name '${esc(snapshotName)}' -Live`);
+      const r = await invoke<SnapshotDiff>('Compare-SLSnapshot', { Name: snapshotName, Live: true });
       if (r.success && r.data) onCompare(r.data);
       else setCompareError(r.error ?? 'Compare failed');
     } catch (e) { setCompareError(e instanceof Error ? e.message : 'Failed'); }
@@ -130,5 +130,3 @@ function Card({ label, value, mono }: { label: string; value: string; mono?: boo
     </div>
   );
 }
-
-function esc(s: string) { return s.replace(/'/g, "''"); }

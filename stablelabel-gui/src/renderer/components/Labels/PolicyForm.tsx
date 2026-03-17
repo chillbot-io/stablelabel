@@ -33,25 +33,21 @@ export default function PolicyForm({ existing, onSaved, onCancel, onDeleted }: P
     setError(null);
 
     try {
-      let command: string;
+      let result;
       if (isNew) {
-        const parts = [`New-SLLabelPolicy -Name '${esc(name)}'`];
-        if (labels.length > 0) parts.push(`-Labels ${formatArray(labels)}`);
-        if (comment.trim()) parts.push(`-Comment '${esc(comment)}'`);
-        parts.push('-Confirm:$false');
-        command = parts.join(' ');
+        const params: Record<string, unknown> = { Name: name };
+        if (labels.length > 0) params.Labels = labels;
+        if (comment.trim()) params.Comment = comment;
+        result = await invoke('New-SLLabelPolicy', params);
       } else {
-        const parts = [`Set-SLLabelPolicy -Identity '${esc(existing!.Name)}'`];
-        if (comment !== (existing!.Comment ?? '')) parts.push(`-Comment '${esc(comment)}'`);
+        const params: Record<string, unknown> = { Identity: existing!.Name };
+        if (comment !== (existing!.Comment ?? '')) params.Comment = comment;
         // For labels, use the full replacement
         if (JSON.stringify(labels) !== JSON.stringify(existing!.Labels ?? [])) {
-          parts.push(`-Labels ${formatArray(labels)}`);
+          params.Labels = labels;
         }
-        parts.push('-Confirm:$false');
-        command = parts.join(' ');
+        result = await invoke('Set-SLLabelPolicy', params);
       }
-
-      const result = await invoke(command);
       if (result.success) {
         onSaved(name);
       } else {
@@ -70,7 +66,7 @@ export default function PolicyForm({ existing, onSaved, onCancel, onDeleted }: P
     setError(null);
 
     try {
-      const result = await invoke(`Remove-SLLabelPolicy -Identity '${esc(existing.Name)}' -Confirm:$false`);
+      const result = await invoke('Remove-SLLabelPolicy', { Identity: existing.Name });
       if (result.success) {
         onDeleted?.();
       } else {
@@ -191,10 +187,3 @@ function DeleteConfirm({
   );
 }
 
-function esc(s: string): string {
-  return s.replace(/'/g, "''");
-}
-
-function formatArray(arr: string[]): string {
-  return arr.map((v) => `'${esc(v)}'`).join(',');
-}

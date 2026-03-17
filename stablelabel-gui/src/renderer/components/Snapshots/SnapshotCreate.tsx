@@ -15,7 +15,7 @@ export default function SnapshotCreate({ onCreated }: Props) {
     if (!name.trim()) { setError('Snapshot name is required.'); return; }
     setLoading(true); setError(null);
     try {
-      const r = await invoke(`New-SLSnapshot -Name '${esc(name)}' -Scope '${scope}' -Confirm:$false`);
+      const r = await invoke('New-SLSnapshot', { Name: name, Scope: scope });
       if (r.success) onCreated(name);
       else setError(r.error ?? 'Failed to create snapshot');
     } catch (e) { setError(e instanceof Error ? e.message : 'Failed'); }
@@ -50,5 +50,3 @@ export default function SnapshotCreate({ onCreated }: Props) {
     </div>
   );
 }
-
-function esc(s: string) { return s.replace(/'/g, "''"); }

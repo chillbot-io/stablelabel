@@ -54,26 +54,22 @@ export default function AutoLabelForm({ existing, onSaved, onCancel, onDeleted }
     setError(null);
 
     try {
-      let command: string;
+      let result;
       if (isNew) {
-        const parts = [
-          `New-SLAutoLabelPolicy -Name '${esc(name)}'`,
-          `-ApplySensitivityLabel '${esc(applySensitivityLabel)}'`,
-        ];
-        if (mode) parts.push(`-Mode '${mode}'`);
-        if (exchangeLocation.length > 0) parts.push(`-ExchangeLocation ${formatArray(exchangeLocation)}`);
-        if (sharePointLocation.length > 0) parts.push(`-SharePointLocation ${formatArray(sharePointLocation)}`);
-        if (oneDriveLocation.length > 0) parts.push(`-OneDriveLocation ${formatArray(oneDriveLocation)}`);
-        parts.push('-Confirm:$false');
-        command = parts.join(' ');
+        const params: Record<string, unknown> = {
+          Name: name,
+          ApplySensitivityLabel: applySensitivityLabel,
+        };
+        if (mode) params.Mode = mode;
+        if (exchangeLocation.length > 0) params.ExchangeLocation = exchangeLocation;
+        if (sharePointLocation.length > 0) params.SharePointLocation = sharePointLocation;
+        if (oneDriveLocation.length > 0) params.OneDriveLocation = oneDriveLocation;
+        result = await invoke('New-SLAutoLabelPolicy', params);
       } else {
-        const parts = [`Set-SLAutoLabelPolicy -Identity '${esc(existing!.Name)}'`];
-        if (mode !== existing!.Mode) parts.push(`-Mode '${mode}'`);
-        parts.push('-Confirm:$false');
-        command = parts.join(' ');
+        const params: Record<string, unknown> = { Identity: existing!.Name };
+        if (mode !== existing!.Mode) params.Mode = mode;
+        result = await invoke('Set-SLAutoLabelPolicy', params);
       }
-
-      const result = await invoke(command);
       if (result.success) {
         onSaved(name);
       } else {
@@ -92,9 +88,7 @@ export default function AutoLabelForm({ existing, onSaved, onCancel, onDeleted }
     setError(null);
 
     try {
-      const result = await invoke(
-        `Remove-SLAutoLabelPolicy -Identity '${esc(existing.Name)}' -Confirm:$false`,
-      );
+      const result = await invoke('Remove-SLAutoLabelPolicy', { Identity: existing.Name });
       if (result.success) {
         onDeleted?.();
       } else {
@@ -260,10 +254,3 @@ function DeleteConfirm({
   );
 }
 
-function esc(s: string): string {
-  return s.replace(/'/g, "''");
-}
-
-function formatArray(arr: string[]): string {
-  return arr.map((v) => `'${esc(v)}'`).join(',');
-}
