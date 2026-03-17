@@ -263,8 +263,8 @@ describe('PowerShellBridge', () => {
       // Simulate process closing
       proc.emit('close', 1);
 
-      // The command should timeout after 300s
-      vi.advanceTimersByTime(310000);
+      // The command should timeout after 600s
+      vi.advanceTimersByTime(610000);
 
       const result = await invokePromise;
       expect(result.success).toBe(false);

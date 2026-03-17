@@ -190,7 +190,7 @@ export class PowerShellBridge {
       this.processing = false;
       reject(new Error(`Command timed out: ${command.substring(0, 100)}`));
       this.processQueue();
-    }, 300000);
+    }, 600000);
 
     this.currentMarker = marker;
     this.currentResolve = (output: string) => {
