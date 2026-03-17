@@ -92,7 +92,7 @@ export default function DashboardPage({ onNavigate }: DashboardPageProps) {
     setStats((prev) => ({ ...prev, ...updates }));
 
     try {
-      const auditResult = await invoke<AuditEntry[]>('Get-SLAuditLog -Last 5');
+      const auditResult = await invoke<AuditEntry[]>('Get-SLAuditLog', { Last: 5 });
       if (auditResult.success && Array.isArray(auditResult.data)) {
         setRecentActivity(auditResult.data);
       }
@@ -321,7 +321,7 @@ function QuickActions({
   invoke,
 }: {
   onNavigate?: (page: Page) => void;
-  invoke: (command: string) => Promise<{ success: boolean; data: unknown; error?: string }>;
+  invoke: (cmdlet: string, params?: Record<string, unknown>) => Promise<{ success: boolean; data: unknown; error?: string }>;
 }) {
   const [snapshotting, setSnapshotting] = useState(false);
   const [snapshotResult, setSnapshotResult] = useState<string | null>(null);
@@ -330,7 +330,7 @@ function QuickActions({
     setSnapshotting(true);
     setSnapshotResult(null);
     try {
-      const result = await invoke("New-SLSnapshot -Name 'Dashboard-Quick' -Scope All");
+      const result = await invoke('New-SLSnapshot', { Name: 'Dashboard-Quick', Scope: 'All' });
       if (result.success) {
         setSnapshotResult('Snapshot created');
       } else {

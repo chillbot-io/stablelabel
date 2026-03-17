@@ -39,15 +39,11 @@ export default function OnboardingPolicy() {
   const handleSave = async () => {
     setSaving(true); setSaveMsg(null);
     try {
-      const parts = ['Set-SLOnboardingPolicy'];
-      parts.push(`-UseRmsUserLicense $${useRmsUserLicense}`);
-      parts.push(`-Scope '${scope}'`);
-      if (scope === 'SecurityGroup' && securityGroupId.trim()) {
-        parts.push(`-SecurityGroupObjectId '${esc(securityGroupId)}'`);
-      }
-      parts.push('-Confirm:$false');
-
-      const r = await invoke(parts.join(' '));
+      const r = await invoke('Set-SLOnboardingPolicy', {
+        UseRmsUserLicense: useRmsUserLicense,
+        Scope: scope,
+        SecurityGroupObjectId: (scope === 'SecurityGroup' && securityGroupId.trim()) ? securityGroupId : undefined,
+      });
       if (r.success) setSaveMsg({ type: 'success', text: 'Onboarding policy updated.' });
       else setSaveMsg({ type: 'error', text: r.error ?? 'Failed' });
     } catch (e) { setSaveMsg({ type: 'error', text: e instanceof Error ? e.message : 'Failed' }); }
@@ -103,4 +99,3 @@ function RawJson({ data }: { data: unknown }) {
   );
 }
 
-function esc(s: string) { return s.replace(/'/g, "''"); }

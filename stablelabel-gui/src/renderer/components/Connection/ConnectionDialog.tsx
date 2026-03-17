@@ -81,7 +81,7 @@ export default function ConnectionDialog({ onClose, onConnected }: ConnectionDia
       setDeviceCode(info);
     });
 
-    const result = await invoke<ConnectAllResult>('Connect-SLAll -UseDeviceCode');
+    const result = await invoke<ConnectAllResult>('Connect-SLAll', { UseDeviceCode: true });
     cleanupRef.current?.();
     cleanupRef.current = null;
 

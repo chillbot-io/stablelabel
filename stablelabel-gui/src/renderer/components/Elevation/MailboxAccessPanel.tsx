@@ -24,8 +24,7 @@ export default function MailboxAccessPanel() {
     setLoading(true); setMsg(null);
     try {
       const cmdName = action === 'grant' ? 'Grant-SLMailboxAccess' : 'Revoke-SLMailboxAccess';
-      const cmd = `${cmdName} -Identity '${esc(identity)}' -User '${esc(user)}' -AccessRights '${accessRights}'${dryRun ? ' -DryRun' : ''} -Confirm:$false`;
-      const r = await invoke(cmd);
+      const r = await invoke(cmdName, { Identity: identity, User: user, AccessRights: accessRights, DryRun: dryRun || undefined });
       if (r.success) setMsg({ type: 'success', text: dryRun ? `Dry run: would ${action} mailbox access.` : `Mailbox access ${action === 'grant' ? 'granted' : 'revoked'}.` });
       else setMsg({ type: 'error', text: r.error ?? 'Failed' });
     } catch (e) { setMsg({ type: 'error', text: e instanceof Error ? e.message : 'Failed' }); }
@@ -86,4 +85,3 @@ export default function MailboxAccessPanel() {
   );
 }
 
-function esc(s: string) { return s.replace(/'/g, "''"); }

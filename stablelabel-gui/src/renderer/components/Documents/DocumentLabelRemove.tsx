@@ -18,12 +18,12 @@ export default function DocumentLabelRemove() {
     setShowConfirm(false);
     setLoading(true); setError(null); setSuccess(null);
     try {
-      const parts = [`Remove-SLDocumentLabel -DriveId '${esc(driveId)}' -ItemId '${esc(itemId)}'`];
-      if (justification.trim()) parts.push(`-Justification '${esc(justification)}'`);
-      if (dryRun) parts.push('-DryRun');
-      parts.push('-Confirm:$false');
-
-      const r = await invoke(parts.join(' '));
+      const r = await invoke('Remove-SLDocumentLabel', {
+        DriveId: driveId,
+        ItemId: itemId,
+        Justification: justification.trim() || undefined,
+        DryRun: dryRun || undefined,
+      });
       if (r.success) setSuccess(dryRun ? 'Dry run complete — no changes made.' : 'Label removed successfully.');
       else setError(r.error ?? 'Failed to remove label');
     } catch (e) { setError(e instanceof Error ? e.message : 'Failed'); }
@@ -72,5 +72,3 @@ export default function DocumentLabelRemove() {
     </div>
   );
 }
-
-function esc(s: string) { return s.replace(/'/g, "''"); }

@@ -19,15 +19,14 @@ export default function FileShareLabelApply() {
     if (!labelName.trim() && !labelId.trim()) { setError('Either Label Name or Label ID is required.'); return; }
     setLoading(true); setError(null); setSuccess(null);
     try {
-      const parts = [`Set-SLFileShareLabel -Path '${esc(path)}'`];
-      if (labelId.trim()) parts.push(`-LabelId '${esc(labelId)}'`);
-      else parts.push(`-LabelName '${esc(labelName)}'`);
-      if (justification.trim()) parts.push(`-Justification '${esc(justification)}'`);
-      if (owner.trim()) parts.push(`-Owner '${esc(owner)}'`);
-      if (dryRun) parts.push('-DryRun');
-      parts.push('-Confirm:$false');
-
-      const r = await invoke(parts.join(' '));
+      const r = await invoke('Set-SLFileShareLabel', {
+        Path: path,
+        LabelId: labelId.trim() || undefined,
+        LabelName: labelName.trim() || undefined,
+        Justification: justification.trim() || undefined,
+        Owner: owner.trim() || undefined,
+        DryRun: dryRun || undefined,
+      });
       if (r.success) setSuccess(dryRun ? 'Dry run complete — no changes made.' : 'Label applied successfully.');
       else setError(r.error ?? 'Failed to apply label');
     } catch (e) { setError(e instanceof Error ? e.message : 'Failed'); }
@@ -61,5 +60,3 @@ export default function FileShareLabelApply() {
     </div>
   );
 }
-
-function esc(s: string) { return s.replace(/'/g, "''"); }

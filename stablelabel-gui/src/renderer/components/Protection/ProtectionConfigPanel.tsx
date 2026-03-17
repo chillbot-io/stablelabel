@@ -53,7 +53,7 @@ export default function ProtectionConfigPanel() {
   const handleRemoveSuperUser = async (email: string) => {
     setActionLoading(true); setActionError(null);
     try {
-      const r = await invoke(`Disable-SLSuperUser -UserPrincipalName '${email.replace(/'/g, "''")}' -Confirm:$false`);
+      const r = await invoke('Disable-SLSuperUser', { UserPrincipalName: email });
       if (r.success) { setRemovingSuperUser(null); await reload(); }
       else setActionError(r.error ?? 'Failed to remove super user');
     } catch (e) { setActionError(e instanceof Error ? e.message : 'Failed'); }
@@ -64,7 +64,7 @@ export default function ProtectionConfigPanel() {
     if (!addAdminEmail.trim()) return;
     setActionLoading(true); setActionError(null);
     try {
-      const r = await invoke(`Grant-SLSiteAdmin -UserPrincipalName '${addAdminEmail.replace(/'/g, "''")}' -Role '${addAdminRole}' -Confirm:$false`);
+      const r = await invoke('Grant-SLSiteAdmin', { UserPrincipalName: addAdminEmail, Role: addAdminRole });
       if (r.success) { setAddAdminEmail(''); await reload(); }
       else setActionError(r.error ?? 'Failed to add admin');
     } catch (e) { setActionError(e instanceof Error ? e.message : 'Failed'); }

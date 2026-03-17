@@ -16,12 +16,11 @@ export default function DocumentTracking() {
   const handleSearch = async () => {
     setLoading(true); setError(null); setEntries(null);
     try {
-      const parts = ['Get-SLDocumentTrack'];
-      if (userEmail.trim()) parts.push(`-UserEmail '${esc(userEmail)}'`);
-      if (fromTime.trim()) parts.push(`-FromTime '${esc(fromTime)}'`);
-      if (toTime.trim()) parts.push(`-ToTime '${esc(toTime)}'`);
-
-      const r = await invoke<DocumentTrackEntry[]>(parts.join(' '));
+      const r = await invoke<DocumentTrackEntry[]>('Get-SLDocumentTrack', {
+        UserEmail: userEmail.trim() || undefined,
+        FromTime: fromTime.trim() || undefined,
+        ToTime: toTime.trim() || undefined,
+      });
       if (r.success) setEntries(Array.isArray(r.data) ? r.data : r.data ? [r.data as unknown as DocumentTrackEntry] : []);
       else setError(r.error ?? 'Failed');
     } catch (e) { setError(e instanceof Error ? e.message : 'Failed'); }
@@ -97,7 +96,7 @@ function RevokeAccess() {
     setShowConfirm(false);
     setLoading(true); setMsg(null);
     try {
-      const r = await invoke(`Revoke-SLDocumentAccess -ContentId '${esc(contentId)}' -IssuerEmail '${esc(issuerEmail)}' -Confirm:$false`);
+      const r = await invoke('Revoke-SLDocumentAccess', { ContentId: contentId, IssuerEmail: issuerEmail });
       if (r.success) setMsg({ type: 'success', text: 'Document access revoked.' });
       else setMsg({ type: 'error', text: r.error ?? 'Failed' });
     } catch (e) { setMsg({ type: 'error', text: e instanceof Error ? e.message : 'Failed' }); }
@@ -136,7 +135,7 @@ function RestoreAccess() {
     if (!contentId.trim() || !issuerEmail.trim()) { setMsg({ type: 'error', text: 'Content ID and Issuer Email are required.' }); return; }
     setLoading(true); setMsg(null);
     try {
-      const r = await invoke(`Restore-SLDocumentAccess -ContentId '${esc(contentId)}' -IssuerEmail '${esc(issuerEmail)}' -Confirm:$false`);
+      const r = await invoke('Restore-SLDocumentAccess', { ContentId: contentId, IssuerEmail: issuerEmail });
       if (r.success) setMsg({ type: 'success', text: 'Document access restored.' });
       else setMsg({ type: 'error', text: r.error ?? 'Failed' });
     } catch (e) { setMsg({ type: 'error', text: e instanceof Error ? e.message : 'Failed' }); }
@@ -166,4 +165,3 @@ function RawJson({ data }: { data: unknown }) {
   );
 }
 
-function esc(s: string) { return s.replace(/'/g, "''"); }

@@ -17,10 +17,12 @@ export default function PimRolePanel() {
     setShowConfirm(false);
     setLoading(true); setMsg(null);
     try {
-      const parts = [`Request-SLPimRole -RoleDefinitionId '${esc(roleId)}' -Justification '${esc(justification)}' -DurationHours ${duration}`];
-      if (dryRun) parts.push('-DryRun');
-      parts.push('-Confirm:$false');
-      const r = await invoke(parts.join(' '));
+      const r = await invoke('Request-SLPimRole', {
+        RoleDefinitionId: roleId,
+        Justification: justification,
+        DurationHours: duration,
+        DryRun: dryRun || undefined,
+      });
       if (r.success) setMsg({ type: 'success', text: dryRun ? `Dry run: would activate role for ${duration}h.` : `PIM role activated for ${duration} hours.` });
       else setMsg({ type: 'error', text: r.error ?? 'Failed' });
     } catch (e) { setMsg({ type: 'error', text: e instanceof Error ? e.message : 'Failed' }); }
@@ -87,4 +89,3 @@ function RoleHint({ label, id, onSelect }: { label: string; id: string; onSelect
   );
 }
 
-function esc(s: string) { return s.replace(/'/g, "''"); }

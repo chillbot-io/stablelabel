@@ -17,10 +17,11 @@ export default function FileShareInventory() {
     if (!path.trim()) { setError('Path is required.'); return; }
     setLoading(true); setError(null); setResult(null);
     try {
-      const parts = [`Get-SLFileShareInventory -Path '${esc(path)}'`];
-      if (filter.trim() && filter !== '*') parts.push(`-Filter '${esc(filter)}'`);
-      if (recurse) parts.push('-Recurse');
-      const r = await invoke<InventoryResult>(parts.join(' '));
+      const r = await invoke<InventoryResult>('Get-SLFileShareInventory', {
+        Path: path,
+        Filter: filter.trim() && filter !== '*' ? filter : undefined,
+        Recurse: recurse || undefined,
+      });
       if (r.success && r.data) setResult(r.data);
       else setError(r.error ?? 'Failed to get inventory');
     } catch (e) { setError(e instanceof Error ? e.message : 'Failed'); }
@@ -126,5 +127,3 @@ function SummaryCard({ label, value, color }: { label: string; value: number; co
     </div>
   );
 }
-
-function esc(s: string) { return s.replace(/'/g, "''"); }
