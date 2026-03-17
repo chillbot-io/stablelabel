@@ -50,6 +50,26 @@ function lastProc() {
   return spawnedProcesses[spawnedProcesses.length - 1];
 }
 
+/** Helper: complete the Import-Module init sequence for a process */
+function completeInit(proc: ReturnType<typeof createMockProcess>) {
+  const importWrite = proc.stdin.write.mock.calls[0]?.[0] as string;
+  const importMarker = importWrite.split('\n').find((l: string) => l.startsWith("Write-Output '___SL_DONE_"))?.match(/'(.+)'/)?.[1];
+  if (importMarker) {
+    proc.stdout.emit('data', Buffer.from(`ok\n${importMarker}\n`));
+  }
+}
+
+/** Helper: find a command write and complete it with a response */
+function completeCommand(proc: ReturnType<typeof createMockProcess>, cmdletName: string, response: string) {
+  const cmdWrite = proc.stdin.write.mock.calls.find((c: string[]) =>
+    c[0]?.includes(cmdletName)
+  )?.[0] as string;
+  const cmdMarker = cmdWrite?.split('\n').find((l: string) => l.startsWith("Write-Output '___SL_DONE_"))?.match(/'(.+)'/)?.[1];
+  if (cmdMarker) {
+    proc.stdout.emit('data', Buffer.from(`${response}\n${cmdMarker}\n`));
+  }
+}
+
 describe('PowerShellBridge', () => {
   let bridge: InstanceType<typeof PowerShellBridge>;
 
@@ -122,38 +142,31 @@ describe('PowerShellBridge', () => {
     });
   });
 
-  describe('invoke', () => {
-    it('initializes process on first invoke', async () => {
-      const invokePromise = bridge.invoke('Get-SLLabel');
+  describe('invokeStructured', () => {
+    it('rejects disallowed cmdlets', async () => {
+      const result = await bridge.invokeStructured('Invoke-Expression', { Command: 'whoami' });
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('not in the allowlist');
+    });
 
-      // First spawn is for ensureInitialized
+    it('initializes process on first invoke', async () => {
+      const invokePromise = bridge.invokeStructured('Get-SLLabel');
+
       const initProc = lastProc();
       expect(spawn).toHaveBeenCalled();
 
-      // Simulate the Import-Module command completing (first sendRaw from ensureInitialized)
-      const importWrite = initProc.stdin.write.mock.calls[0]?.[0] as string;
-      expect(importWrite).toContain('Import-Module');
-      // Extract the marker from the command
-      const importMarker = importWrite.split('\n').find((l: string) => l.startsWith("Write-Output '___SL_DONE_"))?.match(/'(.+)'/)?.[1];
-      if (importMarker) {
-        initProc.stdout.emit('data', Buffer.from(`ok\n${importMarker}\n`));
-      }
-
-      // Now the actual command should be sent
+      // Complete Import-Module
+      completeInit(initProc);
       await vi.advanceTimersByTimeAsync(10);
 
-      // Find the Get-SLLabel command write
+      // Find the Get-SLLabel command
       const cmdWrite = initProc.stdin.write.mock.calls.find((c: string[]) =>
         c[0]?.includes('Get-SLLabel')
       )?.[0] as string;
       expect(cmdWrite).toContain('Get-SLLabel');
-      expect(cmdWrite).toContain('-AsJson'); // Should auto-append -AsJson
+      expect(cmdWrite).toContain('-AsJson');
 
-      // Extract marker and resolve
-      const cmdMarker = cmdWrite?.split('\n').find((l: string) => l.startsWith("Write-Output '___SL_DONE_"))?.match(/'(.+)'/)?.[1];
-      if (cmdMarker) {
-        initProc.stdout.emit('data', Buffer.from(`[{"Name":"Confidential"}]\n${cmdMarker}\n`));
-      }
+      completeCommand(initProc, 'Get-SLLabel', '[{"Name":"Confidential"}]');
 
       const result = await invokePromise;
       expect(result.success).toBe(true);
@@ -161,53 +174,87 @@ describe('PowerShellBridge', () => {
       expect(bridge.isInitialized()).toBe(true);
     });
 
-    it('does not append -AsJson when already present', async () => {
-      const invokePromise = bridge.invoke('Get-SLLabel -AsJson');
+    it('builds structured command correctly', async () => {
+      const invokePromise = bridge.invokeStructured('New-SLDlpPolicy', {
+        Name: 'Test Policy',
+        Mode: 'Enable',
+      });
 
       const proc = lastProc();
-      // Complete Import-Module
-      const importWrite = proc.stdin.write.mock.calls[0]?.[0] as string;
-      const importMarker = importWrite.split('\n').find((l: string) => l.startsWith("Write-Output '___SL_DONE_"))?.match(/'(.+)'/)?.[1];
-      if (importMarker) {
-        proc.stdout.emit('data', Buffer.from(`ok\n${importMarker}\n`));
-      }
-
+      completeInit(proc);
       await vi.advanceTimersByTimeAsync(10);
 
       const cmdWrite = proc.stdin.write.mock.calls.find((c: string[]) =>
-        c[0]?.includes('Get-SLLabel')
+        c[0]?.includes('New-SLDlpPolicy')
       )?.[0] as string;
-      // Should not double-add -AsJson
-      const asJsonCount = (cmdWrite.match(/-AsJson/g) || []).length;
-      expect(asJsonCount).toBe(1);
 
-      const cmdMarker = cmdWrite?.split('\n').find((l: string) => l.startsWith("Write-Output '___SL_DONE_"))?.match(/'(.+)'/)?.[1];
-      if (cmdMarker) {
-        proc.stdout.emit('data', Buffer.from(`"test"\n${cmdMarker}\n`));
-      }
+      expect(cmdWrite).toContain("New-SLDlpPolicy -Name 'Test Policy' -Mode 'Enable' -Confirm:$false");
 
+      completeCommand(proc, 'New-SLDlpPolicy', '{"Name":"Test Policy"}');
+      const result = await invokePromise;
+      expect(result.success).toBe(true);
+    });
+
+    it('escapes quotes in parameters', async () => {
+      const invokePromise = bridge.invokeStructured('New-SLSnapshot', {
+        Name: "it's a test",
+        Scope: 'All',
+      });
+
+      const proc = lastProc();
+      completeInit(proc);
+      await vi.advanceTimersByTimeAsync(10);
+
+      const cmdWrite = proc.stdin.write.mock.calls.find((c: string[]) =>
+        c[0]?.includes('New-SLSnapshot')
+      )?.[0] as string;
+
+      expect(cmdWrite).toContain("it''s a test");
+
+      completeCommand(proc, 'New-SLSnapshot', '{}');
       await invokePromise;
     });
 
+    it('rejects command injection via newlines', async () => {
+      const result = await bridge.invokeStructured('Remove-SLSnapshot', {
+        Name: "test\nInvoke-Expression 'malicious'",
+      });
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('forbidden characters');
+    });
+
+    it('validates GUID parameters', async () => {
+      const result = await bridge.invokeStructured('Remove-SLProtectionTemplate', {
+        TemplateId: "'; evil code; '",
+      });
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('valid GUID');
+    });
+
+    it('validates enum parameters', async () => {
+      const result = await bridge.invokeStructured('New-SLDlpPolicy', {
+        Name: 'P1',
+        Mode: 'InvalidMode',
+      });
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('must be one of');
+    });
+
+    it('rejects path traversal', async () => {
+      const result = await bridge.invokeStructured('Import-SLProtectionTemplate', {
+        Path: 'C:\\..\\Windows\\System32\\evil.xml',
+      });
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('traversal');
+    });
+
     it('returns non-JSON output as string data', async () => {
-      const invokePromise = bridge.invoke('Get-SLLabel');
+      const invokePromise = bridge.invokeStructured('Get-SLLabel');
 
       const proc = lastProc();
-      const importWrite = proc.stdin.write.mock.calls[0]?.[0] as string;
-      const importMarker = importWrite.split('\n').find((l: string) => l.startsWith("Write-Output '___SL_DONE_"))?.match(/'(.+)'/)?.[1];
-      if (importMarker) {
-        proc.stdout.emit('data', Buffer.from(`ok\n${importMarker}\n`));
-      }
-
+      completeInit(proc);
       await vi.advanceTimersByTimeAsync(10);
-
-      const cmdWrite = proc.stdin.write.mock.calls.find((c: string[]) =>
-        c[0]?.includes('Get-SLLabel')
-      )?.[0] as string;
-      const cmdMarker = cmdWrite?.split('\n').find((l: string) => l.startsWith("Write-Output '___SL_DONE_"))?.match(/'(.+)'/)?.[1];
-      if (cmdMarker) {
-        proc.stdout.emit('data', Buffer.from(`not valid json\n${cmdMarker}\n`));
-      }
+      completeCommand(proc, 'Get-SLLabel', 'not valid json');
 
       const result = await invokePromise;
       expect(result.success).toBe(true);
@@ -220,7 +267,7 @@ describe('PowerShellBridge', () => {
       (badProc as any).stdin = null;
       (spawn as ReturnType<typeof vi.fn>).mockReturnValueOnce(badProc);
 
-      const result = await bridge.invoke('Get-SLLabel');
+      const result = await bridge.invokeStructured('Get-SLLabel');
       expect(result.success).toBe(false);
       expect(result.error).toBeDefined();
     });
@@ -228,7 +275,7 @@ describe('PowerShellBridge', () => {
     it('uses win32 exe name for init process', async () => {
       (platform as ReturnType<typeof vi.fn>).mockReturnValue('win32');
       const winBridge = new PowerShellBridge('/path/to/StableLabel');
-      winBridge.invoke('Get-SLLabel');
+      winBridge.invokeStructured('Get-SLLabel');
 
       expect(spawn).toHaveBeenCalledWith(
         'pwsh.exe',
@@ -240,7 +287,7 @@ describe('PowerShellBridge', () => {
 
     it('escapes single quotes in module path', async () => {
       const quoteBridge = new PowerShellBridge("/path/to/it's here/StableLabel");
-      quoteBridge.invoke('Get-SLLabel');
+      quoteBridge.invokeStructured('Get-SLLabel');
 
       const proc = lastProc();
       const importWrite = proc.stdin.write.mock.calls[0]?.[0] as string;
@@ -248,16 +295,11 @@ describe('PowerShellBridge', () => {
     });
 
     it('handles process close during operation', async () => {
-      const invokePromise = bridge.invoke('Get-SLLabel');
+      const invokePromise = bridge.invokeStructured('Get-SLLabel');
       const proc = lastProc();
 
       // Complete import
-      const importWrite = proc.stdin.write.mock.calls[0]?.[0] as string;
-      const importMarker = importWrite.split('\n').find((l: string) => l.startsWith("Write-Output '___SL_DONE_"))?.match(/'(.+)'/)?.[1];
-      if (importMarker) {
-        proc.stdout.emit('data', Buffer.from(`ok\n${importMarker}\n`));
-      }
-
+      completeInit(proc);
       await vi.advanceTimersByTimeAsync(10);
 
       // Simulate process closing
@@ -272,7 +314,7 @@ describe('PowerShellBridge', () => {
 
     it('logs stderr output', async () => {
       const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
-      bridge.invoke('Get-SLLabel');
+      bridge.invokeStructured('Get-SLLabel');
       const proc = lastProc();
       proc.stderr.emit('data', Buffer.from('Warning: something'));
       expect(consoleSpy).toHaveBeenCalledWith('[PS STDERR]', 'Warning: something');
@@ -281,10 +323,53 @@ describe('PowerShellBridge', () => {
 
     it('logs when process exits', async () => {
       const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
-      bridge.invoke('Get-SLLabel');
+      bridge.invokeStructured('Get-SLLabel');
       const proc = lastProc();
       proc.emit('close', 0);
       expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('exited with code 0'));
+      consoleSpy.mockRestore();
+    });
+  });
+
+  describe('device-code detection', () => {
+    it('fires onDeviceCode for trusted Microsoft URLs', async () => {
+      const callback = vi.fn();
+      bridge.onDeviceCode = callback;
+
+      bridge.invokeStructured('Connect-SLAll', { UseDeviceCode: true });
+      const proc = lastProc();
+      completeInit(proc);
+      await vi.advanceTimersByTimeAsync(10);
+
+      proc.stdout.emit(
+        'data',
+        Buffer.from('To sign in, visit https://microsoft.com/devicelogin and enter the code ABC123456\n'),
+      );
+
+      expect(callback).toHaveBeenCalledWith({
+        verificationUrl: 'https://microsoft.com/devicelogin',
+        userCode: 'ABC123456',
+        message: expect.stringContaining('microsoft.com/devicelogin'),
+      });
+    });
+
+    it('rejects device-code from untrusted domains', async () => {
+      const callback = vi.fn();
+      const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+      bridge.onDeviceCode = callback;
+
+      bridge.invokeStructured('Connect-SLAll', { UseDeviceCode: true });
+      const proc = lastProc();
+      completeInit(proc);
+      await vi.advanceTimersByTimeAsync(10);
+
+      proc.stdout.emit(
+        'data',
+        Buffer.from('To sign in, visit https://evil.com/devicelogin and enter the code ABC123456\n'),
+      );
+
+      expect(callback).not.toHaveBeenCalled();
+      expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('Rejected untrusted'));
       consoleSpy.mockRestore();
     });
   });
@@ -297,16 +382,11 @@ describe('PowerShellBridge', () => {
 
     it('sends exit command and kills process after delay', async () => {
       // Initialize the bridge first
-      bridge.invoke('Get-SLLabel');
+      bridge.invokeStructured('Get-SLLabel');
       const proc = lastProc();
 
       // Complete initialization
-      const importWrite = proc.stdin.write.mock.calls[0]?.[0] as string;
-      const importMarker = importWrite.split('\n').find((l: string) => l.startsWith("Write-Output '___SL_DONE_"))?.match(/'(.+)'/)?.[1];
-      if (importMarker) {
-        proc.stdout.emit('data', Buffer.from(`ok\n${importMarker}\n`));
-      }
-
+      completeInit(proc);
       await vi.advanceTimersByTimeAsync(10);
 
       bridge.dispose();
