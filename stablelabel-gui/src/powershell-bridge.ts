@@ -42,6 +42,28 @@ export class PowerShellBridge {
     this.modulePath = modulePath;
   }
 
+  /**
+   * Check a text chunk for a device-code authentication prompt and fire the callback.
+   * Connect-MgGraph -UseDeviceCode outputs via Write-Host (Information stream)
+   * which may arrive on stdout (if redirected) or stderr depending on the environment.
+   */
+  private checkForDeviceCode(text: string): void {
+    if (!this.onDeviceCode) return;
+    const clean = stripAnsi(text);
+    const match = clean.match(
+      /open the page (https:\/\/\S+) and enter the code ([A-Z0-9]{6,12})/i,
+    );
+    if (match) {
+      this.onDeviceCode({
+        verificationUrl: match[1],
+        userCode: match[2],
+        message: clean.trim(),
+      });
+      // Only fire once per command
+      this.onDeviceCode = null;
+    }
+  }
+
   async checkPwshAvailable(): Promise<{ available: boolean; path?: string; error?: string }> {
     return new Promise((resolve) => {
       const pwshName = platform() === 'win32' ? 'pwsh.exe' : 'pwsh';
@@ -95,21 +117,8 @@ export class PowerShellBridge {
     this.process.stdout?.on('data', (data: Buffer) => {
       this.outputBuffer += data.toString();
 
-      // Detect device-code auth prompt emitted by Connect-MgGraph -UseDeviceCode
-      // Typical message: "To sign in, use a web browser to open the page https://microsoft.com/devicelogin and enter the code XXXXXXXX to authenticate."
-      const clean = stripAnsi(this.outputBuffer);
-      const deviceCodeMatch = clean.match(
-        /open the page (https:\/\/\S+) and enter the code ([A-Z0-9]{6,12})/i,
-      );
-      if (deviceCodeMatch && this.onDeviceCode) {
-        this.onDeviceCode({
-          verificationUrl: deviceCodeMatch[1],
-          userCode: deviceCodeMatch[2],
-          message: clean.trim(),
-        });
-        // Only fire once per command
-        this.onDeviceCode = null;
-      }
+      // Device code prompt may arrive via stdout (Information stream redirect)
+      this.checkForDeviceCode(this.outputBuffer);
 
       // Check if the current command's marker has arrived
       if (this.currentMarker && this.outputBuffer.includes(this.currentMarker)) {
@@ -126,6 +135,9 @@ export class PowerShellBridge {
       const text = data.toString();
       console.error('[PS STDERR]', text);
       this.stderrBuffer += text;
+
+      // Device code prompt may arrive via stderr (Warning stream) in some environments
+      this.checkForDeviceCode(text);
     });
 
     this.process.on('close', (code) => {
@@ -167,7 +179,9 @@ export class PowerShellBridge {
     this.outputBuffer = '';
     this.stderrBuffer = '';
     const marker = `___SL_DONE_${Date.now()}_${Math.random().toString(36).slice(2)}___`;
-    const wrappedCommand = `${command}\nWrite-Output '${marker}'\n`;
+    // Redirect Information stream (6>&1) so Write-Host output (e.g. device code prompts
+    // from Connect-MgGraph -UseDeviceCode) is captured on stdout.
+    const wrappedCommand = `${command} 6>&1\nWrite-Output '${marker}'\n`;
 
     const timeout = setTimeout(() => {
       this.currentMarker = null;
