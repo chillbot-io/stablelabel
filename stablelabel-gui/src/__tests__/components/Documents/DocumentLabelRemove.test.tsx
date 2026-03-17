@@ -71,9 +71,7 @@ describe('DocumentLabelRemove', () => {
     await user.click(confirmButtons[confirmButtons.length - 1]);
 
     await waitFor(() => {
-      expect(mockInvoke).toHaveBeenCalledWith(
-        "Remove-SLDocumentLabel -DriveId 'drive-123' -ItemId 'item-456' -Confirm:$false"
-      );
+      expect(mockInvoke).toHaveBeenCalledWith('Remove-SLDocumentLabel', expect.objectContaining({ DriveId: 'drive-123', ItemId: 'item-456' }));
     });
   });
 
@@ -109,9 +107,7 @@ describe('DocumentLabelRemove', () => {
 
     // No confirmation dialog, invoke called directly
     await waitFor(() => {
-      expect(mockInvoke).toHaveBeenCalledWith(
-        "Remove-SLDocumentLabel -DriveId 'drive-123' -ItemId 'item-456' -DryRun -Confirm:$false"
-      );
+      expect(mockInvoke).toHaveBeenCalledWith('Remove-SLDocumentLabel', expect.objectContaining({ DriveId: 'drive-123', ItemId: 'item-456', DryRun: true }));
     });
   });
 
@@ -129,9 +125,7 @@ describe('DocumentLabelRemove', () => {
     await user.click(screen.getByRole('button', { name: 'Dry Run — Remove Label' }));
 
     await waitFor(() => {
-      expect(mockInvoke).toHaveBeenCalledWith(
-        "Remove-SLDocumentLabel -DriveId 'drive-123' -ItemId 'item-456' -Justification 'No longer needed' -DryRun -Confirm:$false"
-      );
+      expect(mockInvoke).toHaveBeenCalledWith('Remove-SLDocumentLabel', expect.objectContaining({ DriveId: 'drive-123', ItemId: 'item-456', Justification: 'No longer needed', DryRun: true }));
     });
   });
 
@@ -254,7 +248,7 @@ describe('DocumentLabelRemove', () => {
     });
   });
 
-  it('escapes single quotes in all fields', async () => {
+  it('passes special characters as raw values', async () => {
     const user = userEvent.setup();
     mockInvoke.mockResolvedValueOnce({ success: true, data: null });
     render(<DocumentLabelRemove />);
@@ -266,9 +260,7 @@ describe('DocumentLabelRemove', () => {
     await user.click(screen.getByRole('button', { name: 'Dry Run — Remove Label' }));
 
     await waitFor(() => {
-      expect(mockInvoke).toHaveBeenCalledWith(
-        "Remove-SLDocumentLabel -DriveId 'd''rive' -ItemId 'i''tem' -Justification 'just''ify' -DryRun -Confirm:$false"
-      );
+      expect(mockInvoke).toHaveBeenCalledWith('Remove-SLDocumentLabel', expect.objectContaining({ DriveId: "d'rive", ItemId: "i'tem", Justification: "just'ify", DryRun: true }));
     });
   });
 
@@ -325,9 +317,7 @@ describe('DocumentLabelRemove', () => {
     await user.click(confirmButtons[confirmButtons.length - 1]);
 
     await waitFor(() => {
-      expect(mockInvoke).toHaveBeenCalledWith(
-        "Remove-SLDocumentLabel -DriveId 'drive-123' -ItemId 'item-456' -Justification 'Reclassification' -Confirm:$false"
-      );
+      expect(mockInvoke).toHaveBeenCalledWith('Remove-SLDocumentLabel', expect.objectContaining({ DriveId: 'drive-123', ItemId: 'item-456', Justification: 'Reclassification' }));
     });
   });
 });

@@ -90,7 +90,7 @@ describe('SnapshotCreate', () => {
     await user.click(screen.getByText('Create Snapshot'));
 
     await waitFor(() => {
-      expect(mockInvoke).toHaveBeenCalledWith("New-SLSnapshot -Name 'labels-only' -Scope 'Labels' -Confirm:$false");
+      expect(mockInvoke).toHaveBeenCalledWith('New-SLSnapshot', { Name: 'labels-only', Scope: 'Labels' });
     });
   });
 
@@ -163,7 +163,7 @@ describe('SnapshotCreate', () => {
     });
   });
 
-  it('escapes single quotes in snapshot name', async () => {
+  it('passes special characters as raw values in snapshot name', async () => {
     const user = userEvent.setup();
     mockInvoke.mockResolvedValue({ success: true });
     render(<SnapshotCreate {...defaultProps} />);
@@ -173,7 +173,7 @@ describe('SnapshotCreate', () => {
     await user.click(screen.getByText('Create Snapshot'));
 
     await waitFor(() => {
-      expect(mockInvoke).toHaveBeenCalledWith("New-SLSnapshot -Name 'it''s' -Scope 'All' -Confirm:$false");
+      expect(mockInvoke).toHaveBeenCalledWith('New-SLSnapshot', { Name: "it's", Scope: 'All' });
     });
   });
 

@@ -169,7 +169,7 @@ describe('OnboardingPolicy', () => {
 
     await user.click(screen.getByText('Save Changes'));
     await waitFor(() => {
-      expect(mockInvoke).toHaveBeenCalledWith("Set-SLOnboardingPolicy -UseRmsUserLicense $false -Scope 'All' -Confirm:$false");
+      expect(mockInvoke).toHaveBeenCalledWith('Set-SLOnboardingPolicy', expect.objectContaining({ UseRmsUserLicense: false, Scope: 'All' }));
     });
     expect(screen.getByText('Onboarding policy updated.')).toBeInTheDocument();
   });
@@ -186,7 +186,7 @@ describe('OnboardingPolicy', () => {
 
     await user.click(screen.getByText('Save Changes'));
     await waitFor(() => {
-      expect(mockInvoke).toHaveBeenCalledWith("Set-SLOnboardingPolicy -UseRmsUserLicense $true -Scope 'SecurityGroup' -SecurityGroupObjectId 'group-guid-abc123' -Confirm:$false");
+      expect(mockInvoke).toHaveBeenCalledWith('Set-SLOnboardingPolicy', expect.objectContaining({ UseRmsUserLicense: true, Scope: 'SecurityGroup', SecurityGroupObjectId: 'group-guid-abc123' }));
     });
     expect(screen.getByText('Onboarding policy updated.')).toBeInTheDocument();
   });
@@ -204,11 +204,12 @@ describe('OnboardingPolicy', () => {
 
     await user.click(screen.getByText('Save Changes'));
     await waitFor(() => {
-      expect(mockInvoke).toHaveBeenCalledWith("Set-SLOnboardingPolicy -UseRmsUserLicense $true -Scope 'SecurityGroup' -Confirm:$false");
+      expect(mockInvoke).toHaveBeenCalledWith('Set-SLOnboardingPolicy', expect.objectContaining({ UseRmsUserLicense: true, Scope: 'SecurityGroup' }));
+      expect(mockInvoke.mock.calls.find(c => c[0] === 'Set-SLOnboardingPolicy')![1]).not.toHaveProperty('SecurityGroupObjectId');
     });
   });
 
-  it('escapes single quotes in SecurityGroupObjectId', async () => {
+  it('passes special characters as raw values in SecurityGroupObjectId', async () => {
     const user = userEvent.setup();
     mockInvoke
       .mockResolvedValueOnce({ success: true, data: mockPolicyAll })
@@ -229,7 +230,7 @@ describe('OnboardingPolicy', () => {
 
     await user.click(screen.getByText('Save Changes'));
     await waitFor(() => {
-      expect(mockInvoke).toHaveBeenCalledWith("Set-SLOnboardingPolicy -UseRmsUserLicense $false -Scope 'SecurityGroup' -SecurityGroupObjectId 'test''id' -Confirm:$false");
+      expect(mockInvoke).toHaveBeenCalledWith('Set-SLOnboardingPolicy', expect.objectContaining({ SecurityGroupObjectId: "test'id" }));
     });
   });
 
