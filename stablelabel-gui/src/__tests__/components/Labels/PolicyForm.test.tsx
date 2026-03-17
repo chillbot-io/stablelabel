@@ -58,11 +58,11 @@ describe('PolicyForm', () => {
 
       await waitFor(() => {
         expect(mockInvoke).toHaveBeenCalledWith(
-          expect.stringContaining("New-SLLabelPolicy -Name 'Test Policy'"),
+          'New-SLLabelPolicy',
+          expect.objectContaining({ Name: 'Test Policy' }),
         );
       });
 
-      expect(mockInvoke).toHaveBeenCalledWith(expect.stringContaining("-Confirm:$false"));
       expect(onSaved).toHaveBeenCalledWith('Test Policy');
     });
 
@@ -80,7 +80,8 @@ describe('PolicyForm', () => {
 
       await waitFor(() => {
         expect(mockInvoke).toHaveBeenCalledWith(
-          expect.stringContaining("-Comment 'A test comment'"),
+          'New-SLLabelPolicy',
+          expect.objectContaining({ Comment: 'A test comment' }),
         );
       });
     });
@@ -100,7 +101,8 @@ describe('PolicyForm', () => {
 
       await waitFor(() => {
         expect(mockInvoke).toHaveBeenCalledWith(
-          expect.stringContaining("-Labels 'Confidential'"),
+          'New-SLLabelPolicy',
+          expect.objectContaining({ Labels: ['Confidential'] }),
         );
       });
     });
@@ -225,11 +227,11 @@ describe('PolicyForm', () => {
 
       await waitFor(() => {
         expect(mockInvoke).toHaveBeenCalledWith(
-          expect.stringContaining("Set-SLLabelPolicy -Identity 'Global Policy'"),
+          'Set-SLLabelPolicy',
+          expect.objectContaining({ Identity: 'Global Policy', Comment: 'Updated comment' }),
         );
       });
 
-      expect(mockInvoke).toHaveBeenCalledWith(expect.stringContaining("-Comment 'Updated comment'"));
       expect(onSaved).toHaveBeenCalledWith('Global Policy');
     });
 
@@ -267,7 +269,8 @@ describe('PolicyForm', () => {
 
       await waitFor(() => {
         expect(mockInvoke).toHaveBeenCalledWith(
-          expect.stringContaining("Remove-SLLabelPolicy -Identity 'Global Policy' -Confirm:$false"),
+          'Remove-SLLabelPolicy',
+          expect.objectContaining({ Identity: 'Global Policy' }),
         );
       });
 
@@ -365,7 +368,7 @@ describe('PolicyForm', () => {
   });
 
   describe('Edge cases', () => {
-    it('escapes single quotes in policy name', async () => {
+    it('passes raw single quotes in policy name', async () => {
       mockInvoke.mockResolvedValue({ success: true, data: null });
       const user = userEvent.setup();
       render(<PolicyForm onSaved={onSaved} onCancel={onCancel} />);
@@ -375,7 +378,8 @@ describe('PolicyForm', () => {
 
       await waitFor(() => {
         expect(mockInvoke).toHaveBeenCalledWith(
-          expect.stringContaining("O''Brien Policy"),
+          'New-SLLabelPolicy',
+          expect.objectContaining({ Name: "O'Brien Policy" }),
         );
       });
     });
@@ -394,8 +398,7 @@ describe('PolicyForm', () => {
         expect(mockInvoke).toHaveBeenCalled();
       });
 
-      const call = mockInvoke.mock.calls[0][0] as string;
-      expect(call).not.toContain('-Comment');
+      expect(mockInvoke.mock.calls[0][1]).not.toHaveProperty('Comment');
     });
   });
 });

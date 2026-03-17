@@ -33,7 +33,10 @@ describe('FileShareLabelRemove', () => {
 
     await waitFor(() => {
       expect(mockInvoke).toHaveBeenCalledWith(
-        expect.stringContaining('Remove-SLFileShareLabel')
+        'Remove-SLFileShareLabel',
+        expect.objectContaining({
+          Path: '\\\\server\\file.docx',
+        })
       );
     });
   });

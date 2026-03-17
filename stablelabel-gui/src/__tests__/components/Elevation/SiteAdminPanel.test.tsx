@@ -58,9 +58,11 @@ describe('SiteAdminPanel', () => {
     await user.click(screen.getByText('Grant Admin'));
 
     await waitFor(() => {
-      expect(mockInvoke).toHaveBeenCalledWith(
-        "Grant-SLSiteAdmin -SiteUrl 'https://site.com' -UserPrincipalName 'user@contoso.com' -DryRun -Confirm:$false"
-      );
+      expect(mockInvoke).toHaveBeenCalledWith('Grant-SLSiteAdmin', expect.objectContaining({
+        SiteUrl: 'https://site.com',
+        UserPrincipalName: 'user@contoso.com',
+        DryRun: true,
+      }));
     });
     await waitFor(() => {
       expect(screen.getByText('Dry run: would grant site admin.')).toBeInTheDocument();
@@ -82,9 +84,11 @@ describe('SiteAdminPanel', () => {
     await user.click(screen.getByText('Revoke Admin'));
 
     await waitFor(() => {
-      expect(mockInvoke).toHaveBeenCalledWith(
-        "Revoke-SLSiteAdmin -SiteUrl 'https://site.com' -UserPrincipalName 'user@contoso.com' -DryRun -Confirm:$false"
-      );
+      expect(mockInvoke).toHaveBeenCalledWith('Revoke-SLSiteAdmin', expect.objectContaining({
+        SiteUrl: 'https://site.com',
+        UserPrincipalName: 'user@contoso.com',
+        DryRun: true,
+      }));
     });
     await waitFor(() => {
       expect(screen.getByText('Dry run: would revoke site admin.')).toBeInTheDocument();
@@ -123,9 +127,12 @@ describe('SiteAdminPanel', () => {
     await user.click(screen.getByText('Grant'));
 
     await waitFor(() => {
-      expect(mockInvoke).toHaveBeenCalledWith(
-        "Grant-SLSiteAdmin -SiteUrl 'https://site.com' -UserPrincipalName 'user@contoso.com' -Confirm:$false"
-      );
+      expect(mockInvoke).toHaveBeenCalledWith('Grant-SLSiteAdmin', expect.objectContaining({
+        SiteUrl: 'https://site.com',
+        UserPrincipalName: 'user@contoso.com',
+      }));
+      const callArgs = mockInvoke.mock.calls[0];
+      expect(callArgs[1]).not.toHaveProperty('DryRun');
     });
     await waitFor(() => {
       expect(screen.getByText('Site admin granted.')).toBeInTheDocument();
@@ -162,9 +169,12 @@ describe('SiteAdminPanel', () => {
     await user.click(screen.getByText('Revoke'));
 
     await waitFor(() => {
-      expect(mockInvoke).toHaveBeenCalledWith(
-        "Revoke-SLSiteAdmin -SiteUrl 'https://site.com' -UserPrincipalName 'user@contoso.com' -Confirm:$false"
-      );
+      expect(mockInvoke).toHaveBeenCalledWith('Revoke-SLSiteAdmin', expect.objectContaining({
+        SiteUrl: 'https://site.com',
+        UserPrincipalName: 'user@contoso.com',
+      }));
+      const callArgs = mockInvoke.mock.calls[0];
+      expect(callArgs[1]).not.toHaveProperty('DryRun');
     });
     await waitFor(() => {
       expect(screen.getByText('Site admin revoked.')).toBeInTheDocument();
@@ -258,8 +268,8 @@ describe('SiteAdminPanel', () => {
     });
   });
 
-  // --- Escaping ---
-  it('escapes single quotes in site URL and UPN', async () => {
+  // --- Special characters (structured API passes raw values) ---
+  it('passes special characters in site URL and UPN as raw values', async () => {
     const user = userEvent.setup();
     mockInvoke.mockResolvedValue({ success: true, data: null });
     render(<SiteAdminPanel />);
@@ -272,12 +282,10 @@ describe('SiteAdminPanel', () => {
     await user.click(screen.getByText('Grant Admin'));
 
     await waitFor(() => {
-      expect(mockInvoke).toHaveBeenCalledWith(
-        expect.stringContaining("o''site")
-      );
-      expect(mockInvoke).toHaveBeenCalledWith(
-        expect.stringContaining("o''brien@contoso.com")
-      );
+      expect(mockInvoke).toHaveBeenCalledWith('Grant-SLSiteAdmin', expect.objectContaining({
+        SiteUrl: "https://site.com/o'site",
+        UserPrincipalName: "o'brien@contoso.com",
+      }));
     });
   });
 

@@ -53,10 +53,11 @@ describe('FileShareLabelApply', () => {
 
     await waitFor(() => {
       expect(mockInvoke).toHaveBeenCalledWith(
-        expect.stringContaining('Set-SLFileShareLabel')
-      );
-      expect(mockInvoke).toHaveBeenCalledWith(
-        expect.stringContaining("-LabelName 'Confidential'")
+        'Set-SLFileShareLabel',
+        expect.objectContaining({
+          Path: '\\\\server\\file.docx',
+          LabelName: 'Confidential',
+        })
       );
     });
   });
@@ -96,7 +97,12 @@ describe('FileShareLabelApply', () => {
 
     await waitFor(() => {
       expect(mockInvoke).toHaveBeenCalledWith(
-        expect.stringContaining('-DryRun')
+        'Set-SLFileShareLabel',
+        expect.objectContaining({
+          Path: '\\\\server\\file.docx',
+          LabelName: 'Confidential',
+          DryRun: true,
+        })
       );
     });
   });

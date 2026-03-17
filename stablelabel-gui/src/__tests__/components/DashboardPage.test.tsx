@@ -274,7 +274,7 @@ describe('DashboardPage', () => {
 
     await waitFor(() => {
       expect(mockInvoke).toHaveBeenCalledWith(
-        expect.stringContaining('New-SLSnapshot'),
+        'New-SLSnapshot', expect.objectContaining({ Name: 'Dashboard-Quick', Scope: 'All' })
       );
     });
   });
@@ -371,8 +371,8 @@ describe('DashboardPage', () => {
       expect(screen.getByText('Sensitivity Labels')).toBeInTheDocument();
     });
     // Should have called Get-SLLabel but not compliance commands
-    const calls = mockInvoke.mock.calls.map((c: string[]) => c[0]);
-    expect(calls.some((c: string) => c.includes('Get-SLLabel'))).toBe(true);
+    const calls = mockInvoke.mock.calls.map((c: unknown[]) => c[0]);
+    expect(calls).toContain('Get-SLLabel');
   });
 
   // === Error resilience ===

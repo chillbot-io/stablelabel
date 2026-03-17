@@ -103,7 +103,7 @@ describe('AutoLabelList', () => {
     expect(screen.getByText('Credit Card Detection')).toBeInTheDocument();
     expect(screen.getByText('SSN Scanner')).toBeInTheDocument();
     expect(screen.getByText('5 auto-label policies')).toBeInTheDocument();
-    expect(mockInvoke).toHaveBeenCalledWith(expect.stringContaining('Get-SLAutoLabelPolicy'));
+    expect(mockInvoke).toHaveBeenCalledWith('Get-SLAutoLabelPolicy');
   });
 
   it('shows singular "policy" for single item', async () => {

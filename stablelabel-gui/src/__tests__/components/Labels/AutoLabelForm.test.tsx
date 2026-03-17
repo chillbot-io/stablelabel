@@ -71,15 +71,15 @@ describe('AutoLabelForm', () => {
 
       await waitFor(() => {
         expect(mockInvoke).toHaveBeenCalledWith(
-          expect.stringContaining("New-SLAutoLabelPolicy -Name 'Test Policy'"),
+          'New-SLAutoLabelPolicy',
+          expect.objectContaining({
+            Name: 'Test Policy',
+            ApplySensitivityLabel: 'Highly Confidential',
+            Mode: expect.any(String),
+          }),
         );
       });
 
-      expect(mockInvoke).toHaveBeenCalledWith(
-        expect.stringContaining("-ApplySensitivityLabel 'Highly Confidential'"),
-      );
-      expect(mockInvoke).toHaveBeenCalledWith(expect.stringContaining("-Mode"));
-      expect(mockInvoke).toHaveBeenCalledWith(expect.stringContaining("-Confirm:$false"));
       expect(onSaved).toHaveBeenCalledWith('Test Policy');
     });
 
@@ -99,7 +99,8 @@ describe('AutoLabelForm', () => {
 
       await waitFor(() => {
         expect(mockInvoke).toHaveBeenCalledWith(
-          expect.stringContaining("-ExchangeLocation 'All'"),
+          'New-SLAutoLabelPolicy',
+          expect.objectContaining({ ExchangeLocation: ['All'] }),
         );
       });
     });
@@ -120,7 +121,8 @@ describe('AutoLabelForm', () => {
 
       await waitFor(() => {
         expect(mockInvoke).toHaveBeenCalledWith(
-          expect.stringContaining("-SharePointLocation"),
+          'New-SLAutoLabelPolicy',
+          expect.objectContaining({ SharePointLocation: expect.any(Array) }),
         );
       });
     });
@@ -143,7 +145,8 @@ describe('AutoLabelForm', () => {
 
       await waitFor(() => {
         expect(mockInvoke).toHaveBeenCalledWith(
-          expect.stringContaining("-OneDriveLocation"),
+          'New-SLAutoLabelPolicy',
+          expect.objectContaining({ OneDriveLocation: expect.any(Array) }),
         );
       });
     });
@@ -302,12 +305,11 @@ describe('AutoLabelForm', () => {
 
       await waitFor(() => {
         expect(mockInvoke).toHaveBeenCalledWith(
-          expect.stringContaining("Set-SLAutoLabelPolicy -Identity 'PII Auto-Label'"),
+          'Set-SLAutoLabelPolicy',
+          expect.objectContaining({ Identity: 'PII Auto-Label', Mode: 'Enable' }),
         );
       });
 
-      expect(mockInvoke).toHaveBeenCalledWith(expect.stringContaining("-Mode 'Enable'"));
-      expect(mockInvoke).toHaveBeenCalledWith(expect.stringContaining("-Confirm:$false"));
       expect(onSaved).toHaveBeenCalledWith('PII Auto-Label');
     });
 
@@ -325,8 +327,7 @@ describe('AutoLabelForm', () => {
         expect(mockInvoke).toHaveBeenCalled();
       });
 
-      const call = mockInvoke.mock.calls[0][0] as string;
-      expect(call).not.toContain('-Mode');
+      expect(mockInvoke.mock.calls[0][1]).not.toHaveProperty('Mode');
     });
 
     it('shows Delete button in edit mode', () => {
@@ -362,7 +363,8 @@ describe('AutoLabelForm', () => {
 
       await waitFor(() => {
         expect(mockInvoke).toHaveBeenCalledWith(
-          expect.stringContaining("Remove-SLAutoLabelPolicy -Identity 'PII Auto-Label' -Confirm:$false"),
+          'Remove-SLAutoLabelPolicy',
+          expect.objectContaining({ Identity: 'PII Auto-Label' }),
         );
       });
 
@@ -459,7 +461,7 @@ describe('AutoLabelForm', () => {
   });
 
   describe('Edge cases', () => {
-    it('escapes single quotes in policy name', async () => {
+    it('passes raw single quotes in policy name', async () => {
       mockInvoke.mockResolvedValue({ success: true, data: null });
       const user = userEvent.setup();
       render(<AutoLabelForm onSaved={onSaved} onCancel={onCancel} />);
@@ -470,7 +472,8 @@ describe('AutoLabelForm', () => {
 
       await waitFor(() => {
         expect(mockInvoke).toHaveBeenCalledWith(
-          expect.stringContaining("O''Brien Policy"),
+          'New-SLAutoLabelPolicy',
+          expect.objectContaining({ Name: "O'Brien Policy" }),
         );
       });
     });

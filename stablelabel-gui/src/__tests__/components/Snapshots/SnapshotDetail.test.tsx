@@ -131,7 +131,7 @@ describe('SnapshotDetail', () => {
     await waitFor(() => {
       expect(defaultProps.onCompare).toHaveBeenCalledWith(mockDiff);
     });
-    expect(mockInvoke).toHaveBeenCalledWith("Compare-SLSnapshot -Name 'pre-migration' -Live");
+    expect(mockInvoke).toHaveBeenCalledWith('Compare-SLSnapshot', { Name: 'pre-migration', Live: true });
   });
 
   it('shows comparing state on Compare button', async () => {
@@ -265,7 +265,7 @@ describe('SnapshotDetail', () => {
     await waitFor(() => {
       expect(defaultProps.onDeleted).toHaveBeenCalled();
     });
-    expect(mockInvoke).toHaveBeenCalledWith("Remove-SLSnapshot -Name 'pre-migration' -Confirm:$false");
+    expect(mockInvoke).toHaveBeenCalledWith('Remove-SLSnapshot', { Name: 'pre-migration' });
   });
 
   it('shows error when delete fails', async () => {
@@ -366,7 +366,7 @@ describe('SnapshotDetail', () => {
     await user.click(screen.getByText('Compare to Live'));
 
     await waitFor(() => {
-      expect(mockInvoke).toHaveBeenCalledWith("Compare-SLSnapshot -Name 'it''s-a-test' -Live");
+      expect(mockInvoke).toHaveBeenCalledWith('Compare-SLSnapshot', { Name: "it's-a-test", Live: true });
     });
   });
 

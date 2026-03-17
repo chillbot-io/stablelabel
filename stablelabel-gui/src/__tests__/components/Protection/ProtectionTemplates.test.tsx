@@ -280,7 +280,7 @@ describe('ProtectionTemplates', () => {
     await user.click(confirmBtn);
 
     await waitFor(() => {
-      expect(mockInvoke).toHaveBeenCalledWith("Remove-SLProtectionTemplate -TemplateId 'tmpl-001' -Confirm:$false");
+      expect(mockInvoke).toHaveBeenCalledWith('Remove-SLProtectionTemplate', { TemplateId: 'tmpl-001' });
     });
   });
 
@@ -410,7 +410,7 @@ describe('ProtectionTemplates', () => {
 
       await user.click(screen.getByRole('button', { name: 'Export' }));
       await waitFor(() => {
-        expect(mockInvoke).toHaveBeenCalledWith("Export-SLProtectionTemplate -TemplateId 'tmpl-001' -Path 'C:\\output\\test.xml' -Confirm:$false");
+        expect(mockInvoke).toHaveBeenCalledWith('Export-SLProtectionTemplate', { TemplateId: 'tmpl-001', Path: 'C:\\output\\test.xml' });
       });
       expect(screen.getByText(/Exported to/)).toBeInTheDocument();
     });
@@ -512,7 +512,7 @@ describe('ProtectionTemplates', () => {
       await user.type(pathInput, "C:\\user's\\file.xml");
       await user.click(screen.getByRole('button', { name: 'Export' }));
       await waitFor(() => {
-        expect(mockInvoke).toHaveBeenCalledWith("Export-SLProtectionTemplate -TemplateId 'tmpl-001' -Path 'C:\\user''s\\file.xml' -Confirm:$false");
+        expect(mockInvoke).toHaveBeenCalledWith('Export-SLProtectionTemplate', { TemplateId: 'tmpl-001', Path: "C:\\user's\\file.xml" });
       });
     });
   });
@@ -545,7 +545,7 @@ describe('ProtectionTemplates', () => {
       await user.type(pathInput, 'C:\\import\\new.xml');
       await user.click(screen.getByRole('button', { name: 'Import' }));
       await waitFor(() => {
-        expect(mockInvoke).toHaveBeenCalledWith("Import-SLProtectionTemplate -Path 'C:\\import\\new.xml' -Confirm:$false");
+        expect(mockInvoke).toHaveBeenCalledWith('Import-SLProtectionTemplate', { Path: 'C:\\import\\new.xml' });
       });
       // The success message may briefly appear then disappear during refresh
       // Just verify the import was called and refresh triggered
@@ -637,7 +637,7 @@ describe('ProtectionTemplates', () => {
       await user.type(pathInput, "it's.xml");
       await user.click(screen.getByRole('button', { name: 'Import' }));
       await waitFor(() => {
-        expect(mockInvoke).toHaveBeenCalledWith("Import-SLProtectionTemplate -Path 'it''s.xml' -Confirm:$false");
+        expect(mockInvoke).toHaveBeenCalledWith('Import-SLProtectionTemplate', { Path: "it's.xml" });
       });
     });
   });

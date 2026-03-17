@@ -73,7 +73,7 @@ describe('TemplatesPage', () => {
     expect(screen.getByText('Dry Run')).toBeInTheDocument();
   });
 
-  it('calls Deploy-SLTemplate with -DryRun on dry run', async () => {
+  it('calls Deploy-SLTemplate with DryRun on dry run', async () => {
     mockInvoke.mockResolvedValue({ success: true, data: { Status: 'DryRun' } });
     const user = userEvent.setup();
     render(<TemplatesPage />);
@@ -85,14 +85,11 @@ describe('TemplatesPage', () => {
     await user.click(screen.getByText('Dry Run'));
 
     expect(mockInvoke).toHaveBeenCalledWith(
-      expect.stringContaining('Deploy-SLTemplate')
-    );
-    expect(mockInvoke).toHaveBeenCalledWith(
-      expect.stringContaining('-DryRun')
+      'Deploy-SLTemplate', expect.objectContaining({ Name: 'Healthcare-HIPAA', DryRun: true })
     );
   });
 
-  it('calls Deploy-SLTemplate with -Confirm:$false on deploy', async () => {
+  it('calls Deploy-SLTemplate without DryRun on deploy', async () => {
     mockInvoke.mockResolvedValue({ success: true, data: { Status: 'Deployed' } });
     const user = userEvent.setup();
     render(<TemplatesPage />);
@@ -104,10 +101,9 @@ describe('TemplatesPage', () => {
     await user.click(screen.getByText('Deploy'));
 
     expect(mockInvoke).toHaveBeenCalledWith(
-      expect.stringContaining('Deploy-SLTemplate')
+      'Deploy-SLTemplate', expect.objectContaining({ Name: 'Healthcare-HIPAA' })
     );
-    expect(mockInvoke).toHaveBeenCalledWith(
-      expect.stringContaining('-Confirm:$false')
-    );
+    const deployCall = mockInvoke.mock.calls.find((c: unknown[]) => c[0] === 'Deploy-SLTemplate' && !(c[1] as Record<string, unknown>)?.DryRun);
+    expect(deployCall).toBeTruthy();
   });
 });

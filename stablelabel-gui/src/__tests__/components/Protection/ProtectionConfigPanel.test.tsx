@@ -444,7 +444,7 @@ describe('ProtectionConfigPanel', () => {
 
     await waitFor(() => {
       expect(mockInvoke).toHaveBeenCalledWith(
-        expect.stringContaining('Disable-SLSuperUser')
+        'Disable-SLSuperUser', expect.objectContaining({ UserPrincipalName: 'admin@contoso.com' })
       );
     });
   });
@@ -498,10 +498,7 @@ describe('ProtectionConfigPanel', () => {
 
     await waitFor(() => {
       expect(mockInvoke).toHaveBeenCalledWith(
-        expect.stringContaining('Grant-SLSiteAdmin')
-      );
-      expect(mockInvoke).toHaveBeenCalledWith(
-        expect.stringContaining('newadmin@contoso.com')
+        'Grant-SLSiteAdmin', expect.objectContaining({ UserPrincipalName: 'newadmin@contoso.com', Role: 'GlobalAdministrator' })
       );
     });
   });

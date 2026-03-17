@@ -72,15 +72,17 @@ describe('DlpRuleForm', () => {
       await user.click(screen.getByText('Create Rule'));
 
       await waitFor(() => {
-        expect(mockInvoke).toHaveBeenCalledWith(expect.stringContaining("New-SLDlpRule -Name 'My New Rule' -Policy 'PII Policy'"));
-        expect(mockInvoke).toHaveBeenCalledWith(expect.stringContaining("-Comment 'A comment'"));
-        expect(mockInvoke).toHaveBeenCalledWith(expect.stringContaining('-BlockAccess $false'));
-        expect(mockInvoke).toHaveBeenCalledWith(expect.stringContaining('-Confirm:$false'));
+        expect(mockInvoke).toHaveBeenCalledWith('New-SLDlpRule', expect.objectContaining({
+          Name: 'My New Rule',
+          Policy: 'PII Policy',
+          Comment: 'A comment',
+          BlockAccess: false,
+        }));
       });
       expect(onSaved).toHaveBeenCalledWith('My New Rule');
     });
 
-    it('includes BlockAccess $true when toggled', async () => {
+    it('includes BlockAccess true when toggled', async () => {
       const user = userEvent.setup();
       mockInvoke.mockResolvedValue({ success: true, data: null });
       render(<DlpRuleForm onSaved={onSaved} onCancel={onCancel} />);
@@ -95,7 +97,7 @@ describe('DlpRuleForm', () => {
       await user.click(screen.getByText('Create Rule'));
 
       await waitFor(() => {
-        expect(mockInvoke).toHaveBeenCalledWith(expect.stringContaining('-BlockAccess $true'));
+        expect(mockInvoke).toHaveBeenCalledWith('New-SLDlpRule', expect.objectContaining({ BlockAccess: true }));
       });
     });
 
@@ -199,9 +201,10 @@ describe('DlpRuleForm', () => {
       await user.click(screen.getByText('Save Changes'));
 
       await waitFor(() => {
-        expect(mockInvoke).toHaveBeenCalledWith(expect.stringContaining("Set-SLDlpRule -Identity 'Block SSN Sharing'"));
-        expect(mockInvoke).toHaveBeenCalledWith(expect.stringContaining("-Comment 'Updated comment'"));
-        expect(mockInvoke).toHaveBeenCalledWith(expect.stringContaining('-Confirm:$false'));
+        expect(mockInvoke).toHaveBeenCalledWith('Set-SLDlpRule', expect.objectContaining({
+          Identity: 'Block SSN Sharing',
+          Comment: 'Updated comment',
+        }));
       });
       expect(onSaved).toHaveBeenCalledWith('Block SSN Sharing');
     });
@@ -217,7 +220,7 @@ describe('DlpRuleForm', () => {
       await user.click(screen.getByText('Save Changes'));
 
       await waitFor(() => {
-        expect(mockInvoke).toHaveBeenCalledWith(expect.stringContaining('-BlockAccess $false'));
+        expect(mockInvoke).toHaveBeenCalledWith('Set-SLDlpRule', expect.objectContaining({ BlockAccess: false }));
       });
     });
 
@@ -237,8 +240,7 @@ describe('DlpRuleForm', () => {
 
       await user.click(screen.getByText('Delete Rule'));
       await waitFor(() => {
-        expect(mockInvoke).toHaveBeenCalledWith(expect.stringContaining("Remove-SLDlpRule -Identity 'Block SSN Sharing'"));
-        expect(mockInvoke).toHaveBeenCalledWith(expect.stringContaining('-Confirm:$false'));
+        expect(mockInvoke).toHaveBeenCalledWith('Remove-SLDlpRule', expect.objectContaining({ Identity: 'Block SSN Sharing' }));
       });
       expect(onDeleted).toHaveBeenCalled();
     });

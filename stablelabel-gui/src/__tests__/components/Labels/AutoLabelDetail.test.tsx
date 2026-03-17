@@ -52,7 +52,8 @@ describe('AutoLabelDetail', () => {
     expect(screen.getByText('2')).toBeInTheDocument();
 
     expect(mockInvoke).toHaveBeenCalledWith(
-      expect.stringContaining("Get-SLAutoLabelPolicy -Identity 'PII Auto-Label'"),
+      'Get-SLAutoLabelPolicy',
+      expect.objectContaining({ Identity: 'PII Auto-Label' }),
     );
   });
 

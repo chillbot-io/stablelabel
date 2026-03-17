@@ -71,7 +71,7 @@ describe('SnapshotCreate', () => {
     await user.click(screen.getByText('Create Snapshot'));
 
     await waitFor(() => {
-      expect(mockInvoke).toHaveBeenCalledWith("New-SLSnapshot -Name 'my-snapshot' -Scope 'All' -Confirm:$false");
+      expect(mockInvoke).toHaveBeenCalledWith('New-SLSnapshot', { Name: 'my-snapshot', Scope: 'All' });
     });
     expect(defaultProps.onCreated).toHaveBeenCalledWith('my-snapshot');
   });

@@ -82,7 +82,8 @@ describe('RetentionPolicyForm', () => {
 
       await waitFor(() => {
         expect(mockInvoke).toHaveBeenCalledWith(
-          "New-SLRetentionPolicy -Name 'Test Policy' -Enabled $true -Confirm:$false",
+          'New-SLRetentionPolicy',
+          expect.objectContaining({ Name: 'Test Policy', Enabled: true }),
         );
       });
       expect(onSaved).toHaveBeenCalledWith('Test Policy');
@@ -104,11 +105,14 @@ describe('RetentionPolicyForm', () => {
       await waitFor(() => {
         expect(mockInvoke).toHaveBeenCalled();
       });
-      const call = mockInvoke.mock.calls[0][0] as string;
-      expect(call).toContain("New-SLRetentionPolicy -Name 'My Policy'");
-      expect(call).toContain("-Comment 'A description'");
-      expect(call).toContain('-Enabled $false');
-      expect(call).toContain('-Confirm:$false');
+      expect(mockInvoke).toHaveBeenCalledWith(
+        'New-SLRetentionPolicy',
+        expect.objectContaining({
+          Name: 'My Policy',
+          Comment: 'A description',
+          Enabled: false,
+        }),
+      );
     });
 
     it('handles save failure with error message', async () => {
@@ -172,7 +176,7 @@ describe('RetentionPolicyForm', () => {
       expect(onCancel).toHaveBeenCalledTimes(1);
     });
 
-    it('escapes single quotes in name', async () => {
+    it('passes raw single quotes in name', async () => {
       mockInvoke.mockResolvedValue({ success: true, data: null });
       const user = userEvent.setup();
       render(<RetentionPolicyForm onSaved={onSaved} onCancel={onCancel} />);
@@ -182,7 +186,8 @@ describe('RetentionPolicyForm', () => {
 
       await waitFor(() => {
         expect(mockInvoke).toHaveBeenCalledWith(
-          expect.stringContaining("O''Brien''s Policy"),
+          'New-SLRetentionPolicy',
+          expect.objectContaining({ Name: "O'Brien's Policy" }),
         );
       });
     });
@@ -240,7 +245,8 @@ describe('RetentionPolicyForm', () => {
 
       await waitFor(() => {
         expect(mockInvoke).toHaveBeenCalledWith(
-          "Set-SLRetentionPolicy -Identity 'Exchange 7yr Retention' -Comment 'Updated comment' -Confirm:$false",
+          'Set-SLRetentionPolicy',
+          expect.objectContaining({ Identity: 'Exchange 7yr Retention', Comment: 'Updated comment' }),
         );
       });
       expect(onSaved).toHaveBeenCalledWith('Exchange 7yr Retention');
@@ -259,7 +265,8 @@ describe('RetentionPolicyForm', () => {
 
       await waitFor(() => {
         expect(mockInvoke).toHaveBeenCalledWith(
-          "Set-SLRetentionPolicy -Identity 'Exchange 7yr Retention' -Enabled $false -Confirm:$false",
+          'Set-SLRetentionPolicy',
+          expect.objectContaining({ Identity: 'Exchange 7yr Retention', Enabled: false }),
         );
       });
     });
@@ -275,7 +282,8 @@ describe('RetentionPolicyForm', () => {
 
       await waitFor(() => {
         expect(mockInvoke).toHaveBeenCalledWith(
-          "Set-SLRetentionPolicy -Identity 'Exchange 7yr Retention' -Confirm:$false",
+          'Set-SLRetentionPolicy',
+          expect.objectContaining({ Identity: 'Exchange 7yr Retention' }),
         );
       });
     });
@@ -320,7 +328,8 @@ describe('RetentionPolicyForm', () => {
 
         await waitFor(() => {
           expect(mockInvoke).toHaveBeenCalledWith(
-            "Remove-SLRetentionPolicy -Identity 'Exchange 7yr Retention' -Confirm:$false",
+            'Remove-SLRetentionPolicy',
+            expect.objectContaining({ Identity: 'Exchange 7yr Retention' }),
           );
         });
         expect(onDeleted).toHaveBeenCalledTimes(1);
