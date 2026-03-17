@@ -313,7 +313,11 @@ export const CMDLET_REGISTRY: Record<string, CmdletDef> = {
   },
 
   // ── Sensitive Info Types ──────────────────────────────────────────────
-  'Get-SLSensitiveInfoType': {},
+  'Get-SLSensitiveInfoType': {
+    params: {
+      Identity: { type: 'string' },
+    },
+  },
 
   // ── Retention Policies ────────────────────────────────────────────────
   'Get-SLRetentionPolicy': {
@@ -488,7 +492,13 @@ export const CMDLET_REGISTRY: Record<string, CmdletDef> = {
   'Get-SLProtectionTemplate': {},
   'Get-SLProtectionAdmin': {},
   'Get-SLProtectionKey': {},
-  'Get-SLProtectionLog': {},
+  'Get-SLProtectionLog': {
+    params: {
+      UserEmail: { type: 'string' },
+      FromTime: { type: 'string' },
+      ToTime: { type: 'string' },
+    },
+  },
   'Get-SLOnboardingPolicy': {},
   'Set-SLOnboardingPolicy': {
     confirm: true,

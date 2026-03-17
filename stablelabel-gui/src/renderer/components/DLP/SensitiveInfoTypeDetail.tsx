@@ -12,7 +12,7 @@ export default function SensitiveInfoTypeDetail({ sitName }: Props) {
 
   useEffect(() => {
     setLoading(true);
-    invoke<SensitiveInfoType>(`Get-SLSensitiveInfoType -Identity '${sitName.replace(/'/g, "''")}'`).then(r => {
+    invoke<SensitiveInfoType>('Get-SLSensitiveInfoType', { Identity: sitName }).then(r => {
       if (r.success && r.data) setSit(r.data);
       else setError(r.error ?? 'Not found');
       setLoading(false);
