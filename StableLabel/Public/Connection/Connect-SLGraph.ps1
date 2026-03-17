@@ -12,6 +12,11 @@ function Connect-SLGraph {
     .PARAMETER Scopes
         Additional Microsoft Graph scopes to request beyond the StableLabel
         defaults. The defaults are always included.
+    .PARAMETER UseDeviceCode
+        Use the device-code authentication flow instead of interactive browser
+        sign-in. The command will output a URL and code that the user must enter
+        in a browser to complete authentication. This is required when running
+        in non-interactive environments (e.g. the StableLabel GUI).
     .PARAMETER AsJson
         Return the connection result as a JSON string instead of a PSCustomObject.
     .EXAMPLE
@@ -19,7 +24,7 @@ function Connect-SLGraph {
     .EXAMPLE
         Connect-SLGraph -TenantId 'contoso.onmicrosoft.com'
     .EXAMPLE
-        Connect-SLGraph -Scopes 'Mail.Read' -AsJson
+        Connect-SLGraph -UseDeviceCode -AsJson
     #>
     [CmdletBinding()]
     param(
@@ -28,6 +33,9 @@ function Connect-SLGraph {
 
         [Parameter()]
         [string[]]$Scopes,
+
+        [Parameter()]
+        [switch]$UseDeviceCode,
 
         [Parameter()]
         [switch]$AsJson
@@ -59,6 +67,10 @@ function Connect-SLGraph {
 
             if ($TenantId) {
                 $connectParams['TenantId'] = $TenantId
+            }
+
+            if ($UseDeviceCode) {
+                $connectParams['UseDeviceCode'] = $true
             }
 
             Connect-MgGraph @connectParams -ErrorAction Stop

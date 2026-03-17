@@ -15,12 +15,18 @@ function Connect-SLAll {
     .PARAMETER SkipPrereqs
         Skip the prerequisite installation check (useful if you know modules are
         already installed and want to save a few seconds).
+    .PARAMETER UseDeviceCode
+        Use the device-code authentication flow for Microsoft Graph instead of
+        interactive browser sign-in. Required when running from the StableLabel
+        GUI or other non-interactive environments.
     .PARAMETER AsJson
         Return the result as a JSON string instead of a PSCustomObject.
     .EXAMPLE
         Connect-SLAll
     .EXAMPLE
         Connect-SLAll -TenantId 'contoso.onmicrosoft.com'
+    .EXAMPLE
+        Connect-SLAll -UseDeviceCode
     #>
     [CmdletBinding()]
     param(
@@ -29,6 +35,9 @@ function Connect-SLAll {
 
         [Parameter()]
         [switch]$SkipPrereqs,
+
+        [Parameter()]
+        [switch]$UseDeviceCode,
 
         [Parameter()]
         [switch]$AsJson
@@ -96,6 +105,7 @@ function Connect-SLAll {
             Write-Verbose 'Connecting to Microsoft Graph...'
             $graphParams = @{}
             if ($TenantId) { $graphParams['TenantId'] = $TenantId }
+            if ($UseDeviceCode) { $graphParams['UseDeviceCode'] = $true }
             $graphResult = Connect-SLGraph @graphParams -ErrorAction Stop
 
             $steps.Add([PSCustomObject]@{
