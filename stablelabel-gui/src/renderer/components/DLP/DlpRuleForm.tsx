@@ -25,23 +25,23 @@ export default function DlpRuleForm({ existing, onSaved, onCancel, onDeleted }: 
     if (isNew && !policy.trim()) { setError('Parent policy is required.'); return; }
     setSaving(true); setError(null);
     try {
-      let cmd: string;
+      let r;
       if (isNew) {
-        const p = [`New-SLDlpRule -Name '${esc(name)}' -Policy '${esc(policy)}'`];
-        if (comment.trim()) p.push(`-Comment '${esc(comment)}'`);
-        p.push(`-BlockAccess $${blockAccess}`);
-        if (notifyUser.length) p.push(`-NotifyUser ${fa(notifyUser)}`);
-        if (generateAlert.length) p.push(`-GenerateAlert ${fa(generateAlert)}`);
-        p.push('-Confirm:$false');
-        cmd = p.join(' ');
+        r = await invoke('New-SLDlpRule', {
+          Name: name,
+          Policy: policy,
+          Comment: comment.trim() || undefined,
+          BlockAccess: blockAccess,
+          NotifyUser: notifyUser.length ? notifyUser : undefined,
+          GenerateAlert: generateAlert.length ? generateAlert : undefined,
+        });
       } else {
-        const p = [`Set-SLDlpRule -Identity '${esc(existing!.Name)}'`];
-        if (comment !== (existing!.Comment ?? '')) p.push(`-Comment '${esc(comment)}'`);
-        if (blockAccess !== existing!.BlockAccess) p.push(`-BlockAccess $${blockAccess}`);
-        p.push('-Confirm:$false');
-        cmd = p.join(' ');
+        r = await invoke('Set-SLDlpRule', {
+          Identity: existing!.Name,
+          Comment: comment !== (existing!.Comment ?? '') ? comment : undefined,
+          BlockAccess: blockAccess !== existing!.BlockAccess ? blockAccess : undefined,
+        });
       }
-      const r = await invoke(cmd);
       if (r.success) onSaved(name); else setError(r.error ?? 'Failed');
     } catch (e) { setError(e instanceof Error ? e.message : 'Failed'); }
     setSaving(false);
@@ -51,7 +51,7 @@ export default function DlpRuleForm({ existing, onSaved, onCancel, onDeleted }: 
     if (!existing) return;
     setDeleting(true);
     try {
-      const r = await invoke(`Remove-SLDlpRule -Identity '${esc(existing.Name)}' -Confirm:$false`);
+      const r = await invoke('Remove-SLDlpRule', { Identity: existing.Name });
       if (r.success) onDeleted?.(); else setError(r.error ?? 'Delete failed');
     } catch (e) { setError(e instanceof Error ? e.message : 'Failed'); }
     setDeleting(false); setShowDelete(false);
@@ -79,6 +79,3 @@ export default function DlpRuleForm({ existing, onSaved, onCancel, onDeleted }: 
     </div>
   );
 }
-
-function esc(s: string) { return s.replace(/'/g, "''"); }
-function fa(a: string[]) { return a.map(v => `'${esc(v)}'`).join(','); }

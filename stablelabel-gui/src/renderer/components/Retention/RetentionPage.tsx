@@ -109,7 +109,7 @@ export default function RetentionPage() {
 function FormWithData({ type, name, invoke, onSaved, onCancel, onDeleted }: {
   type: 'label' | 'policy';
   name: string;
-  invoke: (cmd: string) => Promise<{ success: boolean; data: unknown; error?: string }>;
+  invoke: (cmdlet: string, params?: Record<string, unknown>) => Promise<{ success: boolean; data: unknown; error?: string }>;
   onSaved: (name: string) => void;
   onCancel: () => void;
   onDeleted: () => void;
@@ -118,11 +118,8 @@ function FormWithData({ type, name, invoke, onSaved, onCancel, onDeleted }: {
   const [loading, setLoading] = React.useState(true);
 
   React.useEffect(() => {
-    const escaped = name.replace(/'/g, "''");
-    const cmd = type === 'label'
-      ? `Get-SLRetentionLabel -Identity '${escaped}'`
-      : `Get-SLRetentionPolicy -Identity '${escaped}'`;
-    invoke(cmd).then(r => {
+    const cmdlet = type === 'label' ? 'Get-SLRetentionLabel' : 'Get-SLRetentionPolicy';
+    invoke(cmdlet, { Identity: name }).then(r => {
       if (r.success && r.data) setData(r.data);
       setLoading(false);
     });

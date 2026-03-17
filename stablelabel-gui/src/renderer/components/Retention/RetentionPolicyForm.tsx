@@ -33,26 +33,25 @@ export default function RetentionPolicyForm({ existing, onSaved, onCancel, onDel
     setError(null);
 
     try {
-      let cmd: string;
+      let result;
       if (isNew) {
-        const parts = [`New-SLRetentionPolicy -Name '${esc(name)}'`];
-        if (comment.trim()) parts.push(`-Comment '${esc(comment)}'`);
-        parts.push(`-Enabled $${enabled}`);
-        if (exchangeLocation.length > 0) parts.push(`-ExchangeLocation ${fmt(exchangeLocation)}`);
-        if (sharePointLocation.length > 0) parts.push(`-SharePointLocation ${fmt(sharePointLocation)}`);
-        if (oneDriveLocation.length > 0) parts.push(`-OneDriveLocation ${fmt(oneDriveLocation)}`);
-        if (modernGroupLocation.length > 0) parts.push(`-ModernGroupLocation ${fmt(modernGroupLocation)}`);
-        parts.push('-Confirm:$false');
-        cmd = parts.join(' ');
+        result = await invoke('New-SLRetentionPolicy', {
+          Name: name,
+          Comment: comment.trim() || undefined,
+          Enabled: enabled,
+          ExchangeLocation: exchangeLocation.length ? exchangeLocation : undefined,
+          SharePointLocation: sharePointLocation.length ? sharePointLocation : undefined,
+          OneDriveLocation: oneDriveLocation.length ? oneDriveLocation : undefined,
+          ModernGroupLocation: modernGroupLocation.length ? modernGroupLocation : undefined,
+        });
       } else {
-        const parts = [`Set-SLRetentionPolicy -Identity '${esc(existing!.Name)}'`];
-        if (comment !== (existing!.Comment ?? '')) parts.push(`-Comment '${esc(comment)}'`);
-        if (enabled !== existing!.Enabled) parts.push(`-Enabled $${enabled}`);
-        parts.push('-Confirm:$false');
-        cmd = parts.join(' ');
+        result = await invoke('Set-SLRetentionPolicy', {
+          Identity: existing!.Name,
+          Comment: comment !== (existing!.Comment ?? '') ? comment : undefined,
+          Enabled: enabled !== existing!.Enabled ? enabled : undefined,
+        });
       }
 
-      const result = await invoke(cmd);
       if (result.success) onSaved(name);
       else setError(result.error ?? 'Operation failed');
     } catch (err) {
@@ -65,7 +64,7 @@ export default function RetentionPolicyForm({ existing, onSaved, onCancel, onDel
     if (!existing) return;
     setDeleting(true);
     try {
-      const result = await invoke(`Remove-SLRetentionPolicy -Identity '${esc(existing.Name)}' -Confirm:$false`);
+      const result = await invoke('Remove-SLRetentionPolicy', { Identity: existing.Name });
       if (result.success) onDeleted?.();
       else setError(result.error ?? 'Delete failed');
     } catch (err) {
@@ -115,6 +114,3 @@ export default function RetentionPolicyForm({ existing, onSaved, onCancel, onDel
     </div>
   );
 }
-
-function esc(s: string) { return s.replace(/'/g, "''"); }
-function fmt(arr: string[]) { return arr.map(v => `'${esc(v)}'`).join(','); }

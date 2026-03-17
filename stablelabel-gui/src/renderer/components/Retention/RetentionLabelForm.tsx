@@ -43,24 +43,23 @@ export default function RetentionLabelForm({ existing, onSaved, onCancel, onDele
     setError(null);
 
     try {
-      let cmd: string;
+      let result;
       if (isNew) {
-        const parts = [`New-SLRetentionLabel -Name '${esc(name)}'`];
-        if (comment.trim()) parts.push(`-Comment '${esc(comment)}'`);
-        if (retentionDuration !== '') parts.push(`-RetentionDuration ${retentionDuration}`);
-        if (retentionAction) parts.push(`-RetentionAction '${retentionAction}'`);
-        if (retentionType) parts.push(`-RetentionType '${retentionType}'`);
-        parts.push('-Confirm:$false');
-        cmd = parts.join(' ');
+        result = await invoke('New-SLRetentionLabel', {
+          Name: name,
+          Comment: comment.trim() || undefined,
+          RetentionDuration: retentionDuration !== '' ? retentionDuration : undefined,
+          RetentionAction: retentionAction || undefined,
+          RetentionType: retentionType || undefined,
+        });
       } else {
-        const parts = [`Set-SLRetentionLabel -Identity '${esc(existing!.Name)}'`];
-        if (comment !== (existing!.Comment ?? '')) parts.push(`-Comment '${esc(comment)}'`);
-        if (retentionDuration !== '' && retentionDuration !== existing!.RetentionDuration) parts.push(`-RetentionDuration ${retentionDuration}`);
-        parts.push('-Confirm:$false');
-        cmd = parts.join(' ');
+        result = await invoke('Set-SLRetentionLabel', {
+          Identity: existing!.Name,
+          Comment: comment !== (existing!.Comment ?? '') ? comment : undefined,
+          RetentionDuration: retentionDuration !== '' && retentionDuration !== existing!.RetentionDuration ? retentionDuration : undefined,
+        });
       }
 
-      const result = await invoke(cmd);
       if (result.success) onSaved(name);
       else setError(result.error ?? 'Operation failed');
     } catch (err) {
@@ -73,7 +72,7 @@ export default function RetentionLabelForm({ existing, onSaved, onCancel, onDele
     if (!existing) return;
     setDeleting(true);
     try {
-      const result = await invoke(`Remove-SLRetentionLabel -Identity '${esc(existing.Name)}' -Confirm:$false`);
+      const result = await invoke('Remove-SLRetentionLabel', { Identity: existing.Name });
       if (result.success) onDeleted?.();
       else setError(result.error ?? 'Delete failed');
     } catch (err) {
@@ -121,5 +120,3 @@ export default function RetentionLabelForm({ existing, onSaved, onCancel, onDele
     </div>
   );
 }
-
-function esc(s: string) { return s.replace(/'/g, "''"); }

@@ -31,25 +31,24 @@ export default function DlpPolicyForm({ existing, onSaved, onCancel, onDeleted }
     if (!name.trim()) { setError('Policy name is required.'); return; }
     setSaving(true); setError(null);
     try {
-      let cmd: string;
+      let r;
       if (isNew) {
-        const p = [`New-SLDlpPolicy -Name '${esc(name)}'`];
-        if (comment.trim()) p.push(`-Comment '${esc(comment)}'`);
-        if (mode) p.push(`-Mode '${mode}'`);
-        if (exchangeLocation.length) p.push(`-ExchangeLocation ${fa(exchangeLocation)}`);
-        if (sharePointLocation.length) p.push(`-SharePointLocation ${fa(sharePointLocation)}`);
-        if (oneDriveLocation.length) p.push(`-OneDriveLocation ${fa(oneDriveLocation)}`);
-        if (teamsLocation.length) p.push(`-TeamsLocation ${fa(teamsLocation)}`);
-        p.push('-Confirm:$false');
-        cmd = p.join(' ');
+        r = await invoke('New-SLDlpPolicy', {
+          Name: name,
+          Comment: comment.trim() || undefined,
+          Mode: mode || undefined,
+          ExchangeLocation: exchangeLocation.length ? exchangeLocation : undefined,
+          SharePointLocation: sharePointLocation.length ? sharePointLocation : undefined,
+          OneDriveLocation: oneDriveLocation.length ? oneDriveLocation : undefined,
+          TeamsLocation: teamsLocation.length ? teamsLocation : undefined,
+        });
       } else {
-        const p = [`Set-SLDlpPolicy -Identity '${esc(existing!.Name)}'`];
-        if (comment !== (existing!.Comment ?? '')) p.push(`-Comment '${esc(comment)}'`);
-        if (mode !== existing!.Mode) p.push(`-Mode '${mode}'`);
-        p.push('-Confirm:$false');
-        cmd = p.join(' ');
+        r = await invoke('Set-SLDlpPolicy', {
+          Identity: existing!.Name,
+          Comment: comment !== (existing!.Comment ?? '') ? comment : undefined,
+          Mode: mode !== existing!.Mode ? mode : undefined,
+        });
       }
-      const r = await invoke(cmd);
       if (r.success) onSaved(name); else setError(r.error ?? 'Failed');
     } catch (e) { setError(e instanceof Error ? e.message : 'Failed'); }
     setSaving(false);
@@ -59,7 +58,7 @@ export default function DlpPolicyForm({ existing, onSaved, onCancel, onDeleted }
     if (!existing) return;
     setDeleting(true);
     try {
-      const r = await invoke(`Remove-SLDlpPolicy -Identity '${esc(existing.Name)}' -Confirm:$false`);
+      const r = await invoke('Remove-SLDlpPolicy', { Identity: existing.Name });
       if (r.success) onDeleted?.(); else setError(r.error ?? 'Delete failed');
     } catch (e) { setError(e instanceof Error ? e.message : 'Failed'); }
     setDeleting(false); setShowDelete(false);
@@ -87,6 +86,3 @@ export default function DlpPolicyForm({ existing, onSaved, onCancel, onDeleted }
     </div>
   );
 }
-
-function esc(s: string) { return s.replace(/'/g, "''"); }
-function fa(a: string[]) { return a.map(v => `'${esc(v)}'`).join(','); }
