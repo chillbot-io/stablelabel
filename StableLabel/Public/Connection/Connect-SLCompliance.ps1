@@ -9,16 +9,25 @@ function Connect-SLCompliance {
     .PARAMETER UserPrincipalName
         The UPN of the account to authenticate with. Required so that
         Connect-IPPSSession can pre-populate the sign-in dialog.
+    .PARAMETER UseDeviceCode
+        Use the device-code authentication flow instead of interactive browser
+        sign-in. Maps to Connect-IPPSSession -Device. Required when running
+        from the StableLabel GUI or other non-interactive environments.
     .PARAMETER AsJson
         Return the connection result as a JSON string instead of a PSCustomObject.
     .EXAMPLE
         Connect-SLCompliance -UserPrincipalName admin@contoso.com
+    .EXAMPLE
+        Connect-SLCompliance -UserPrincipalName admin@contoso.com -UseDeviceCode
     #>
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)]
         [ValidateNotNullOrEmpty()]
         [string]$UserPrincipalName,
+
+        [Parameter()]
+        [switch]$UseDeviceCode,
 
         [Parameter()]
         [switch]$AsJson
@@ -28,7 +37,14 @@ function Connect-SLCompliance {
         try {
             Write-Verbose "Connecting to Security & Compliance as $UserPrincipalName."
 
-            Connect-IPPSSession -UserPrincipalName $UserPrincipalName -ErrorAction Stop
+            $ippsParams = @{
+                UserPrincipalName = $UserPrincipalName
+                ErrorAction       = 'Stop'
+            }
+            if ($UseDeviceCode) {
+                $ippsParams['Device'] = $true
+            }
+            Connect-IPPSSession @ippsParams
 
             $now = [datetime]::UtcNow
 

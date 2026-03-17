@@ -40,7 +40,14 @@ function Invoke-SLComplianceCommand {
         catch { }
 
         try {
-            Connect-IPPSSession -UserPrincipalName $script:SLConnection.UserPrincipalName -ErrorAction Stop
+            $ippsParams = @{
+                UserPrincipalName = $script:SLConnection.UserPrincipalName
+                ErrorAction       = 'Stop'
+            }
+            if ($script:SLConnection.UseDeviceCode) {
+                $ippsParams['Device'] = $true
+            }
+            Connect-IPPSSession @ippsParams
             $script:SLConnection.ComplianceCommandCount = 0
             $script:SLConnection.ComplianceSessionStart = Get-Date
             $script:SLConnection.ConnectedAt.Compliance = Get-Date
@@ -64,7 +71,14 @@ function Invoke-SLComplianceCommand {
             Write-Verbose "S&C session appears stale. Attempting reconnect..."
             try {
                 Disconnect-ExchangeOnline -Confirm:$false -ErrorAction SilentlyContinue
-                Connect-IPPSSession -UserPrincipalName $script:SLConnection.UserPrincipalName -ErrorAction Stop
+                $ippsParams = @{
+                    UserPrincipalName = $script:SLConnection.UserPrincipalName
+                    ErrorAction       = 'Stop'
+                }
+                if ($script:SLConnection.UseDeviceCode) {
+                    $ippsParams['Device'] = $true
+                }
+                Connect-IPPSSession @ippsParams
                 $script:SLConnection.ComplianceCommandCount = 0
                 $script:SLConnection.ComplianceSessionStart = Get-Date
                 $script:SLConnection.ConnectedAt.Compliance = Get-Date
