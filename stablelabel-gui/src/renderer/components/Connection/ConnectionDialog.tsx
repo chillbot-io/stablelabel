@@ -1,93 +1,224 @@
 import React, { useState } from 'react';
 import { usePowerShell } from '../../hooks/usePowerShell';
 
-interface ConnectionDialogProps {
-  onClose: () => void;
+type ConnectStage = 'idle' | 'prereqs' | 'graph' | 'compliance' | 'done' | 'error';
+
+interface StepInfo {
+  Step: string;
+  Module?: string;
+  Status: string;
+  Version?: string;
+  UPN?: string;
+  Tenant?: string;
+  Error?: string;
 }
 
-export default function ConnectionDialog({ onClose }: ConnectionDialogProps) {
+interface ConnectAllResult {
+  Status: string;
+  Stage?: string;
+  Error?: string;
+  UserPrincipalName?: string;
+  TenantId?: string;
+  Steps?: StepInfo[];
+}
+
+interface ConnectionDialogProps {
+  onClose: () => void;
+  onConnected?: () => void;
+}
+
+export default function ConnectionDialog({ onClose, onConnected }: ConnectionDialogProps) {
   const { invoke } = usePowerShell();
-  const [connecting, setConnecting] = useState<string | null>(null);
+  const [stage, setStage] = useState<ConnectStage>('idle');
+  const [steps, setSteps] = useState<StepInfo[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [upn, setUpn] = useState<string | null>(null);
 
-  const connect = async (backend: 'Graph' | 'Compliance' | 'Protection') => {
-    setConnecting(backend);
+  const handleConnect = async () => {
+    setStage('prereqs');
     setError(null);
+    setSteps([]);
 
-    const command = `Connect-SL${backend}`;
-    const result = await invoke(command);
+    const result = await invoke<ConnectAllResult>('Connect-SLAll');
 
     if (!result.success) {
-      setError(result.error || `Failed to connect to ${backend}`);
+      setStage('error');
+      setError(result.error || 'Connection failed');
+      return;
     }
 
-    setConnecting(null);
+    const data = result.data;
+    if (!data) {
+      setStage('error');
+      setError('No response from Connect-SLAll');
+      return;
+    }
+
+    if (data.Steps) {
+      setSteps(data.Steps);
+    }
+
+    if (data.Status === 'Connected') {
+      setUpn(data.UserPrincipalName || null);
+      setStage('done');
+      onConnected?.();
+    } else if (data.Status === 'PartiallyConnected') {
+      setUpn(data.UserPrincipalName || null);
+      setStage('done');
+      setError(data.Error || null);
+      onConnected?.();
+    } else {
+      setStage('error');
+      setError(data.Error || 'Connection failed');
+    }
   };
+
+  const stageLabel = (s: ConnectStage): string => {
+    switch (s) {
+      case 'prereqs': return 'Checking prerequisites...';
+      case 'graph': return 'Connecting to Microsoft Graph...';
+      case 'compliance': return 'Connecting to Security & Compliance...';
+      case 'done': return 'Connected';
+      case 'error': return 'Connection failed';
+      default: return '';
+    }
+  };
+
+  const isConnecting = stage === 'prereqs' || stage === 'graph' || stage === 'compliance';
 
   return (
     <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
-      <div className="bg-gray-900 border border-gray-700 rounded-lg p-6 w-96">
-        <h2 className="text-lg font-bold text-white mb-4">Connect to Microsoft 365</h2>
+      <div className="bg-gray-900 border border-gray-700 rounded-lg p-6 w-[440px]">
+        <h2 className="text-lg font-bold text-white mb-1">Connect to StableLabel</h2>
+        <p className="text-sm text-gray-500 mb-5">
+          Installs prerequisites, then connects to Microsoft Graph and Security &amp; Compliance.
+          You'll be prompted to sign in with your Microsoft account.
+        </p>
 
-        <div className="space-y-3">
-          <ConnectButton
-            label="Microsoft Graph"
-            description="Labels, documents, sites"
-            onClick={() => connect('Graph')}
-            loading={connecting === 'Graph'}
-          />
-          <ConnectButton
-            label="Security & Compliance"
-            description="Policies, DLP, retention"
-            onClick={() => connect('Compliance')}
-            loading={connecting === 'Compliance'}
-          />
-          <ConnectButton
-            label="Protection Service"
-            description="AIP templates, tracking (Windows only)"
-            onClick={() => connect('Protection')}
-            loading={connecting === 'Protection'}
-          />
-        </div>
+        {stage === 'idle' && (
+          <button
+            onClick={handleConnect}
+            className="w-full py-3 bg-blue-600 hover:bg-blue-500 text-white font-medium rounded-lg transition-colors"
+          >
+            Connect to StableLabel
+          </button>
+        )}
 
-        {error && (
-          <div className="mt-4 p-3 bg-red-900/30 border border-red-800 rounded text-sm text-red-300">
-            {error}
+        {isConnecting && (
+          <div className="space-y-3">
+            <div className="flex items-center gap-3 p-3 bg-blue-900/20 border border-blue-800/30 rounded-lg">
+              <Spinner />
+              <span className="text-sm text-blue-300">{stageLabel(stage)}</span>
+            </div>
+            <p className="text-xs text-gray-500">
+              A Microsoft sign-in window will appear. Complete authentication there to continue.
+            </p>
+          </div>
+        )}
+
+        {steps.length > 0 && (
+          <div className="mt-4 space-y-1.5">
+            {steps.map((step, i) => (
+              <StepRow key={i} step={step} />
+            ))}
+          </div>
+        )}
+
+        {stage === 'done' && (
+          <div className="mt-4 p-3 bg-green-900/20 border border-green-800/30 rounded-lg">
+            <div className="text-sm text-green-300 font-medium">
+              {error ? 'Partially connected' : 'Connected successfully'}
+            </div>
+            {upn && (
+              <div className="text-xs text-green-400/70 mt-1">Signed in as {upn}</div>
+            )}
+            {error && (
+              <div className="text-xs text-amber-400 mt-1">{error}</div>
+            )}
+          </div>
+        )}
+
+        {stage === 'error' && (
+          <div className="mt-4 space-y-3">
+            <div className="p-3 bg-red-900/20 border border-red-800/30 rounded-lg">
+              <div className="text-sm text-red-300">{error}</div>
+            </div>
+            <button
+              onClick={handleConnect}
+              className="w-full py-2.5 bg-gray-800 hover:bg-gray-700 text-gray-200 text-sm font-medium rounded-lg border border-gray-700 transition-colors"
+            >
+              Try Again
+            </button>
           </div>
         )}
 
         <button
           onClick={onClose}
-          className="mt-4 w-full py-2 text-sm text-gray-400 hover:text-gray-200 transition-colors"
+          disabled={isConnecting}
+          className="mt-4 w-full py-2 text-sm text-gray-400 hover:text-gray-200 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
         >
-          Close
+          {stage === 'done' ? 'Done' : 'Cancel'}
         </button>
       </div>
     </div>
   );
 }
 
-function ConnectButton({
-  label,
-  description,
-  onClick,
-  loading,
-}: {
-  label: string;
-  description: string;
-  onClick: () => void;
-  loading: boolean;
-}) {
+function StepRow({ step }: { step: StepInfo }) {
+  const isOk = step.Status === 'Connected' || step.Status === 'AlreadyInstalled' || step.Status === 'Installed';
+  const isFail = step.Status === 'Failed';
+
+  let icon: string;
+  let color: string;
+  if (isOk) {
+    icon = '\u2713';
+    color = 'text-green-400';
+  } else if (isFail) {
+    icon = '\u2717';
+    color = 'text-red-400';
+  } else {
+    icon = '\u2022';
+    color = 'text-gray-500';
+  }
+
+  let label: string;
+  if (step.Step === 'Prereq') {
+    label = step.Module || 'Prerequisite';
+    if (step.Status === 'AlreadyInstalled') label += ` v${step.Version}`;
+    else if (step.Status === 'Installed') label += ' (installed)';
+  } else if (step.Step === 'Graph') {
+    label = `Microsoft Graph`;
+    if (step.UPN) label += ` — ${step.UPN}`;
+  } else if (step.Step === 'Compliance') {
+    label = 'Security & Compliance';
+  } else {
+    label = step.Step;
+  }
+
   return (
-    <button
-      onClick={onClick}
-      disabled={loading}
-      className="w-full p-3 bg-gray-800 hover:bg-gray-750 border border-gray-700 rounded-lg text-left transition-colors disabled:opacity-50"
-    >
-      <div className="font-medium text-white text-sm">{label}</div>
-      <div className="text-xs text-gray-500 mt-0.5">
-        {loading ? 'Connecting...' : description}
-      </div>
-    </button>
+    <div className="flex items-center gap-2 text-xs">
+      <span className={`font-mono ${color}`}>{icon}</span>
+      <span className={isOk ? 'text-gray-300' : isFail ? 'text-red-300' : 'text-gray-500'}>
+        {label}
+      </span>
+      {step.Error && (
+        <span className="text-red-400 truncate ml-1" title={step.Error}>
+          — {step.Error}
+        </span>
+      )}
+    </div>
+  );
+}
+
+function Spinner() {
+  return (
+    <svg className="animate-spin h-4 w-4 text-blue-400" viewBox="0 0 24 24" fill="none">
+      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+      <path
+        className="opacity-75"
+        fill="currentColor"
+        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+      />
+    </svg>
   );
 }
