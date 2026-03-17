@@ -7,10 +7,9 @@
     Copyright         = '(c) 2026 StableLabel Contributors. All rights reserved.'
     Description       = 'Unified Microsoft Purview compliance management - sensitivity labels, retention labels, DLP policies, snapshot/rollback, privilege elevation, and bulk operations.'
     PowerShellVersion = '7.0'
-    RequiredModules   = @(
-        @{ ModuleName = 'Microsoft.Graph.Authentication'; ModuleVersion = '2.10.0' }
-        @{ ModuleName = 'ExchangeOnlineManagement'; ModuleVersion = '3.2.0' }
-    )
+    # Note: Required modules are installed at runtime by Connect-SLAll rather than
+    # declared here, so the module can load even before prerequisites are installed.
+    RequiredModules   = @()
     FunctionsToExport = @(
         # Connection
         'Connect-SLGraph'
