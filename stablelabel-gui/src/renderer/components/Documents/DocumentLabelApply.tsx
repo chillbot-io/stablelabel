@@ -36,8 +36,8 @@ export default function DocumentLabelApply() {
   return (
     <div className="space-y-4">
       <div>
-        <h3 className="text-sm font-semibold text-gray-300 mb-1">Apply Label to Document</h3>
-        <p className="text-xs text-gray-500">Assign a sensitivity label to a specific document via Graph API.</p>
+        <h3 className="text-sm font-semibold text-zinc-300 mb-1">Apply Label to Document</h3>
+        <p className="text-xs text-zinc-500">Assign a sensitivity label to a specific document via Graph API.</p>
       </div>
 
       <div className="grid grid-cols-2 gap-3">
@@ -53,10 +53,10 @@ export default function DocumentLabelApply() {
       <TextArea label="Justification" value={justification} onChange={setJustification} placeholder="Reason for applying this label..." />
       <ToggleField label="Dry Run" checked={dryRun} onChange={setDryRun} helpText="Simulate the operation without making changes." />
 
-      {error && <div className="p-3 bg-red-900/20 border border-red-800 rounded text-sm text-red-300">{error}</div>}
-      {success && <div className="p-3 bg-green-900/20 border border-green-800 rounded text-sm text-green-300">{success}</div>}
+      {error && <div className="p-3 bg-red-900/20 border border-red-800 rounded-lg text-sm text-red-300">{error}</div>}
+      {success && <div className="p-3 bg-green-900/20 border border-green-800 rounded-lg text-sm text-green-300">{success}</div>}
 
-      <button onClick={handleApply} disabled={loading} className="px-4 py-2 text-xs font-medium text-white bg-blue-600 hover:bg-blue-500 disabled:bg-blue-600/50 rounded transition-colors">
+      <button onClick={handleApply} disabled={loading} className="px-4 py-2 text-xs font-medium text-white bg-blue-600 hover:bg-blue-500 disabled:bg-blue-600/50 rounded-lg transition-colors">
         {loading ? 'Applying...' : dryRun ? 'Dry Run — Apply Label' : 'Apply Label'}
       </button>
     </div>

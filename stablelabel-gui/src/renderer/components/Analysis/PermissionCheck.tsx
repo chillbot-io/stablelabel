@@ -28,14 +28,14 @@ export default function PermissionCheck() {
   return (
     <div className="space-y-4">
       <div>
-        <h3 className="text-sm font-semibold text-gray-300 mb-1">Permission Check</h3>
-        <p className="text-xs text-gray-500">Verify the current user has required permissions for StableLabel operations.</p>
+        <h3 className="text-sm font-semibold text-zinc-300 mb-1">Permission Check</h3>
+        <p className="text-xs text-zinc-500">Verify the current user has required permissions for StableLabel operations.</p>
       </div>
 
       <div className="flex items-end gap-3">
         <div>
-          <label className="block text-xs text-gray-400 mb-1">Scope</label>
-          <select value={scope} onChange={e => setScope(e.target.value)} className="px-2.5 py-1.5 text-xs bg-gray-800 border border-gray-700 rounded text-gray-200 focus:outline-none focus:border-blue-500">
+          <label className="block text-xs text-zinc-400 mb-1">Scope</label>
+          <select value={scope} onChange={e => setScope(e.target.value)} className="px-2.5 py-1.5 text-xs bg-white/[0.06] border border-white/[0.08] rounded-lg text-zinc-200 focus:outline-none focus:border-blue-500">
             <option value="All">All</option>
             <option value="Labels">Labels</option>
             <option value="DLP">DLP</option>
@@ -43,24 +43,24 @@ export default function PermissionCheck() {
             <option value="Protection">Protection</option>
           </select>
         </div>
-        <button onClick={handleRun} disabled={loading} className="px-4 py-1.5 text-xs font-medium text-white bg-blue-600 hover:bg-blue-500 disabled:bg-blue-600/50 rounded transition-colors">
+        <button onClick={handleRun} disabled={loading} className="px-4 py-1.5 text-xs font-medium text-white bg-blue-600 hover:bg-blue-500 disabled:bg-blue-600/50 rounded-lg transition-colors">
           {loading ? 'Checking...' : 'Run Check'}
         </button>
       </div>
 
-      {error && <div className="p-3 bg-red-900/20 border border-red-800 rounded text-sm text-red-300">{error}</div>}
+      {error && <div className="p-3 bg-red-900/20 border border-red-800 rounded-lg text-sm text-red-300">{error}</div>}
 
       {result && (
         <div className="space-y-3">
           {result.UserPrincipalName && (
-            <div className="text-xs text-gray-500">User: <span className="text-gray-300">{result.UserPrincipalName}</span></div>
+            <div className="text-xs text-zinc-500">User: <span className="text-zinc-300">{result.UserPrincipalName}</span></div>
           )}
           <div className="space-y-1.5">
             {result.Results.map((check, i) => (
-              <div key={i} className="flex items-center justify-between px-3 py-2 bg-gray-900 border border-gray-800 rounded">
+              <div key={i} className="flex items-center justify-between px-3 py-2 bg-white/[0.03] rounded-lg">
                 <div>
-                  <span className="text-sm text-gray-200">{check.Scope}</span>
-                  {check.Details && <p className="text-xs text-gray-500 mt-0.5">{check.Details}</p>}
+                  <span className="text-sm text-zinc-200">{check.Scope}</span>
+                  {check.Details && <p className="text-xs text-zinc-500 mt-0.5">{check.Details}</p>}
                 </div>
                 <StatusBadge hasAccess={check.HasAccess} />
               </div>
@@ -73,6 +73,6 @@ export default function PermissionCheck() {
 }
 
 function StatusBadge({ hasAccess }: { hasAccess: boolean }) {
-  const cls = hasAccess ? 'bg-green-500/10 text-green-400' : 'bg-red-500/10 text-red-400';
-  return <span className={`text-[10px] px-1.5 py-0.5 rounded ${cls}`}>{hasAccess ? 'Pass' : 'Fail'}</span>;
+  const cls = hasAccess ? 'bg-emerald-400/10 text-emerald-400' : 'bg-red-500/10 text-red-400';
+  return <span className={`text-[10px] px-1.5 py-0.5 rounded-lg ${cls}`}>{hasAccess ? 'Pass' : 'Fail'}</span>;
 }

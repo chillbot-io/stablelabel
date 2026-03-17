@@ -1,7 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { usePowerShell } from '../../hooks/usePowerShell';
 
-type ConnectStage = 'idle' | 'prereqs' | 'graph' | 'compliance' | 'done' | 'error';
+type ConnectStage = 'idle' | 'connecting' | 'done' | 'error';
+
+const LAST_CONNECTION_KEY = 'stablelabel-last-connection';
 
 interface StepInfo {
   Step: string;
@@ -22,9 +24,30 @@ interface ConnectAllResult {
   Steps?: StepInfo[];
 }
 
+interface LastConnection {
+  upn: string;
+  tenantId: string;
+  connectedAt: string;
+}
+
 interface ConnectionDialogProps {
   onClose: () => void;
   onConnected?: () => void;
+}
+
+function loadLastConnection(): LastConnection | null {
+  try {
+    const raw = localStorage.getItem(LAST_CONNECTION_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw) as LastConnection;
+  } catch {
+    return null;
+  }
+}
+
+function saveLastConnection(upn: string, tenantId: string): void {
+  const entry: LastConnection = { upn, tenantId, connectedAt: new Date().toISOString() };
+  localStorage.setItem(LAST_CONNECTION_KEY, JSON.stringify(entry));
 }
 
 export default function ConnectionDialog({ onClose, onConnected }: ConnectionDialogProps) {
@@ -33,9 +56,14 @@ export default function ConnectionDialog({ onClose, onConnected }: ConnectionDia
   const [steps, setSteps] = useState<StepInfo[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [upn, setUpn] = useState<string | null>(null);
+  const [lastConnection, setLastConnection] = useState<LastConnection | null>(null);
+
+  useEffect(() => {
+    setLastConnection(loadLastConnection());
+  }, []);
 
   const handleConnect = async () => {
-    setStage('prereqs');
+    setStage('connecting');
     setError(null);
     setSteps([]);
 
@@ -61,11 +89,17 @@ export default function ConnectionDialog({ onClose, onConnected }: ConnectionDia
     if (data.Status === 'Connected') {
       setUpn(data.UserPrincipalName || null);
       setStage('done');
+      if (data.UserPrincipalName && data.TenantId) {
+        saveLastConnection(data.UserPrincipalName, data.TenantId);
+      }
       onConnected?.();
     } else if (data.Status === 'PartiallyConnected') {
       setUpn(data.UserPrincipalName || null);
       setStage('done');
       setError(data.Error || null);
+      if (data.UserPrincipalName && data.TenantId) {
+        saveLastConnection(data.UserPrincipalName, data.TenantId);
+      }
       onConnected?.();
     } else {
       setStage('error');
@@ -73,44 +107,83 @@ export default function ConnectionDialog({ onClose, onConnected }: ConnectionDia
     }
   };
 
-  const stageLabel = (s: ConnectStage): string => {
-    switch (s) {
-      case 'prereqs': return 'Checking prerequisites...';
-      case 'graph': return 'Connecting to Microsoft Graph...';
-      case 'compliance': return 'Connecting to Security & Compliance...';
-      case 'done': return 'Connected';
-      case 'error': return 'Connection failed';
-      default: return '';
-    }
-  };
-
-  const isConnecting = stage === 'prereqs' || stage === 'graph' || stage === 'compliance';
+  const isConnecting = stage === 'connecting';
 
   return (
-    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
-      <div className="bg-gray-900 border border-gray-700 rounded-lg p-6 w-[440px]">
-        <h2 className="text-lg font-bold text-white mb-1">Connect to StableLabel</h2>
-        <p className="text-sm text-gray-500 mb-5">
-          Installs prerequisites, then connects to Microsoft Graph and Security &amp; Compliance.
-          You'll be prompted to sign in with your Microsoft account.
+    <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50">
+      <div className="bg-zinc-900 rounded-xl p-6 w-[440px] border border-white/[0.06]">
+        <h2 className="text-lg font-semibold text-white mb-1">Connect to StableLabel</h2>
+        <p className="text-[13px] text-zinc-500 mb-5 leading-relaxed">
+          Sign in with your Microsoft account. PowerShell modules are installed
+          automatically and all services connect in the background.
         </p>
 
+        {/* Requirements — idle state only */}
         {stage === 'idle' && (
-          <button
-            onClick={handleConnect}
-            className="w-full py-3 bg-blue-600 hover:bg-blue-500 text-white font-medium rounded-lg transition-colors"
-          >
-            Connect to StableLabel
-          </button>
+          <div className="space-y-4">
+            <div className="p-4 bg-white/[0.03] rounded-lg space-y-2.5">
+              <p className="text-[10px] font-semibold text-zinc-400 uppercase tracking-widest">Before you connect</p>
+              <ul className="text-[12px] text-zinc-400 space-y-2 list-none">
+                <li className="flex items-start gap-2.5">
+                  <span className="text-zinc-600 mt-px shrink-0">1.</span>
+                  <span>
+                    <span className="text-zinc-200">PowerShell 7+</span> must be installed on this machine.{' '}
+                    <a
+                      href="https://learn.microsoft.com/powershell/scripting/install/installing-powershell"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-blue-400 hover:text-blue-300"
+                    >
+                      Install guide
+                    </a>
+                  </span>
+                </li>
+                <li className="flex items-start gap-2.5">
+                  <span className="text-zinc-600 mt-px shrink-0">2.</span>
+                  <span>
+                    The signing-in account needs{' '}
+                    <span className="text-zinc-200">Global Administrator</span> (or Global Reader){' '}
+                    for Microsoft Graph access.
+                  </span>
+                </li>
+                <li className="flex items-start gap-2.5">
+                  <span className="text-zinc-600 mt-px shrink-0">3.</span>
+                  <span>
+                    The account also needs{' '}
+                    <span className="text-zinc-200">Compliance Administrator</span> for Security
+                    &amp; Compliance Center access (labels, DLP, retention).
+                  </span>
+                </li>
+              </ul>
+              <p className="text-[11px] text-zinc-600 pt-2 border-t border-white/[0.04]">
+                PowerShell modules (Microsoft.Graph, ExchangeOnlineManagement) are installed automatically if missing.
+              </p>
+            </div>
+
+            {lastConnection && (
+              <div className="p-3 bg-white/[0.03] rounded-lg">
+                <p className="text-[10px] text-zinc-500 uppercase tracking-wide mb-0.5">Last session</p>
+                <p className="text-[13px] text-zinc-200">{lastConnection.upn}</p>
+                <p className="text-[11px] text-zinc-600 font-mono">{lastConnection.tenantId}</p>
+              </div>
+            )}
+
+            <button
+              onClick={handleConnect}
+              className="w-full py-2.5 bg-blue-600 hover:bg-blue-500 text-white text-[13px] font-medium rounded-lg transition-colors"
+            >
+              Sign in with Microsoft
+            </button>
+          </div>
         )}
 
         {isConnecting && (
           <div className="space-y-3">
-            <div className="flex items-center gap-3 p-3 bg-blue-900/20 border border-blue-800/30 rounded-lg">
+            <div className="flex items-center gap-3 p-3 bg-blue-500/[0.06] rounded-lg">
               <Spinner />
-              <span className="text-sm text-blue-300">{stageLabel(stage)}</span>
+              <span className="text-[13px] text-blue-300">Connecting...</span>
             </div>
-            <p className="text-xs text-gray-500">
+            <p className="text-[11px] text-zinc-500">
               A Microsoft sign-in window will appear. Complete authentication there to continue.
             </p>
           </div>
@@ -125,27 +198,27 @@ export default function ConnectionDialog({ onClose, onConnected }: ConnectionDia
         )}
 
         {stage === 'done' && (
-          <div className="mt-4 p-3 bg-green-900/20 border border-green-800/30 rounded-lg">
-            <div className="text-sm text-green-300 font-medium">
+          <div className="mt-4 p-3 bg-emerald-500/[0.06] rounded-lg">
+            <div className="text-[13px] text-emerald-300 font-medium">
               {error ? 'Partially connected' : 'Connected successfully'}
             </div>
             {upn && (
-              <div className="text-xs text-green-400/70 mt-1">Signed in as {upn}</div>
+              <div className="text-[11px] text-emerald-400/60 mt-1">Signed in as {upn}</div>
             )}
             {error && (
-              <div className="text-xs text-amber-400 mt-1">{error}</div>
+              <div className="text-[11px] text-amber-400 mt-1">{error}</div>
             )}
           </div>
         )}
 
         {stage === 'error' && (
           <div className="mt-4 space-y-3">
-            <div className="p-3 bg-red-900/20 border border-red-800/30 rounded-lg">
-              <div className="text-sm text-red-300">{error}</div>
+            <div className="p-3 bg-red-500/[0.06] rounded-lg">
+              <div className="text-[13px] text-red-300">{error}</div>
             </div>
             <button
-              onClick={handleConnect}
-              className="w-full py-2.5 bg-gray-800 hover:bg-gray-700 text-gray-200 text-sm font-medium rounded-lg border border-gray-700 transition-colors"
+              onClick={() => setStage('idle')}
+              className="w-full py-2.5 bg-white/[0.06] hover:bg-white/[0.1] text-zinc-200 text-[13px] font-medium rounded-lg transition-colors"
             >
               Try Again
             </button>
@@ -155,7 +228,7 @@ export default function ConnectionDialog({ onClose, onConnected }: ConnectionDia
         <button
           onClick={onClose}
           disabled={isConnecting}
-          className="mt-4 w-full py-2 text-sm text-gray-400 hover:text-gray-200 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+          className="mt-4 w-full py-2 text-[13px] text-zinc-500 hover:text-zinc-300 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
         >
           {stage === 'done' ? 'Done' : 'Cancel'}
         </button>
@@ -172,13 +245,13 @@ function StepRow({ step }: { step: StepInfo }) {
   let color: string;
   if (isOk) {
     icon = '\u2713';
-    color = 'text-green-400';
+    color = 'text-emerald-400';
   } else if (isFail) {
     icon = '\u2717';
     color = 'text-red-400';
   } else {
     icon = '\u2022';
-    color = 'text-gray-500';
+    color = 'text-zinc-600';
   }
 
   let label: string;
@@ -188,7 +261,7 @@ function StepRow({ step }: { step: StepInfo }) {
     else if (step.Status === 'Installed') label += ' (installed)';
   } else if (step.Step === 'Graph') {
     label = `Microsoft Graph`;
-    if (step.UPN) label += ` — ${step.UPN}`;
+    if (step.UPN) label += ` \u2014 ${step.UPN}`;
   } else if (step.Step === 'Compliance') {
     label = 'Security & Compliance';
   } else {
@@ -196,9 +269,9 @@ function StepRow({ step }: { step: StepInfo }) {
   }
 
   return (
-    <div className="flex items-center gap-2 text-xs">
+    <div className="flex items-center gap-2 text-[12px]">
       <span className={`font-mono ${color}`}>{icon}</span>
-      <span className={isOk ? 'text-gray-300' : isFail ? 'text-red-300' : 'text-gray-500'}>
+      <span className={isOk ? 'text-zinc-300' : isFail ? 'text-red-300' : 'text-zinc-600'}>
         {label}
       </span>
       {step.Error && (

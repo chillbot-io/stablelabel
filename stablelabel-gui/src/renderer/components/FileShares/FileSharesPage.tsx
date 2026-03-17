@@ -23,25 +23,25 @@ export default function FileSharesPage() {
   return (
     <div className="flex h-full">
       {/* Left nav */}
-      <div className="w-56 flex-shrink-0 border-r border-gray-800 bg-gray-950 flex flex-col">
-        <div className="p-3 border-b border-gray-800">
-          <h2 className="text-sm font-semibold text-gray-300">File Shares</h2>
-          <p className="text-[10px] text-gray-500 mt-0.5">AIPService operations on CIFS/SMB shares</p>
+      <div className="w-56 flex-shrink-0 border-r border-white/[0.06] bg-zinc-950 flex flex-col">
+        <div className="p-3 border-b border-white/[0.06]">
+          <h2 className="text-sm font-semibold text-zinc-300">File Shares</h2>
+          <p className="text-[10px] text-zinc-500 mt-0.5">AIPService operations on CIFS/SMB shares</p>
         </div>
         <div className="flex-1 py-2">
           {sections.map((s) => (
             <button
               key={s.id}
               onClick={() => setActive(s.id)}
-              className={`w-full text-left px-3 py-2.5 transition-colors ${active === s.id ? 'bg-gray-800 border-l-2 border-blue-400' : 'hover:bg-gray-800/50 border-l-2 border-transparent'}`}
+              className={`w-full text-left px-3 py-2.5 transition-colors ${active === s.id ? 'bg-white/[0.06] border-l-2 border-blue-400' : 'hover:bg-white/[0.04] border-l-2 border-transparent'}`}
             >
-              <div className="text-sm text-gray-200">{s.label}</div>
-              <div className="text-[10px] text-gray-500 mt-0.5">{s.description}</div>
+              <div className="text-sm text-zinc-200">{s.label}</div>
+              <div className="text-[10px] text-zinc-500 mt-0.5">{s.description}</div>
             </button>
           ))}
         </div>
-        <div className="p-3 border-t border-gray-800">
-          <div className="text-[10px] text-gray-600 space-y-1">
+        <div className="p-3 border-t border-white/[0.06]">
+          <div className="text-[10px] text-zinc-600 space-y-1">
             <p>Requires AIPService (Windows only).</p>
             <p>Connect to a share before scanning or labeling.</p>
           </div>

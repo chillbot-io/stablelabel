@@ -331,7 +331,7 @@ describe('ToggleField', () => {
   it('applies unchecked styling', () => {
     render(<ToggleField {...defaultProps} />);
     const sw = screen.getByRole('switch');
-    expect(sw.className).toContain('bg-gray-600');
+    expect(sw.className).toContain('bg-zinc-700');
   });
 });
 

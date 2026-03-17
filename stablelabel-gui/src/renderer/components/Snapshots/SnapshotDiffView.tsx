@@ -10,23 +10,23 @@ export default function SnapshotDiffView({ diff, onClose }: Props) {
       <div className="flex items-start justify-between">
         <div>
           <h2 className="text-xl font-bold text-white">Snapshot Comparison</h2>
-          <p className="text-sm text-gray-400 mt-1">
+          <p className="text-sm text-zinc-400 mt-1">
             {diff.ReferenceSnapshot} vs {diff.ComparisonSource}
           </p>
-          <p className="text-xs text-gray-500 mt-0.5">Compared at {diff.ComparedAt}</p>
+          <p className="text-xs text-zinc-500 mt-0.5">Compared at {diff.ComparedAt}</p>
         </div>
         <div className="flex items-center gap-2">
           <ExportButton data={diff} filename={`snapshot-diff-${diff.ReferenceSnapshot}`} label="Export" />
-          <span className={`px-2 py-1 text-xs rounded ${diff.HasChanges ? 'bg-yellow-500/10 text-yellow-400 border border-yellow-500/20' : 'bg-green-500/10 text-green-400 border border-green-500/20'}`}>
+          <span className={`px-2 py-1 text-xs rounded-lg ${diff.HasChanges ? 'bg-yellow-500/10 text-yellow-400 border border-yellow-500/20' : 'bg-emerald-400/10 text-emerald-400 border border-green-500/20'}`}>
             {diff.HasChanges ? 'Changes Detected' : 'No Changes'}
           </span>
-          <button onClick={onClose} className="px-3 py-1 text-xs text-gray-400 hover:text-gray-200 bg-gray-800 rounded transition-colors">Close</button>
+          <button onClick={onClose} className="px-3 py-1 text-xs text-zinc-400 hover:text-zinc-200 bg-white/[0.06] rounded-lg transition-colors">Close</button>
         </div>
       </div>
 
       {!diff.HasChanges ? (
-        <div className="bg-green-500/5 border border-green-500/20 rounded-lg p-6 text-center">
-          <p className="text-sm text-green-400">Tenant configuration matches the snapshot. No drift detected.</p>
+        <div className="bg-emerald-400/5 border border-green-500/20 rounded-lg p-6 text-center">
+          <p className="text-sm text-emerald-400">Tenant configuration matches the snapshot. No drift detected.</p>
         </div>
       ) : (
         <div className="space-y-4">
@@ -44,32 +44,32 @@ function CategoryDiff({ category, data }: { category: string; data: { Added: Arr
   const hasChanges = data.Summary.AddedCount + data.Summary.RemovedCount + data.Summary.ModifiedCount > 0;
 
   return (
-    <div className={`border rounded-lg overflow-hidden ${hasChanges ? 'border-yellow-500/20' : 'border-gray-800'}`}>
-      <button onClick={() => setExpanded(!expanded)} className="w-full flex items-center justify-between px-4 py-3 bg-gray-900 hover:bg-gray-800/80 transition-colors">
+    <div className={`border rounded-lg overflow-hidden ${hasChanges ? 'border-yellow-500/20' : 'border-white/[0.06]'}`}>
+      <button onClick={() => setExpanded(!expanded)} className="w-full flex items-center justify-between px-4 py-3 bg-white/[0.03] hover:bg-white/[0.06]/80 transition-colors">
         <div className="flex items-center gap-3">
-          <span className="text-xs text-gray-500">{expanded ? '▾' : '▸'}</span>
-          <span className="text-sm font-medium text-gray-200">{category}</span>
+          <span className="text-xs text-zinc-500">{expanded ? '▾' : '▸'}</span>
+          <span className="text-sm font-medium text-zinc-200">{category}</span>
         </div>
         <div className="flex items-center gap-2">
           {data.Summary.AddedCount > 0 && <Badge label={`+${data.Summary.AddedCount}`} color="green" />}
           {data.Summary.RemovedCount > 0 && <Badge label={`-${data.Summary.RemovedCount}`} color="red" />}
           {data.Summary.ModifiedCount > 0 && <Badge label={`~${data.Summary.ModifiedCount}`} color="yellow" />}
-          <span className="text-[10px] text-gray-600">{data.Summary.UnchangedCount} unchanged</span>
+          <span className="text-[10px] text-zinc-600">{data.Summary.UnchangedCount} unchanged</span>
         </div>
       </button>
 
       {expanded && hasChanges && (
-        <div className="px-4 py-3 space-y-2 bg-gray-950">
+        <div className="px-4 py-3 space-y-2 bg-zinc-950">
           {data.Added.map((item, i) => (
-            <div key={`a-${i}`} className="flex items-center gap-2 px-2.5 py-1.5 rounded bg-green-500/5">
-              <span className="text-[10px] px-1 py-0.5 bg-green-500/20 text-green-400 rounded">Added</span>
-              <span className="text-xs text-gray-300">{item.Identity}</span>
+            <div key={`a-${i}`} className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg bg-emerald-400/5">
+              <span className="text-[10px] px-1 py-0.5 bg-emerald-400/20 text-emerald-400 rounded-lg">Added</span>
+              <span className="text-xs text-zinc-300">{item.Identity}</span>
             </div>
           ))}
           {data.Removed.map((item, i) => (
-            <div key={`r-${i}`} className="flex items-center gap-2 px-2.5 py-1.5 rounded bg-red-500/5">
-              <span className="text-[10px] px-1 py-0.5 bg-red-500/20 text-red-400 rounded">Removed</span>
-              <span className="text-xs text-gray-300">{item.Identity}</span>
+            <div key={`r-${i}`} className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg bg-red-500/5">
+              <span className="text-[10px] px-1 py-0.5 bg-red-500/20 text-red-400 rounded-lg">Removed</span>
+              <span className="text-xs text-zinc-300">{item.Identity}</span>
             </div>
           ))}
           {data.Modified.map((item, i) => (
@@ -91,20 +91,20 @@ function ModifiedItem({ item }: { item: { Identity: string; PropertyChanges?: Ar
         className={`flex items-center gap-2 px-2.5 py-1.5 ${hasProps ? 'cursor-pointer' : ''}`}
         onClick={() => hasProps && setExpanded(!expanded)}
       >
-        <span className="text-[10px] px-1 py-0.5 bg-yellow-500/20 text-yellow-400 rounded">Modified</span>
-        <span className="text-xs text-gray-300 flex-1">{item.Identity}</span>
+        <span className="text-[10px] px-1 py-0.5 bg-yellow-500/20 text-yellow-400 rounded-lg">Modified</span>
+        <span className="text-xs text-zinc-300 flex-1">{item.Identity}</span>
         {hasProps && (
-          <span className="text-[10px] text-gray-500">{expanded ? '▾' : '▸'} {item.PropertyChanges!.length} prop{item.PropertyChanges!.length !== 1 ? 's' : ''}</span>
+          <span className="text-[10px] text-zinc-500">{expanded ? '▾' : '▸'} {item.PropertyChanges!.length} prop{item.PropertyChanges!.length !== 1 ? 's' : ''}</span>
         )}
       </div>
       {expanded && hasProps && (
         <div className="px-3 pb-2 space-y-1">
           {item.PropertyChanges!.map((pc, j) => (
-            <div key={j} className="flex items-start gap-2 px-2 py-1 bg-gray-900/50 rounded text-[10px]">
-              <span className="text-gray-400 font-medium min-w-[80px]">{pc.Property}</span>
+            <div key={j} className="flex items-start gap-2 px-2 py-1 bg-white/[0.02] rounded-lg text-[10px]">
+              <span className="text-zinc-400 font-medium min-w-[80px]">{pc.Property}</span>
               <span className="text-red-400 line-through">{pc.OldValue || '(empty)'}</span>
-              <span className="text-gray-600">→</span>
-              <span className="text-green-400">{pc.NewValue || '(empty)'}</span>
+              <span className="text-zinc-600">→</span>
+              <span className="text-emerald-400">{pc.NewValue || '(empty)'}</span>
             </div>
           ))}
         </div>
@@ -114,8 +114,8 @@ function ModifiedItem({ item }: { item: { Identity: string; PropertyChanges?: Ar
 }
 
 function Badge({ label, color }: { label: string; color: string }) {
-  const cls = color === 'green' ? 'bg-green-500/10 text-green-400'
+  const cls = color === 'green' ? 'bg-emerald-400/10 text-emerald-400'
     : color === 'red' ? 'bg-red-500/10 text-red-400'
     : 'bg-yellow-500/10 text-yellow-400';
-  return <span className={`text-[10px] px-1.5 py-0.5 rounded ${cls}`}>{label}</span>;
+  return <span className={`text-[10px] px-1.5 py-0.5 rounded-lg ${cls}`}>{label}</span>;
 }

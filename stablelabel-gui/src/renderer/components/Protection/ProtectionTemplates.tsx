@@ -26,34 +26,34 @@ export default function ProtectionTemplates() {
   return (
     <div className="space-y-6">
       <div>
-        <h3 className="text-sm font-semibold text-gray-300 mb-1">Protection Templates</h3>
-        <p className="text-xs text-gray-500">AIP protection templates define encryption and rights for protected content.</p>
+        <h3 className="text-sm font-semibold text-zinc-300 mb-1">Protection Templates</h3>
+        <p className="text-xs text-zinc-500">AIP protection templates define encryption and rights for protected content.</p>
       </div>
 
-      {error && <div className="p-3 bg-red-900/20 border border-red-800 rounded text-sm text-red-300">{error}</div>}
+      {error && <div className="p-3 bg-red-900/20 border border-red-800 rounded-lg text-sm text-red-300">{error}</div>}
 
       {loading ? (
-        <div className="space-y-2">{[1,2,3].map(i => <div key={i} className="h-12 bg-gray-800 rounded animate-pulse" />)}</div>
+        <div className="space-y-2">{[1,2,3].map(i => <div key={i} className="h-12 bg-white/[0.06] rounded-lg animate-pulse" />)}</div>
       ) : (
         <>
           {/* Template list */}
-          <div className="bg-gray-900 border border-gray-800 rounded-lg overflow-hidden">
+          <div className="bg-white/[0.03] rounded-xl overflow-hidden">
             {templates.length === 0 ? (
-              <p className="p-4 text-xs text-gray-500">No protection templates found.</p>
+              <p className="p-4 text-xs text-zinc-500">No protection templates found.</p>
             ) : templates.map(t => (
               <button
                 key={t.TemplateId}
                 onClick={() => setSelected(selected?.TemplateId === t.TemplateId ? null : t)}
-                className={`w-full text-left px-4 py-3 border-b border-gray-800/50 last:border-b-0 transition-colors ${selected?.TemplateId === t.TemplateId ? 'bg-gray-800' : 'hover:bg-gray-800/50'}`}
+                className={`w-full text-left px-4 py-3 border-b border-white/[0.04] last:border-b-0 transition-colors ${selected?.TemplateId === t.TemplateId ? 'bg-white/[0.06]' : 'hover:bg-white/[0.04]'}`}
               >
                 <div className="flex items-center justify-between">
                   <div>
-                    <span className="text-sm text-gray-200">{getTemplateName(t)}</span>
-                    <span className="text-xs text-gray-500 font-mono ml-2">{t.TemplateId}</span>
+                    <span className="text-sm text-zinc-200">{getTemplateName(t)}</span>
+                    <span className="text-xs text-zinc-500 font-mono ml-2">{t.TemplateId}</span>
                   </div>
                   <div className="flex items-center gap-2">
-                    {t.ReadOnly && <span className="text-[10px] px-1.5 py-0.5 bg-gray-700 text-gray-400 rounded">Read-only</span>}
-                    {t.Status && <span className={`text-[10px] px-1.5 py-0.5 rounded ${t.Status === 'Published' ? 'bg-green-500/10 text-green-400' : 'bg-gray-700 text-gray-400'}`}>{t.Status}</span>}
+                    {t.ReadOnly && <span className="text-[10px] px-1.5 py-0.5 bg-white/[0.08] text-zinc-400 rounded-lg">Read-only</span>}
+                    {t.Status && <span className={`text-[10px] px-1.5 py-0.5 rounded-lg ${t.Status === 'Published' ? 'bg-emerald-400/10 text-emerald-400' : 'bg-white/[0.08] text-zinc-400'}`}>{t.Status}</span>}
                   </div>
                 </div>
               </button>
@@ -69,7 +69,7 @@ export default function ProtectionTemplates() {
             <ImportTemplate onImported={fetch} />
           </div>
 
-          <button onClick={fetch} className="text-xs text-gray-400 hover:text-gray-200">Refresh</button>
+          <button onClick={fetch} className="text-xs text-zinc-400 hover:text-zinc-200">Refresh</button>
         </>
       )}
     </div>
@@ -94,22 +94,22 @@ function TemplateDetail({ template, onRefresh }: { template: ProtectionTemplate;
   };
 
   return (
-    <div className="bg-gray-900 border border-gray-800 rounded-lg p-4 space-y-3">
-      <h4 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Template Details</h4>
+    <div className="bg-white/[0.03] rounded-xl p-4 space-y-3">
+      <h4 className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">Template Details</h4>
 
       <div className="grid grid-cols-2 gap-3">
-        <div><dt className="text-xs text-gray-500">Template ID</dt><dd className="text-xs text-gray-300 font-mono mt-0.5">{template.TemplateId}</dd></div>
-        <div><dt className="text-xs text-gray-500">Status</dt><dd className="text-sm text-gray-300 mt-0.5">{template.Status ?? 'Unknown'}</dd></div>
+        <div><dt className="text-xs text-zinc-500">Template ID</dt><dd className="text-xs text-zinc-300 font-mono mt-0.5">{template.TemplateId}</dd></div>
+        <div><dt className="text-xs text-zinc-500">Status</dt><dd className="text-sm text-zinc-300 mt-0.5">{template.Status ?? 'Unknown'}</dd></div>
       </div>
 
       {template.Names && (
         <div>
-          <dt className="text-xs text-gray-500 mb-1">Names</dt>
+          <dt className="text-xs text-zinc-500 mb-1">Names</dt>
           <div className="space-y-1">
             {Object.entries(template.Names).map(([lang, name]) => (
               <div key={lang} className="flex items-center gap-2 text-xs">
-                <span className="text-gray-500 uppercase">{lang}</span>
-                <span className="text-gray-300">{name}</span>
+                <span className="text-zinc-500 uppercase">{lang}</span>
+                <span className="text-zinc-300">{name}</span>
               </div>
             ))}
           </div>
@@ -118,27 +118,27 @@ function TemplateDetail({ template, onRefresh }: { template: ProtectionTemplate;
 
       {template.Descriptions && (
         <div>
-          <dt className="text-xs text-gray-500 mb-1">Descriptions</dt>
+          <dt className="text-xs text-zinc-500 mb-1">Descriptions</dt>
           <div className="space-y-1">
             {Object.entries(template.Descriptions).map(([lang, desc]) => (
-              <div key={lang} className="text-xs text-gray-400"><span className="text-gray-500 uppercase mr-2">{lang}</span>{desc}</div>
+              <div key={lang} className="text-xs text-zinc-400"><span className="text-zinc-500 uppercase mr-2">{lang}</span>{desc}</div>
             ))}
           </div>
         </div>
       )}
 
-      {error && <div className="p-2 bg-red-900/20 border border-red-800 rounded text-xs text-red-300">{error}</div>}
+      {error && <div className="p-2 bg-red-900/20 border border-red-800 rounded-lg text-xs text-red-300">{error}</div>}
 
-      <div className="flex items-center gap-2 pt-2 border-t border-gray-800">
+      <div className="flex items-center gap-2 pt-2 border-t border-white/[0.06]">
         {!template.ReadOnly && (
-          <button onClick={() => setShowDelete(true)} className="px-3 py-1 text-xs text-red-400 hover:text-red-300 bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 rounded transition-colors">
+          <button onClick={() => setShowDelete(true)} className="px-3 py-1 text-xs text-red-400 hover:text-red-300 bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 rounded-lg transition-colors">
             Delete Template
           </button>
         )}
-        <button onClick={() => setShowJson(!showJson)} className="text-xs text-gray-500 hover:text-gray-300">{showJson ? '▾ Hide' : '▸ Show'} raw JSON</button>
+        <button onClick={() => setShowJson(!showJson)} className="text-xs text-zinc-500 hover:text-zinc-300">{showJson ? '▾ Hide' : '▸ Show'} raw JSON</button>
       </div>
 
-      {showJson && <pre className="p-3 bg-gray-950 border border-gray-800 rounded text-xs text-gray-400 overflow-auto max-h-48">{JSON.stringify(template, null, 2)}</pre>}
+      {showJson && <pre className="p-3 bg-zinc-950 rounded-lg text-xs text-zinc-400 overflow-auto max-h-48">{JSON.stringify(template, null, 2)}</pre>}
 
       {showDelete && (
         <ConfirmDialog
@@ -174,18 +174,18 @@ function ExportTemplate({ templates }: { templates: ProtectionTemplate[] }) {
   };
 
   return (
-    <div className="bg-gray-900 border border-gray-800 rounded-lg p-4 space-y-3">
-      <h4 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Export Template</h4>
+    <div className="bg-white/[0.03] rounded-xl p-4 space-y-3">
+      <h4 className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">Export Template</h4>
       <div>
-        <label className="block text-xs text-gray-400 mb-1">Template</label>
-        <select value={templateId} onChange={e => setTemplateId(e.target.value)} className="w-full px-2.5 py-1.5 text-xs bg-gray-800 border border-gray-700 rounded text-gray-200 focus:outline-none focus:border-blue-500">
+        <label className="block text-xs text-zinc-400 mb-1">Template</label>
+        <select value={templateId} onChange={e => setTemplateId(e.target.value)} className="w-full px-2.5 py-1.5 text-xs bg-white/[0.06] border border-white/[0.08] rounded-lg text-zinc-200 focus:outline-none focus:border-blue-500">
           <option value="">Select template...</option>
           {templates.map(t => <option key={t.TemplateId} value={t.TemplateId}>{getTemplateName(t)}</option>)}
         </select>
       </div>
       <TextField label="Output Path" value={path} onChange={setPath} placeholder="C:\exports\template.xml" />
-      {msg && <div className={`p-2 rounded text-xs ${msg.type === 'error' ? 'bg-red-900/20 border border-red-800 text-red-300' : 'bg-green-900/20 border border-green-800 text-green-300'}`}>{msg.text}</div>}
-      <button onClick={handleExport} disabled={loading} className="px-3 py-1.5 text-xs text-blue-400 bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/20 rounded transition-colors disabled:opacity-50">
+      {msg && <div className={`p-2 rounded-lg text-xs ${msg.type === 'error' ? 'bg-red-900/20 border border-red-800 text-red-300' : 'bg-green-900/20 border border-green-800 text-green-300'}`}>{msg.text}</div>}
+      <button onClick={handleExport} disabled={loading} className="px-3 py-1.5 text-xs text-blue-400 bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/20 rounded-lg transition-colors disabled:opacity-40">
         {loading ? 'Exporting...' : 'Export'}
       </button>
     </div>
@@ -210,11 +210,11 @@ function ImportTemplate({ onImported }: { onImported: () => void }) {
   };
 
   return (
-    <div className="bg-gray-900 border border-gray-800 rounded-lg p-4 space-y-3">
-      <h4 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Import Template</h4>
+    <div className="bg-white/[0.03] rounded-xl p-4 space-y-3">
+      <h4 className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">Import Template</h4>
       <TextField label="XML File Path" value={path} onChange={setPath} placeholder="C:\templates\template.xml" />
-      {msg && <div className={`p-2 rounded text-xs ${msg.type === 'error' ? 'bg-red-900/20 border border-red-800 text-red-300' : 'bg-green-900/20 border border-green-800 text-green-300'}`}>{msg.text}</div>}
-      <button onClick={handleImport} disabled={loading} className="px-3 py-1.5 text-xs text-green-400 bg-green-500/10 hover:bg-green-500/20 border border-green-500/20 rounded transition-colors disabled:opacity-50">
+      {msg && <div className={`p-2 rounded-lg text-xs ${msg.type === 'error' ? 'bg-red-900/20 border border-red-800 text-red-300' : 'bg-green-900/20 border border-green-800 text-green-300'}`}>{msg.text}</div>}
+      <button onClick={handleImport} disabled={loading} className="px-3 py-1.5 text-xs text-emerald-400 bg-emerald-400/10 hover:bg-emerald-400/20 border border-green-500/20 rounded-lg transition-colors disabled:opacity-40">
         {loading ? 'Importing...' : 'Import'}
       </button>
     </div>

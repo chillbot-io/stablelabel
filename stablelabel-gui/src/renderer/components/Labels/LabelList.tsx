@@ -65,7 +65,7 @@ export default function LabelList({ onOpenLabel }: LabelListProps) {
       <div className="p-4">
         <div className="space-y-2">
           {[1, 2, 3, 4, 5].map((i) => (
-            <div key={i} className="h-8 bg-gray-800 rounded animate-pulse" />
+            <div key={i} className="h-8 bg-white/[0.06] rounded-lg animate-pulse" />
           ))}
         </div>
       </div>
@@ -86,25 +86,25 @@ export default function LabelList({ onOpenLabel }: LabelListProps) {
   return (
     <div className="flex flex-col h-full">
       {/* Search */}
-      <div className="p-2 border-b border-gray-800">
+      <div className="p-2 border-b border-white/[0.06]">
         <input
           type="text"
           placeholder="Search labels..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          className="w-full px-2.5 py-1.5 text-xs bg-gray-800 border border-gray-700 rounded text-gray-200 placeholder-gray-500 focus:outline-none focus:border-blue-500"
+          className="w-full px-2.5 py-1.5 text-xs bg-white/[0.06] border border-white/[0.08] rounded-lg text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-blue-500"
         />
       </div>
 
       {/* Count */}
-      <div className="px-3 py-1.5 text-xs text-gray-500 border-b border-gray-800/50">
+      <div className="px-3 py-1.5 text-xs text-zinc-500 border-b border-white/[0.04]">
         {tree.length} labels ({tree.reduce((n, t) => n + (t.SubLabels?.length ?? 0), 0)} sublabels)
       </div>
 
       {/* Tree */}
       <div className="flex-1 overflow-y-auto py-1">
         {paginatedTree.length === 0 ? (
-          <p className="p-4 text-xs text-gray-600">No labels found.</p>
+          <p className="p-4 text-xs text-zinc-600">No labels found.</p>
         ) : (
           <>
           {paginatedTree.map((node) => (
@@ -118,7 +118,7 @@ export default function LabelList({ onOpenLabel }: LabelListProps) {
             />
           ))}
           {hasMore && (
-            <button onClick={loadMore} className="w-full py-2 text-xs text-blue-400 hover:text-blue-300 hover:bg-gray-800/50 transition-colors">
+            <button onClick={loadMore} className="w-full py-2 text-xs text-blue-400 hover:text-blue-300 hover:bg-white/[0.04] transition-colors">
               Show {remaining} more...
             </button>
           )}
@@ -127,10 +127,10 @@ export default function LabelList({ onOpenLabel }: LabelListProps) {
       </div>
 
       {/* Refresh */}
-      <div className="p-2 border-t border-gray-800">
+      <div className="p-2 border-t border-white/[0.06]">
         <button
           onClick={fetchLabels}
-          className="w-full py-1.5 text-xs text-gray-400 hover:text-gray-200 bg-gray-800 hover:bg-gray-700 rounded transition-colors"
+          className="w-full py-1.5 text-xs text-zinc-400 hover:text-zinc-200 bg-white/[0.06] hover:bg-white/[0.08] rounded-lg transition-colors"
         >
           Refresh Labels
         </button>
@@ -160,8 +160,8 @@ function LabelTreeItem({
         {/* Expand/collapse toggle */}
         <button
           onClick={hasChildren ? onToggle : undefined}
-          className={`w-6 h-6 flex items-center justify-center text-gray-500 flex-shrink-0 ${
-            hasChildren ? 'hover:text-gray-300 cursor-pointer' : 'cursor-default'
+          className={`w-6 h-6 flex items-center justify-center text-zinc-500 flex-shrink-0 ${
+            hasChildren ? 'hover:text-zinc-300 cursor-pointer' : 'cursor-default'
           }`}
         >
           {hasChildren ? (expanded ? '▾' : '▸') : ' '}
@@ -170,17 +170,17 @@ function LabelTreeItem({
         {/* Label name — click to open */}
         <button
           onClick={() => onOpen(node.Id, node.Name)}
-          className="flex-1 text-left px-1.5 py-1 text-sm text-gray-200 hover:bg-gray-800 rounded truncate flex items-center gap-2 group-hover:bg-gray-800/50"
+          className="flex-1 text-left px-1.5 py-1 text-sm text-zinc-200 hover:bg-white/[0.06] rounded-lg truncate flex items-center gap-2 group-hover:bg-white/[0.04]"
           title={node.Tooltip ?? node.Name}
         >
           <HighlightText text={node.Name} query={searchQuery} />
           {!node.IsActive && (
-            <span className="text-[10px] px-1 py-0.5 bg-gray-700 text-gray-400 rounded">
+            <span className="text-[10px] px-1 py-0.5 bg-white/[0.08] text-zinc-400 rounded-lg">
               inactive
             </span>
           )}
           {hasChildren && (
-            <span className="text-[10px] text-gray-600">{node.SubLabels.length}</span>
+            <span className="text-[10px] text-zinc-600">{node.SubLabels.length}</span>
           )}
         </button>
       </div>
@@ -192,13 +192,13 @@ function LabelTreeItem({
             <button
               key={sub.Id}
               onClick={() => onOpen(sub.Id, `${node.Name} / ${sub.Name}`)}
-              className="w-full flex items-center gap-2 pl-4 pr-2 py-1 text-sm text-gray-400 hover:text-gray-200 hover:bg-gray-800 rounded text-left group"
+              className="w-full flex items-center gap-2 pl-4 pr-2 py-1 text-sm text-zinc-400 hover:text-zinc-200 hover:bg-white/[0.06] rounded-lg text-left group"
               title={sub.Tooltip ?? sub.Name}
             >
-              <span className="w-1 h-1 rounded-full bg-gray-600 flex-shrink-0" />
+              <span className="w-1 h-1 rounded-full bg-zinc-600 flex-shrink-0" />
               <HighlightText text={sub.Name} query={searchQuery} />
               {!sub.IsActive && (
-                <span className="text-[10px] px-1 py-0.5 bg-gray-700 text-gray-400 rounded">
+                <span className="text-[10px] px-1 py-0.5 bg-white/[0.08] text-zinc-400 rounded-lg">
                   inactive
                 </span>
               )}

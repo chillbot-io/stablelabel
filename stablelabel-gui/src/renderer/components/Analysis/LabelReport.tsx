@@ -31,18 +31,18 @@ export default function LabelReport() {
   return (
     <div className="space-y-4">
       <div>
-        <h3 className="text-sm font-semibold text-gray-300 mb-1">Label Report</h3>
-        <p className="text-xs text-gray-500">Comprehensive summary of sensitivity labels and their policy assignments.</p>
+        <h3 className="text-sm font-semibold text-zinc-300 mb-1">Label Report</h3>
+        <p className="text-xs text-zinc-500">Comprehensive summary of sensitivity labels and their policy assignments.</p>
       </div>
 
       <div className="flex items-center gap-2">
-        <button onClick={handleRun} disabled={loading} className="px-4 py-2 text-xs font-medium text-white bg-blue-600 hover:bg-blue-500 disabled:bg-blue-600/50 rounded transition-colors">
+        <button onClick={handleRun} disabled={loading} className="px-4 py-2 text-xs font-medium text-white bg-blue-600 hover:bg-blue-500 disabled:bg-blue-600/50 rounded-lg transition-colors">
           {loading ? 'Generating...' : 'Generate Report'}
         </button>
         {report && <ExportButton data={report} filename="label-report" />}
       </div>
 
-      {error && <div className="p-3 bg-red-900/20 border border-red-800 rounded text-sm text-red-300">{error}</div>}
+      {error && <div className="p-3 bg-red-900/20 border border-red-800 rounded-lg text-sm text-red-300">{error}</div>}
 
       {report && (
         <div className="space-y-4">
@@ -57,12 +57,12 @@ export default function LabelReport() {
 
           {/* Policy assignments */}
           {report.PoliciesUsingLabels && report.PoliciesUsingLabels.length > 0 && (
-            <div className="bg-gray-900 border border-gray-800 rounded-lg p-4 space-y-2">
-              <h4 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Policies Using Labels</h4>
+            <div className="bg-white/[0.03] rounded-xl p-4 space-y-2">
+              <h4 className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">Policies Using Labels</h4>
               {report.PoliciesUsingLabels.map((pa, i) => (
-                <div key={i} className="flex items-center justify-between px-2.5 py-2 bg-gray-800 rounded">
-                  <span className="text-sm text-gray-200">{pa.PolicyName}</span>
-                  <span className="text-xs text-gray-500">{pa.LabelCount} label{pa.LabelCount !== 1 ? 's' : ''}</span>
+                <div key={i} className="flex items-center justify-between px-2.5 py-2 bg-white/[0.06] rounded-lg">
+                  <span className="text-sm text-zinc-200">{pa.PolicyName}</span>
+                  <span className="text-xs text-zinc-500">{pa.LabelCount} label{pa.LabelCount !== 1 ? 's' : ''}</span>
                 </div>
               ))}
             </div>
@@ -74,7 +74,7 @@ export default function LabelReport() {
               <h4 className="text-xs font-semibold text-yellow-400 uppercase tracking-wider mb-2">Unassigned Labels ({report.UnassignedLabels.length})</h4>
               <div className="flex flex-wrap gap-1.5">
                 {report.UnassignedLabels.map((l, i) => (
-                  <span key={i} className="text-xs px-2 py-1 bg-gray-800 text-gray-300 rounded">{l}</span>
+                  <span key={i} className="text-xs px-2 py-1 bg-white/[0.06] text-zinc-300 rounded-lg">{l}</span>
                 ))}
               </div>
             </div>
@@ -88,10 +88,10 @@ export default function LabelReport() {
 }
 
 function Stat({ label, value, color }: { label: string; value: number; color?: string }) {
-  const cls = color === 'green' ? 'text-green-400' : color === 'yellow' ? 'text-yellow-400' : 'text-gray-200';
+  const cls = color === 'green' ? 'text-emerald-400' : color === 'yellow' ? 'text-yellow-400' : 'text-zinc-200';
   return (
-    <div className="bg-gray-900 border border-gray-800 rounded p-2.5 text-center">
-      <dt className="text-[10px] text-gray-500">{label}</dt>
+    <div className="bg-white/[0.03] rounded-lg p-2.5 text-center">
+      <dt className="text-[10px] text-zinc-500">{label}</dt>
       <dd className={`text-lg font-bold ${cls}`}>{value}</dd>
     </div>
   );
@@ -100,9 +100,9 @@ function Stat({ label, value, color }: { label: string; value: number; color?: s
 function RawJson({ data }: { data: unknown }) {
   const [o, setO] = useState(false);
   return (
-    <div className="border-t border-gray-800 pt-3">
-      <button onClick={() => setO(!o)} className="text-xs text-gray-500 hover:text-gray-300">{o ? '▾ Hide' : '▸ Show'} raw JSON</button>
-      {o && <pre className="mt-2 p-3 bg-gray-950 border border-gray-800 rounded text-xs text-gray-400 overflow-auto max-h-48">{JSON.stringify(data, null, 2)}</pre>}
+    <div className="border-t border-white/[0.06] pt-3">
+      <button onClick={() => setO(!o)} className="text-xs text-zinc-500 hover:text-zinc-300">{o ? '▾ Hide' : '▸ Show'} raw JSON</button>
+      {o && <pre className="mt-2 p-3 bg-zinc-950 rounded-lg text-xs text-zinc-400 overflow-auto max-h-48">{JSON.stringify(data, null, 2)}</pre>}
     </div>
   );
 }

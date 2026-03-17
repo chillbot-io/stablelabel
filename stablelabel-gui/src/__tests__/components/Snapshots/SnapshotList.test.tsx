@@ -136,7 +136,7 @@ describe('SnapshotList', () => {
     });
 
     const button = screen.getByText('snap-1').closest('button');
-    expect(button?.className).toContain('bg-gray-800');
+    expect(button?.className).toContain('bg-white/[0.06]');
     expect(button?.className).toContain('border-blue-400');
   });
 

@@ -81,16 +81,16 @@ export default function RetentionPage() {
       case 'ret-policy-form-edit':
         return <FormWithData type="policy" name={activeTab.itemId} invoke={invoke} onSaved={handlePolicySaved} onCancel={handleCancel} onDeleted={handleDeleted} />;
       default:
-        return <div className="p-6 text-gray-500">Unknown tab type</div>;
+        return <div className="p-6 text-zinc-500">Unknown tab type</div>;
     }
   };
 
   return (
     <div className="flex h-full">
-      <div className="w-64 flex-shrink-0 border-r border-gray-800 flex flex-col bg-gray-950">
-        <div className="flex border-b border-gray-800">
-          <button onClick={() => setBrowserSection('labels')} className={`flex-1 py-2 text-xs font-medium border-b-2 transition-colors ${browserSection === 'labels' ? 'border-amber-400 text-gray-200' : 'border-transparent text-gray-500 hover:text-gray-300'}`}>Labels</button>
-          <button onClick={() => setBrowserSection('policies')} className={`flex-1 py-2 text-xs font-medium border-b-2 transition-colors ${browserSection === 'policies' ? 'border-amber-400 text-gray-200' : 'border-transparent text-gray-500 hover:text-gray-300'}`}>Policies</button>
+      <div className="w-64 flex-shrink-0 border-r border-white/[0.06] flex flex-col bg-zinc-950">
+        <div className="flex border-b border-white/[0.06]">
+          <button onClick={() => setBrowserSection('labels')} className={`flex-1 py-2 text-xs font-medium border-b-2 transition-colors ${browserSection === 'labels' ? 'border-amber-400 text-zinc-200' : 'border-transparent text-zinc-500 hover:text-zinc-300'}`}>Labels</button>
+          <button onClick={() => setBrowserSection('policies')} className={`flex-1 py-2 text-xs font-medium border-b-2 transition-colors ${browserSection === 'policies' ? 'border-amber-400 text-zinc-200' : 'border-transparent text-zinc-500 hover:text-zinc-300'}`}>Policies</button>
         </div>
         <div className="flex-1 overflow-hidden">
           {browserSection === 'labels' && <RetentionLabelList onOpenLabel={handleOpenLabel} onNewLabel={handleNewLabel} />}
@@ -128,7 +128,7 @@ function FormWithData({ type, name, invoke, onSaved, onCancel, onDeleted }: {
     });
   }, [name, type, invoke]);
 
-  if (loading) return <div className="p-6"><div className="h-32 bg-gray-800 rounded animate-pulse" /></div>;
+  if (loading) return <div className="p-6"><div className="h-32 bg-white/[0.06] rounded-lg animate-pulse" /></div>;
 
   return type === 'label'
     ? <RetentionLabelForm existing={data} onSaved={onSaved} onCancel={onCancel} onDeleted={onDeleted} />
@@ -143,21 +143,21 @@ function EmptyWorkspace({ onSwitchSection, onNewLabel, onNewPolicy }: {
   return (
     <div className="h-full flex items-center justify-center">
       <div className="text-center max-w-lg">
-        <h2 className="text-lg font-semibold text-gray-300 mb-2">Retention Management</h2>
-        <p className="text-sm text-gray-500 mb-6">Browse retention labels and policies in the left panel, or create new ones.</p>
+        <h2 className="text-lg font-semibold text-zinc-300 mb-2">Retention Management</h2>
+        <p className="text-sm text-zinc-500 mb-6">Browse retention labels and policies in the left panel, or create new ones.</p>
         <div className="grid grid-cols-2 gap-3 mb-4">
           <button onClick={() => onSwitchSection('labels')} className="p-3 rounded-lg border bg-amber-500/10 border-amber-500/20 hover:bg-amber-500/20 transition-colors text-left">
-            <div className="text-sm font-medium text-gray-200">Labels</div>
-            <div className="text-xs text-gray-500 mt-0.5">Duration, action, type</div>
+            <div className="text-sm font-medium text-zinc-200">Labels</div>
+            <div className="text-xs text-zinc-500 mt-0.5">Duration, action, type</div>
           </button>
           <button onClick={() => onSwitchSection('policies')} className="p-3 rounded-lg border bg-amber-500/10 border-amber-500/20 hover:bg-amber-500/20 transition-colors text-left">
-            <div className="text-sm font-medium text-gray-200">Policies</div>
-            <div className="text-xs text-gray-500 mt-0.5">Location scoping</div>
+            <div className="text-sm font-medium text-zinc-200">Policies</div>
+            <div className="text-xs text-zinc-500 mt-0.5">Location scoping</div>
           </button>
         </div>
         <div className="flex gap-3 justify-center">
-          <button onClick={onNewLabel} className="px-4 py-2 text-xs text-amber-300 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/20 rounded transition-colors">+ New Retention Label</button>
-          <button onClick={onNewPolicy} className="px-4 py-2 text-xs text-amber-300 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/20 rounded transition-colors">+ New Retention Policy</button>
+          <button onClick={onNewLabel} className="px-4 py-2 text-xs text-amber-300 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/20 rounded-lg transition-colors">+ New Retention Label</button>
+          <button onClick={onNewPolicy} className="px-4 py-2 text-xs text-amber-300 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/20 rounded-lg transition-colors">+ New Retention Policy</button>
         </div>
       </div>
     </div>

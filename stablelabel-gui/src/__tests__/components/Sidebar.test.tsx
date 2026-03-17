@@ -13,7 +13,7 @@ describe('Sidebar', () => {
 
   it('renders the subtitle', () => {
     render(<Sidebar currentPage="dashboard" onNavigate={onNavigate} />);
-    expect(screen.getByText('Purview Compliance Manager')).toBeInTheDocument();
+    expect(screen.getByText('Purview Compliance')).toBeInTheDocument();
   });
 
   it('renders the version', () => {

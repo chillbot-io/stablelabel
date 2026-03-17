@@ -41,16 +41,16 @@ export default function MailboxAccessPanel() {
   return (
     <div className="space-y-4">
       <div>
-        <h3 className="text-sm font-semibold text-gray-300 mb-1">Mailbox Access</h3>
-        <p className="text-xs text-gray-500">Grant or revoke Exchange mailbox permissions for compliance operations.</p>
+        <h3 className="text-sm font-semibold text-zinc-300 mb-1">Mailbox Access</h3>
+        <p className="text-xs text-zinc-500">Grant or revoke Exchange mailbox permissions for compliance operations.</p>
       </div>
 
       <TextField label="Mailbox Identity" value={identity} onChange={setIdentity} placeholder="user@contoso.com or alias" required helpText="UPN or alias of the mailbox." />
       <TextField label="User" value={user} onChange={setUser} placeholder="admin@contoso.com" required helpText="UPN of the user to grant/revoke access." />
 
       <div>
-        <label className="block text-xs text-gray-400 mb-1">Access Rights</label>
-        <select value={accessRights} onChange={e => setAccessRights(e.target.value)} className="w-full px-2.5 py-1.5 text-xs bg-gray-800 border border-gray-700 rounded text-gray-200 focus:outline-none focus:border-blue-500">
+        <label className="block text-xs text-zinc-400 mb-1">Access Rights</label>
+        <select value={accessRights} onChange={e => setAccessRights(e.target.value)} className="w-full px-2.5 py-1.5 text-xs bg-white/[0.06] border border-white/[0.08] rounded-lg text-zinc-200 focus:outline-none focus:border-blue-500">
           <option value="FullAccess">Full Access</option>
           <option value="ReadPermission">Read Permission</option>
         </select>
@@ -58,13 +58,13 @@ export default function MailboxAccessPanel() {
 
       <ToggleField label="Dry Run" checked={dryRun} onChange={setDryRun} helpText="Simulate the operation." />
 
-      {msg && <div className={`p-2 rounded text-xs ${msg.type === 'error' ? 'bg-red-900/20 border border-red-800 text-red-300' : 'bg-green-900/20 border border-green-800 text-green-300'}`}>{msg.text}</div>}
+      {msg && <div className={`p-2 rounded-lg text-xs ${msg.type === 'error' ? 'bg-red-900/20 border border-red-800 text-red-300' : 'bg-green-900/20 border border-green-800 text-green-300'}`}>{msg.text}</div>}
 
       <div className="flex gap-3">
-        <button onClick={() => handleClick('grant')} disabled={loading} className="px-4 py-2 text-xs font-medium text-green-300 bg-green-500/10 hover:bg-green-500/20 border border-green-500/20 rounded transition-colors disabled:opacity-50">
+        <button onClick={() => handleClick('grant')} disabled={loading} className="px-4 py-2 text-xs font-medium text-green-300 bg-emerald-400/10 hover:bg-emerald-400/20 border border-green-500/20 rounded-lg transition-colors disabled:opacity-40">
           Grant Access
         </button>
-        <button onClick={() => handleClick('revoke')} disabled={loading} className="px-4 py-2 text-xs font-medium text-red-300 bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 rounded transition-colors disabled:opacity-50">
+        <button onClick={() => handleClick('revoke')} disabled={loading} className="px-4 py-2 text-xs font-medium text-red-300 bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 rounded-lg transition-colors disabled:opacity-40">
           Revoke Access
         </button>
       </div>

@@ -54,11 +54,11 @@ function StartJob() {
   return (
     <div className="space-y-4">
       <div>
-        <h3 className="text-sm font-semibold text-gray-300 mb-1">Start Elevated Job</h3>
-        <p className="text-xs text-gray-500">Orchestrate multi-step privilege elevation: GA auth, super user, site admin, and file share mounting.</p>
+        <h3 className="text-sm font-semibold text-zinc-300 mb-1">Start Elevated Job</h3>
+        <p className="text-xs text-zinc-500">Orchestrate multi-step privilege elevation: GA auth, super user, site admin, and file share mounting.</p>
       </div>
 
-      <div className="bg-red-500/5 border border-red-500/20 rounded p-3">
+      <div className="bg-red-500/5 border border-red-500/20 rounded-lg p-3">
         <p className="text-xs text-red-400">This operation grants significant privileges. Dry run is enabled by default. All elevations are tracked and can be torn down with Stop Job.</p>
       </div>
 
@@ -74,9 +74,9 @@ function StartJob() {
         <ToggleField label="Dry Run" checked={dryRun} onChange={setDryRun} />
       </div>
 
-      {msg && <div className={`p-2 rounded text-xs ${msg.type === 'error' ? 'bg-red-900/20 border border-red-800 text-red-300' : 'bg-green-900/20 border border-green-800 text-green-300'}`}>{msg.text}</div>}
+      {msg && <div className={`p-2 rounded-lg text-xs ${msg.type === 'error' ? 'bg-red-900/20 border border-red-800 text-red-300' : 'bg-green-900/20 border border-green-800 text-green-300'}`}>{msg.text}</div>}
 
-      <button onClick={handleClick} disabled={loading} className="px-4 py-2 text-xs font-medium text-yellow-300 bg-yellow-500/10 hover:bg-yellow-500/20 border border-yellow-500/20 rounded transition-colors disabled:opacity-50">
+      <button onClick={handleClick} disabled={loading} className="px-4 py-2 text-xs font-medium text-yellow-300 bg-yellow-500/10 hover:bg-yellow-500/20 border border-yellow-500/20 rounded-lg transition-colors disabled:opacity-40">
         {loading ? 'Starting...' : dryRun ? 'Dry Run — Start Job' : 'Start Elevated Job'}
       </button>
 
@@ -119,18 +119,18 @@ function StopJob() {
   };
 
   return (
-    <div className="bg-gray-900 border border-gray-800 rounded-lg p-4 space-y-4">
+    <div className="bg-white/[0.03] rounded-xl p-4 space-y-4">
       <div>
-        <h3 className="text-sm font-semibold text-gray-300 mb-1">Stop Elevated Job</h3>
-        <p className="text-xs text-gray-500">Tear down all elevations in reverse order and restore normal access.</p>
+        <h3 className="text-sm font-semibold text-zinc-300 mb-1">Stop Elevated Job</h3>
+        <p className="text-xs text-zinc-500">Tear down all elevations in reverse order and restore normal access.</p>
       </div>
 
       <TextField label="Job ID" value={jobId} onChange={setJobId} placeholder="Leave blank for most recent job" helpText="Optional — defaults to the active or most recent job." />
       <ToggleField label="Reconnect Original Session" checked={reconnect} onChange={setReconnect} helpText="Reconnect to Graph with original StableLabel scopes after cleanup." />
 
-      {msg && <div className={`p-2 rounded text-xs ${msg.type === 'error' ? 'bg-red-900/20 border border-red-800 text-red-300' : 'bg-green-900/20 border border-green-800 text-green-300'}`}>{msg.text}</div>}
+      {msg && <div className={`p-2 rounded-lg text-xs ${msg.type === 'error' ? 'bg-red-900/20 border border-red-800 text-red-300' : 'bg-green-900/20 border border-green-800 text-green-300'}`}>{msg.text}</div>}
 
-      <button onClick={() => setShowConfirm(true)} disabled={loading} className="px-4 py-2 text-xs font-medium text-red-300 bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 rounded transition-colors disabled:opacity-50">
+      <button onClick={() => setShowConfirm(true)} disabled={loading} className="px-4 py-2 text-xs font-medium text-red-300 bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 rounded-lg transition-colors disabled:opacity-40">
         {loading ? 'Stopping...' : 'Stop Job & Clean Up'}
       </button>
 

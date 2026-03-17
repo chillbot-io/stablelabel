@@ -41,21 +41,21 @@ export default function SiteAdminPanel() {
   return (
     <div className="space-y-4">
       <div>
-        <h3 className="text-sm font-semibold text-gray-300 mb-1">Site Collection Administrator</h3>
-        <p className="text-xs text-gray-500">Grant or revoke temporary site collection admin rights via Graph API.</p>
+        <h3 className="text-sm font-semibold text-zinc-300 mb-1">Site Collection Administrator</h3>
+        <p className="text-xs text-zinc-500">Grant or revoke temporary site collection admin rights via Graph API.</p>
       </div>
 
       <TextField label="Site URL" value={siteUrl} onChange={setSiteUrl} placeholder="https://contoso.sharepoint.com/sites/hr" required />
       <TextField label="User Principal Name" value={upn} onChange={setUpn} placeholder="admin@contoso.com" required />
       <ToggleField label="Dry Run" checked={dryRun} onChange={setDryRun} helpText="Simulate the operation." />
 
-      {msg && <div className={`p-2 rounded text-xs ${msg.type === 'error' ? 'bg-red-900/20 border border-red-800 text-red-300' : 'bg-green-900/20 border border-green-800 text-green-300'}`}>{msg.text}</div>}
+      {msg && <div className={`p-2 rounded-lg text-xs ${msg.type === 'error' ? 'bg-red-900/20 border border-red-800 text-red-300' : 'bg-green-900/20 border border-green-800 text-green-300'}`}>{msg.text}</div>}
 
       <div className="flex gap-3">
-        <button onClick={() => handleClick('grant')} disabled={loading} className="px-4 py-2 text-xs font-medium text-green-300 bg-green-500/10 hover:bg-green-500/20 border border-green-500/20 rounded transition-colors disabled:opacity-50">
+        <button onClick={() => handleClick('grant')} disabled={loading} className="px-4 py-2 text-xs font-medium text-green-300 bg-emerald-400/10 hover:bg-emerald-400/20 border border-green-500/20 rounded-lg transition-colors disabled:opacity-40">
           Grant Admin
         </button>
-        <button onClick={() => handleClick('revoke')} disabled={loading} className="px-4 py-2 text-xs font-medium text-red-300 bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 rounded transition-colors disabled:opacity-50">
+        <button onClick={() => handleClick('revoke')} disabled={loading} className="px-4 py-2 text-xs font-medium text-red-300 bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 rounded-lg transition-colors disabled:opacity-40">
           Revoke Admin
         </button>
       </div>
