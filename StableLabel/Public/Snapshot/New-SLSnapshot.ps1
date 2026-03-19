@@ -151,7 +151,18 @@ function New-SLSnapshot {
         # Write to file
         $fileName = "$Name.json"
         $filePath = Join-Path $snapshotDir $fileName
-        $snapshot | ConvertTo-Json -Depth $script:SLConfig.MaxJsonDepth | Out-File -FilePath $filePath -Encoding utf8
+        $tempPath = Join-Path $snapshotDir "$Name.tmp.$([System.IO.Path]::GetRandomFileName())"
+        try {
+            $json = $snapshot | ConvertTo-Json -Depth $script:SLConfig.MaxJsonDepth
+            $json | Out-File -FilePath $tempPath -Encoding utf8 -ErrorAction Stop
+            # Atomic rename — if this fails, the original file is untouched
+            Move-Item -Path $tempPath -Destination $filePath -Force -ErrorAction Stop
+        }
+        catch {
+            # Clean up temp file on failure
+            if (Test-Path $tempPath) { Remove-Item -Path $tempPath -Force -ErrorAction SilentlyContinue }
+            throw
+        }
 
         Write-SLAuditEntry -Action 'New-SLSnapshot' -Target $Name -Detail @{
             Scope = $Scope

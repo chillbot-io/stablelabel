@@ -37,7 +37,7 @@ function Invoke-SLComplianceCommand {
         try {
             Disconnect-ExchangeOnline -Confirm:$false -ErrorAction SilentlyContinue
         }
-        catch { }
+        catch { Write-Verbose "Disconnect-ExchangeOnline during recycle failed: $($_.Exception.Message)" }
 
         try {
             $ippsParams = @{

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import type { ConnectionStatus } from '../lib/types';
 
 /**
@@ -7,17 +7,23 @@ import type { ConnectionStatus } from '../lib/types';
 export function useConnectionStatus() {
   const [status, setStatus] = useState<ConnectionStatus | null>(null);
   const [loading, setLoading] = useState(true);
+  const mountedRef = useRef(true);
+
+  useEffect(() => {
+    return () => { mountedRef.current = false; };
+  }, []);
 
   const refresh = useCallback(async () => {
     try {
       const result = await window.stablelabel.invoke('Get-SLConnectionStatus');
+      if (!mountedRef.current) return;
       if (result.success && result.data) {
         setStatus(result.data as ConnectionStatus);
       }
     } catch {
       // Connection status unavailable
     } finally {
-      setLoading(false);
+      if (mountedRef.current) setLoading(false);
     }
   }, []);
 

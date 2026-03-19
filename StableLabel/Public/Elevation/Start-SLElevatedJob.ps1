@@ -168,7 +168,7 @@ function Start-SLElevatedJob {
             if ($TenantId) { $gaConnectParams['TenantId'] = $TenantId }
 
             # Disconnect any existing Graph session before GA auth
-            try { Disconnect-MgGraph -ErrorAction SilentlyContinue } catch { }
+            try { Disconnect-MgGraph -ErrorAction SilentlyContinue } catch { Write-Verbose "Disconnect-MgGraph cleanup failed: $($_.Exception.Message)" }
 
             Connect-MgGraph @gaConnectParams -ErrorAction Stop
 
@@ -306,7 +306,7 @@ function Start-SLElevatedJob {
             Write-Warning "[$jobId] Elevation failed. Attempting cleanup of partial elevations..."
             $jobState['Status'] = 'Failed'
 
-            try { Stop-SLElevatedJob -JobId $jobId -Force -ErrorAction SilentlyContinue } catch { }
+            try { Stop-SLElevatedJob -JobId $jobId -Force -ErrorAction SilentlyContinue } catch { Write-Verbose "Emergency job cleanup failed: $($_.Exception.Message)" }
 
             Write-SLAuditEntry -Action 'Start-ElevatedJob' -Target $jobId -Result 'failed' -ErrorMessage $_.Exception.Message
             $PSCmdlet.ThrowTerminatingError($_)
