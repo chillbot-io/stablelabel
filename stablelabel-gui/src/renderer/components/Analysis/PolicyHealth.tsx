@@ -13,7 +13,7 @@ export default function PolicyHealth() {
   const handleRun = async () => {
     setLoading(true); setError(null); setResults(null);
     try {
-      const r = await invoke<PolicyHealthType[]>(`Get-SLPolicyHealth -PolicyType '${policyType}'`);
+      const r = await invoke<PolicyHealthType[]>('Get-SLPolicyHealth', { PolicyType: policyType });
       if (r.success) setResults(Array.isArray(r.data) ? r.data : r.data ? [r.data as unknown as PolicyHealthType] : []);
       else setError(r.error ?? 'Failed');
     } catch (e) { setError(e instanceof Error ? e.message : 'Failed'); }

@@ -17,7 +17,7 @@ export default function FileShareConnect() {
   const fetchConnections = async () => {
     setLoadingList(true);
     try {
-      const r = await invoke<FileShareConnection[]>('Get-SLFileShareLabel -Path "SL:ListConnections"');
+      const r = await invoke<FileShareConnection[]>('Get-SLFileShareLabel', { Path: 'SL:ListConnections' });
       if (r.success && Array.isArray(r.data)) setConnections(r.data);
     } catch {
       // Connections list not available — that's okay
@@ -31,10 +31,11 @@ export default function FileShareConnect() {
     if (!path.trim()) { setError('UNC path is required (e.g. \\\\server\\share).'); return; }
     setLoading(true); setError(null); setSuccess(null);
     try {
-      const parts = [`Connect-SLFileShare -Path '${esc(path)}'`];
-      if (driveLetter.trim()) parts.push(`-DriveLetter '${esc(driveLetter)}'`);
-      if (name.trim()) parts.push(`-Name '${esc(name)}'`);
-      const r = await invoke<FileShareConnection>(parts.join(' '));
+      const r = await invoke<FileShareConnection>('Connect-SLFileShare', {
+        Path: path,
+        DriveLetter: driveLetter.trim() || undefined,
+        Name: name.trim() || undefined,
+      });
       if (r.success && r.data) {
         setSuccess(`Connected to ${r.data.Path} (${r.data.DriveLetter}:)`);
         fetchConnections();
@@ -49,7 +50,7 @@ export default function FileShareConnect() {
   const handleDisconnect = async (sharePath: string) => {
     setError(null); setSuccess(null);
     try {
-      const r = await invoke<FileShareDisconnectResult>(`Disconnect-SLFileShare -Path '${esc(sharePath)}'`);
+      const r = await invoke<FileShareDisconnectResult>('Disconnect-SLFileShare', { Path: sharePath });
       if (r.success) {
         setSuccess(`Disconnected from ${sharePath}`);
         fetchConnections();
@@ -62,7 +63,7 @@ export default function FileShareConnect() {
   const handleDisconnectAll = async () => {
     setError(null); setSuccess(null);
     try {
-      const r = await invoke<FileShareDisconnectResult>('Disconnect-SLFileShare -All');
+      const r = await invoke<FileShareDisconnectResult>('Disconnect-SLFileShare', { All: true });
       if (r.success && r.data) {
         setSuccess(`Disconnected ${r.data.Disconnected} share(s)`);
         fetchConnections();
@@ -132,5 +133,3 @@ export default function FileShareConnect() {
     </div>
   );
 }
-
-function esc(s: string) { return s.replace(/'/g, "''"); }

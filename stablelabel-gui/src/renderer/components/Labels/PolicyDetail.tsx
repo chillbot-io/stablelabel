@@ -20,7 +20,7 @@ export default function PolicyDetail({ policyName, onOpenLabel, onEdit, onDelete
       setLoading(true);
       setError(null);
       try {
-        const result = await invoke<LabelPolicy>(`Get-SLLabelPolicy -Identity '${policyName}'`);
+        const result = await invoke<LabelPolicy>('Get-SLLabelPolicy', { Identity: policyName });
         if (result.success && result.data) {
           setPolicy(result.data);
         } else {

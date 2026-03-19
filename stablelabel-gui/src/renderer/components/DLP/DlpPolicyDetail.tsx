@@ -22,10 +22,9 @@ export default function DlpPolicyDetail({ policyName, onEdit, onDeleted, onOpenR
 
   useEffect(() => {
     setLoading(true);
-    const escaped = policyName.replace(/'/g, "''");
     Promise.all([
-      invoke<DlpPolicy>(`Get-SLDlpPolicy -Identity '${escaped}'`),
-      invoke<DlpRule[]>(`Get-SLDlpRule -Policy '${escaped}'`),
+      invoke<DlpPolicy>('Get-SLDlpPolicy', { Identity: policyName }),
+      invoke<DlpRule[]>('Get-SLDlpRule', { Identity: policyName }),
     ]).then(([pRes, rRes]) => {
       if (pRes.success && pRes.data) setPolicy(pRes.data);
       else setError(pRes.error ?? 'Not found');

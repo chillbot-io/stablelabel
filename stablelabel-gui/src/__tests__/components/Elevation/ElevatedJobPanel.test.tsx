@@ -43,12 +43,11 @@ describe('ElevatedJobPanel', () => {
       await user.click(screen.getByText('Dry Run — Start Job'));
 
       await waitFor(() => {
-        expect(mockInvoke).toHaveBeenCalledWith(
-          expect.stringContaining("Start-SLElevatedJob -UserPrincipalName 'admin@contoso.com'")
-        );
+        expect(mockInvoke).toHaveBeenCalledWith('Start-SLElevatedJob', expect.objectContaining({
+          UserPrincipalName: 'admin@contoso.com',
+          DryRun: true,
+        }));
       });
-      expect(mockInvoke).toHaveBeenCalledWith(expect.stringContaining('-DryRun'));
-      expect(mockInvoke).toHaveBeenCalledWith(expect.stringContaining('-Confirm:$false'));
 
       await waitFor(() => {
         expect(screen.getByText('Dry run complete — no elevations applied.')).toBeInTheDocument();
@@ -101,12 +100,13 @@ describe('ElevatedJobPanel', () => {
       await user.click(screen.getByText('Start Job'));
 
       await waitFor(() => {
-        expect(mockInvoke).toHaveBeenCalledWith(
-          expect.stringContaining("Start-SLElevatedJob -UserPrincipalName 'admin@contoso.com'")
-        );
+        expect(mockInvoke).toHaveBeenCalledWith('Start-SLElevatedJob', expect.objectContaining({
+          UserPrincipalName: 'admin@contoso.com',
+        }));
       });
-      // Should NOT contain -DryRun
-      expect(mockInvoke).toHaveBeenCalledWith(expect.not.stringContaining('-DryRun'));
+      // Should NOT contain DryRun
+      const callArgs = mockInvoke.mock.calls[0];
+      expect(callArgs[1]).not.toHaveProperty('DryRun');
       await waitFor(() => {
         expect(screen.getByText('Elevated job started successfully.')).toBeInTheDocument();
       });
@@ -146,7 +146,9 @@ describe('ElevatedJobPanel', () => {
       await user.click(screen.getByText('Dry Run — Start Job'));
 
       await waitFor(() => {
-        expect(mockInvoke).toHaveBeenCalledWith(expect.stringContaining("-TenantId 'abc-123'"));
+        expect(mockInvoke).toHaveBeenCalledWith('Start-SLElevatedJob', expect.objectContaining({
+          TenantId: 'abc-123',
+        }));
       });
     });
 
@@ -165,8 +167,10 @@ describe('ElevatedJobPanel', () => {
       await user.click(screen.getByText('Dry Run — Start Job'));
 
       await waitFor(() => {
-        expect(mockInvoke).toHaveBeenCalledWith(expect.stringContaining('-SkipSuperUser'));
-        expect(mockInvoke).toHaveBeenCalledWith(expect.stringContaining('-SkipSiteAdmin'));
+        expect(mockInvoke).toHaveBeenCalledWith('Start-SLElevatedJob', expect.objectContaining({
+          SkipSuperUser: true,
+          SkipSiteAdmin: true,
+        }));
       });
     });
 
@@ -240,7 +244,7 @@ describe('ElevatedJobPanel', () => {
       });
     });
 
-    it('escapes single quotes in UPN', async () => {
+    it('passes UPN with special characters as raw value', async () => {
       const user = userEvent.setup();
       mockInvoke.mockResolvedValue({ success: true, data: null });
       render(<ElevatedJobPanel />);
@@ -249,9 +253,9 @@ describe('ElevatedJobPanel', () => {
       await user.click(screen.getByText('Dry Run — Start Job'));
 
       await waitFor(() => {
-        expect(mockInvoke).toHaveBeenCalledWith(
-          expect.stringContaining("o''brien@contoso.com")
-        );
+        expect(mockInvoke).toHaveBeenCalledWith('Start-SLElevatedJob', expect.objectContaining({
+          UserPrincipalName: "o'brien@contoso.com",
+        }));
       });
     });
   });
@@ -290,7 +294,10 @@ describe('ElevatedJobPanel', () => {
       await user.click(screen.getByText('Stop & Clean Up'));
 
       await waitFor(() => {
-        expect(mockInvoke).toHaveBeenCalledWith('Stop-SLElevatedJob -Force -ReconnectOriginal');
+        expect(mockInvoke).toHaveBeenCalledWith('Stop-SLElevatedJob', expect.objectContaining({
+          Force: true,
+          ReconnectOriginal: true,
+        }));
       });
       await waitFor(() => {
         expect(screen.getByText('Elevated job stopped. All privileges cleaned up.')).toBeInTheDocument();
@@ -310,7 +317,10 @@ describe('ElevatedJobPanel', () => {
       await user.click(screen.getByText('Stop & Clean Up'));
 
       await waitFor(() => {
-        expect(mockInvoke).toHaveBeenCalledWith(expect.stringContaining("-JobId 'job-456'"));
+        expect(mockInvoke).toHaveBeenCalledWith('Stop-SLElevatedJob', expect.objectContaining({
+          Force: true,
+          JobId: 'job-456',
+        }));
       });
     });
 
@@ -332,7 +342,11 @@ describe('ElevatedJobPanel', () => {
       await user.click(screen.getByText('Stop & Clean Up'));
 
       await waitFor(() => {
-        expect(mockInvoke).toHaveBeenCalledWith('Stop-SLElevatedJob -Force');
+        expect(mockInvoke).toHaveBeenCalledWith('Stop-SLElevatedJob', expect.objectContaining({
+          Force: true,
+        }));
+        const callArgs = mockInvoke.mock.calls[0];
+        expect(callArgs[1]).not.toHaveProperty('ReconnectOriginal');
       });
     });
 

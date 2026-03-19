@@ -55,9 +55,7 @@ describe('DocumentLabelApply', () => {
     await user.click(screen.getByRole('button', { name: 'Apply Label' }));
 
     await waitFor(() => {
-      expect(mockInvoke).toHaveBeenCalledWith(
-        "Set-SLDocumentLabel -DriveId 'drive-123' -ItemId 'item-456' -LabelName 'Secret' -Confirm:$false"
-      );
+      expect(mockInvoke).toHaveBeenCalledWith('Set-SLDocumentLabel', expect.objectContaining({ DriveId: 'drive-123', ItemId: 'item-456', LabelName: 'Secret' }));
     });
   });
 
@@ -72,9 +70,7 @@ describe('DocumentLabelApply', () => {
     await user.click(screen.getByRole('button', { name: 'Apply Label' }));
 
     await waitFor(() => {
-      expect(mockInvoke).toHaveBeenCalledWith(
-        "Set-SLDocumentLabel -DriveId 'drive-123' -ItemId 'item-456' -LabelId 'guid-1234' -Confirm:$false"
-      );
+      expect(mockInvoke).toHaveBeenCalledWith('Set-SLDocumentLabel', expect.objectContaining({ DriveId: 'drive-123', ItemId: 'item-456', LabelId: 'guid-1234' }));
     });
   });
 
@@ -90,9 +86,7 @@ describe('DocumentLabelApply', () => {
     await user.click(screen.getByRole('button', { name: 'Apply Label' }));
 
     await waitFor(() => {
-      expect(mockInvoke).toHaveBeenCalledWith(
-        "Set-SLDocumentLabel -DriveId 'drive-123' -ItemId 'item-456' -LabelName 'Secret' -Justification 'Compliance requirement' -Confirm:$false"
-      );
+      expect(mockInvoke).toHaveBeenCalledWith('Set-SLDocumentLabel', expect.objectContaining({ DriveId: 'drive-123', ItemId: 'item-456', LabelName: 'Secret', Justification: 'Compliance requirement' }));
     });
   });
 
@@ -113,9 +107,7 @@ describe('DocumentLabelApply', () => {
     await user.click(screen.getByRole('button', { name: 'Dry Run — Apply Label' }));
 
     await waitFor(() => {
-      expect(mockInvoke).toHaveBeenCalledWith(
-        "Set-SLDocumentLabel -DriveId 'drive-123' -ItemId 'item-456' -LabelName 'Secret' -DryRun -Confirm:$false"
-      );
+      expect(mockInvoke).toHaveBeenCalledWith('Set-SLDocumentLabel', expect.objectContaining({ DriveId: 'drive-123', ItemId: 'item-456', LabelName: 'Secret', DryRun: true }));
     });
   });
 
@@ -234,7 +226,7 @@ describe('DocumentLabelApply', () => {
     });
   });
 
-  it('escapes single quotes in all fields', async () => {
+  it('passes special characters as raw values', async () => {
     const user = userEvent.setup();
     mockInvoke.mockResolvedValueOnce({ success: true, data: null });
     render(<DocumentLabelApply />);
@@ -246,9 +238,7 @@ describe('DocumentLabelApply', () => {
     await user.click(screen.getByRole('button', { name: 'Apply Label' }));
 
     await waitFor(() => {
-      expect(mockInvoke).toHaveBeenCalledWith(
-        "Set-SLDocumentLabel -DriveId 'd''rive' -ItemId 'i''tem' -LabelName 'lab''el' -Justification 'just''ify' -Confirm:$false"
-      );
+      expect(mockInvoke).toHaveBeenCalledWith('Set-SLDocumentLabel', expect.objectContaining({ DriveId: "d'rive", ItemId: "i'tem", LabelName: "lab'el", Justification: "just'ify" }));
     });
   });
 

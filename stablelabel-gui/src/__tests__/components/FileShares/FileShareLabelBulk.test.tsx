@@ -43,7 +43,11 @@ describe('FileShareLabelBulk', () => {
 
     await waitFor(() => {
       expect(mockInvoke).toHaveBeenCalledWith(
-        expect.stringContaining('Set-SLFileShareLabelBulk')
+        'Set-SLFileShareLabelBulk',
+        expect.objectContaining({
+          Path: '\\\\server\\share\\folder',
+          LabelName: 'Confidential',
+        })
       );
     });
   });

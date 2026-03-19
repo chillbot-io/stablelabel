@@ -20,9 +20,7 @@ export default function AutoLabelDetail({ policyName, onOpenLabel, onEdit, onDel
       setLoading(true);
       setError(null);
       try {
-        const result = await invoke<AutoLabelPolicy>(
-          `Get-SLAutoLabelPolicy -Identity '${policyName}'`,
-        );
+        const result = await invoke<AutoLabelPolicy>('Get-SLAutoLabelPolicy', { Identity: policyName });
         if (result.success && result.data) {
           setPolicy(result.data);
         } else {

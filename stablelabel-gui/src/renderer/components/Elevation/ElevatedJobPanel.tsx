@@ -29,16 +29,15 @@ function StartJob() {
     setShowConfirm(false);
     setLoading(true); setMsg(null);
     try {
-      const parts = [`Start-SLElevatedJob -UserPrincipalName '${esc(upn)}'`];
-      if (tenantId.trim()) parts.push(`-TenantId '${esc(tenantId)}'`);
-      if (siteUrls.length > 0) parts.push(`-SiteUrls ${siteUrls.map(u => `'${esc(u)}'`).join(',')}`);
-      if (fileSharePaths.length > 0) parts.push(`-FileSharePaths ${fileSharePaths.map(p => `'${esc(p)}'`).join(',')}`);
-      if (skipSuperUser) parts.push('-SkipSuperUser');
-      if (skipSiteAdmin) parts.push('-SkipSiteAdmin');
-      if (dryRun) parts.push('-DryRun');
-      parts.push('-Confirm:$false');
-
-      const r = await invoke(parts.join(' '));
+      const r = await invoke('Start-SLElevatedJob', {
+        UserPrincipalName: upn,
+        TenantId: tenantId.trim() || undefined,
+        SiteUrls: siteUrls.length ? siteUrls : undefined,
+        FileSharePaths: fileSharePaths.length ? fileSharePaths : undefined,
+        SkipSuperUser: skipSuperUser || undefined,
+        SkipSiteAdmin: skipSiteAdmin || undefined,
+        DryRun: dryRun || undefined,
+      });
       if (r.success) setMsg({ type: 'success', text: dryRun ? 'Dry run complete — no elevations applied.' : 'Elevated job started successfully.' });
       else setMsg({ type: 'error', text: r.error ?? 'Failed to start job' });
     } catch (e) { setMsg({ type: 'error', text: e instanceof Error ? e.message : 'Failed' }); }
@@ -107,11 +106,11 @@ function StopJob() {
     setShowConfirm(false);
     setLoading(true); setMsg(null);
     try {
-      const parts = ['Stop-SLElevatedJob -Force'];
-      if (jobId.trim()) parts.push(`-JobId '${esc(jobId)}'`);
-      if (reconnect) parts.push('-ReconnectOriginal');
-
-      const r = await invoke(parts.join(' '));
+      const r = await invoke('Stop-SLElevatedJob', {
+        Force: true,
+        JobId: jobId.trim() || undefined,
+        ReconnectOriginal: reconnect || undefined,
+      });
       if (r.success) setMsg({ type: 'success', text: 'Elevated job stopped. All privileges cleaned up.' });
       else setMsg({ type: 'error', text: r.error ?? 'Failed to stop job' });
     } catch (e) { setMsg({ type: 'error', text: e instanceof Error ? e.message : 'Failed' }); }
@@ -149,4 +148,3 @@ function StopJob() {
   );
 }
 
-function esc(s: string) { return s.replace(/'/g, "''"); }

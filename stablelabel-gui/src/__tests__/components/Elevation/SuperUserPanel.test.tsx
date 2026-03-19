@@ -38,7 +38,7 @@ describe('SuperUserPanel', () => {
     await user.click(screen.getByText('Enable Super User'));
 
     await waitFor(() => {
-      expect(mockInvoke).toHaveBeenCalledWith('Enable-SLSuperUser -DryRun -Confirm:$false');
+      expect(mockInvoke).toHaveBeenCalledWith('Enable-SLSuperUser', expect.objectContaining({ DryRun: true }));
     });
     await waitFor(() => {
       expect(screen.getByText('Dry run: would enable super user.')).toBeInTheDocument();
@@ -58,7 +58,7 @@ describe('SuperUserPanel', () => {
     await user.click(screen.getByText('Disable Super User'));
 
     await waitFor(() => {
-      expect(mockInvoke).toHaveBeenCalledWith('Disable-SLSuperUser -DryRun -Confirm:$false');
+      expect(mockInvoke).toHaveBeenCalledWith('Disable-SLSuperUser', expect.objectContaining({ DryRun: true }));
     });
     await waitFor(() => {
       expect(screen.getByText('Dry run: would disable super user.')).toBeInTheDocument();
@@ -91,7 +91,7 @@ describe('SuperUserPanel', () => {
     await user.click(screen.getByText('Enable'));
 
     await waitFor(() => {
-      expect(mockInvoke).toHaveBeenCalledWith('Enable-SLSuperUser -Confirm:$false');
+      expect(mockInvoke).toHaveBeenCalledWith('Enable-SLSuperUser', expect.objectContaining({}));
     });
     await waitFor(() => {
       expect(screen.getByText('Super user enabled.')).toBeInTheDocument();
@@ -124,7 +124,7 @@ describe('SuperUserPanel', () => {
     await user.click(screen.getByText('Disable'));
 
     await waitFor(() => {
-      expect(mockInvoke).toHaveBeenCalledWith('Disable-SLSuperUser -Confirm:$false');
+      expect(mockInvoke).toHaveBeenCalledWith('Disable-SLSuperUser', expect.objectContaining({}));
     });
     await waitFor(() => {
       expect(screen.getByText('Super user disabled.')).toBeInTheDocument();

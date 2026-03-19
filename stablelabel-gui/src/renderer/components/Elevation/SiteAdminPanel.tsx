@@ -22,10 +22,8 @@ export default function SiteAdminPanel() {
     setShowConfirm(null);
     setLoading(true); setMsg(null);
     try {
-      const cmd = action === 'grant'
-        ? `Grant-SLSiteAdmin -SiteUrl '${esc(siteUrl)}' -UserPrincipalName '${esc(upn)}'${dryRun ? ' -DryRun' : ''} -Confirm:$false`
-        : `Revoke-SLSiteAdmin -SiteUrl '${esc(siteUrl)}' -UserPrincipalName '${esc(upn)}'${dryRun ? ' -DryRun' : ''} -Confirm:$false`;
-      const r = await invoke(cmd);
+      const cmdName = action === 'grant' ? 'Grant-SLSiteAdmin' : 'Revoke-SLSiteAdmin';
+      const r = await invoke(cmdName, { SiteUrl: siteUrl, UserPrincipalName: upn, DryRun: dryRun || undefined });
       if (r.success) setMsg({ type: 'success', text: dryRun ? `Dry run: would ${action} site admin.` : `Site admin ${action === 'grant' ? 'granted' : 'revoked'}.` });
       else setMsg({ type: 'error', text: r.error ?? 'Failed' });
     } catch (e) { setMsg({ type: 'error', text: e instanceof Error ? e.message : 'Failed' }); }
@@ -77,4 +75,3 @@ export default function SiteAdminPanel() {
   );
 }
 
-function esc(s: string) { return s.replace(/'/g, "''"); }

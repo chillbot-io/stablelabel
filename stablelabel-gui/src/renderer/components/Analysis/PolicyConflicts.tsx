@@ -22,7 +22,7 @@ export default function PolicyConflicts() {
   const handleRun = async () => {
     setLoading(true); setError(null); setResult(null);
     try {
-      const r = await invoke<ConflictResult>(`Test-SLPolicyConflict -PolicyType '${policyType}'`);
+      const r = await invoke<ConflictResult>('Test-SLPolicyConflict', { PolicyType: policyType });
       if (r.success && r.data) setResult(r.data);
       else setError(r.error ?? 'Failed');
     } catch (e) { setError(e instanceof Error ? e.message : 'Failed'); }

@@ -73,9 +73,12 @@ describe('MailboxAccessPanel', () => {
     await user.click(screen.getByText('Grant Access'));
 
     await waitFor(() => {
-      expect(mockInvoke).toHaveBeenCalledWith(
-        "Grant-SLMailboxAccess -Identity 'mailbox@contoso.com' -User 'admin@contoso.com' -AccessRights 'FullAccess' -DryRun -Confirm:$false"
-      );
+      expect(mockInvoke).toHaveBeenCalledWith('Grant-SLMailboxAccess', expect.objectContaining({
+        Identity: 'mailbox@contoso.com',
+        User: 'admin@contoso.com',
+        AccessRights: 'FullAccess',
+        DryRun: true,
+      }));
     });
     await waitFor(() => {
       expect(screen.getByText('Dry run: would grant mailbox access.')).toBeInTheDocument();
@@ -97,9 +100,12 @@ describe('MailboxAccessPanel', () => {
     await user.click(screen.getByText('Revoke Access'));
 
     await waitFor(() => {
-      expect(mockInvoke).toHaveBeenCalledWith(
-        "Revoke-SLMailboxAccess -Identity 'mailbox@contoso.com' -User 'admin@contoso.com' -AccessRights 'FullAccess' -DryRun -Confirm:$false"
-      );
+      expect(mockInvoke).toHaveBeenCalledWith('Revoke-SLMailboxAccess', expect.objectContaining({
+        Identity: 'mailbox@contoso.com',
+        User: 'admin@contoso.com',
+        AccessRights: 'FullAccess',
+        DryRun: true,
+      }));
     });
     await waitFor(() => {
       expect(screen.getByText('Dry run: would revoke mailbox access.')).toBeInTheDocument();
@@ -121,9 +127,9 @@ describe('MailboxAccessPanel', () => {
     await user.click(screen.getByText('Grant Access'));
 
     await waitFor(() => {
-      expect(mockInvoke).toHaveBeenCalledWith(
-        expect.stringContaining("-AccessRights 'ReadPermission'")
-      );
+      expect(mockInvoke).toHaveBeenCalledWith('Grant-SLMailboxAccess', expect.objectContaining({
+        AccessRights: 'ReadPermission',
+      }));
     });
   });
 
@@ -159,9 +165,13 @@ describe('MailboxAccessPanel', () => {
     await user.click(screen.getByText('Grant'));
 
     await waitFor(() => {
-      expect(mockInvoke).toHaveBeenCalledWith(
-        "Grant-SLMailboxAccess -Identity 'mailbox@contoso.com' -User 'admin@contoso.com' -AccessRights 'FullAccess' -Confirm:$false"
-      );
+      expect(mockInvoke).toHaveBeenCalledWith('Grant-SLMailboxAccess', expect.objectContaining({
+        Identity: 'mailbox@contoso.com',
+        User: 'admin@contoso.com',
+        AccessRights: 'FullAccess',
+      }));
+      const callArgs = mockInvoke.mock.calls[0];
+      expect(callArgs[1]).not.toHaveProperty('DryRun');
     });
     await waitFor(() => {
       expect(screen.getByText('Mailbox access granted.')).toBeInTheDocument();
@@ -198,9 +208,13 @@ describe('MailboxAccessPanel', () => {
     await user.click(screen.getByText('Revoke'));
 
     await waitFor(() => {
-      expect(mockInvoke).toHaveBeenCalledWith(
-        "Revoke-SLMailboxAccess -Identity 'mailbox@contoso.com' -User 'admin@contoso.com' -AccessRights 'FullAccess' -Confirm:$false"
-      );
+      expect(mockInvoke).toHaveBeenCalledWith('Revoke-SLMailboxAccess', expect.objectContaining({
+        Identity: 'mailbox@contoso.com',
+        User: 'admin@contoso.com',
+        AccessRights: 'FullAccess',
+      }));
+      const callArgs = mockInvoke.mock.calls[0];
+      expect(callArgs[1]).not.toHaveProperty('DryRun');
     });
     await waitFor(() => {
       expect(screen.getByText('Mailbox access revoked.')).toBeInTheDocument();
@@ -311,8 +325,8 @@ describe('MailboxAccessPanel', () => {
     });
   });
 
-  // --- Escaping ---
-  it('escapes single quotes in identity and user', async () => {
+  // --- Special characters (structured API passes raw values) ---
+  it('passes special characters in identity and user as raw values', async () => {
     const user = userEvent.setup();
     mockInvoke.mockResolvedValue({ success: true, data: null });
     render(<MailboxAccessPanel />);
@@ -325,8 +339,10 @@ describe('MailboxAccessPanel', () => {
     await user.click(screen.getByText('Grant Access'));
 
     await waitFor(() => {
-      expect(mockInvoke).toHaveBeenCalledWith(expect.stringContaining("o''malley@contoso.com"));
-      expect(mockInvoke).toHaveBeenCalledWith(expect.stringContaining("o''brien@contoso.com"));
+      expect(mockInvoke).toHaveBeenCalledWith('Grant-SLMailboxAccess', expect.objectContaining({
+        Identity: "o'malley@contoso.com",
+        User: "o'brien@contoso.com",
+      }));
     });
   });
 

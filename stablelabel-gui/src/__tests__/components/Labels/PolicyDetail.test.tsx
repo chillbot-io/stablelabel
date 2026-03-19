@@ -56,7 +56,8 @@ describe('PolicyDetail', () => {
     expect(screen.getByText('Standard')).toBeInTheDocument();
 
     expect(mockInvoke).toHaveBeenCalledWith(
-      expect.stringContaining("Get-SLLabelPolicy -Identity 'Global Policy'"),
+      'Get-SLLabelPolicy',
+      expect.objectContaining({ Identity: 'Global Policy' }),
     );
   });
 

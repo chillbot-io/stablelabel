@@ -15,7 +15,7 @@ export default function DocumentLabelLookup() {
     if (!driveId.trim() || !itemId.trim()) { setError('Drive ID and Item ID are required.'); return; }
     setLoading(true); setError(null); setResult(null);
     try {
-      const r = await invoke<DocumentLabelResult>(`Get-SLDocumentLabel -DriveId '${esc(driveId)}' -ItemId '${esc(itemId)}'`);
+      const r = await invoke<DocumentLabelResult>('Get-SLDocumentLabel', { DriveId: driveId, ItemId: itemId });
       if (r.success && r.data) setResult(r.data);
       else setError(r.error ?? 'No label data returned');
     } catch (e) { setError(e instanceof Error ? e.message : 'Failed'); }
@@ -77,5 +77,3 @@ function RawJson({ data }: { data: unknown }) {
     </div>
   );
 }
-
-function esc(s: string) { return s.replace(/'/g, "''"); }

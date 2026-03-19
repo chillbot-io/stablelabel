@@ -74,13 +74,14 @@ export default function ConnectionDialog({ onClose, onConnected }: ConnectionDia
     setDeviceCode(null);
     setCopied(false);
 
-    // Listen for device-code prompts emitted during Connect-MgGraph -UseDeviceCode
+    // Listen for device-code prompts — fires twice: once for Graph, once for Compliance
     cleanupRef.current?.();
     cleanupRef.current = window.stablelabel.onDeviceCode((info) => {
+      setCopied(false);
       setDeviceCode(info);
     });
 
-    const result = await invoke<ConnectAllResult>('Connect-SLAll -UseDeviceCode');
+    const result = await invoke<ConnectAllResult>('Connect-SLAll', { UseDeviceCode: true });
     cleanupRef.current?.();
     cleanupRef.current = null;
 

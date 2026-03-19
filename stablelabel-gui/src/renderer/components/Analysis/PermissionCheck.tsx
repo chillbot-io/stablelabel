@@ -18,7 +18,7 @@ export default function PermissionCheck() {
   const handleRun = async () => {
     setLoading(true); setError(null); setResult(null);
     try {
-      const r = await invoke<PermissionResult>(`Test-SLPermission -Scope '${scope}'`);
+      const r = await invoke<PermissionResult>('Test-SLPermission', { Scope: scope });
       if (r.success && r.data) setResult(r.data);
       else setError(r.error ?? 'Failed');
     } catch (e) { setError(e instanceof Error ? e.message : 'Failed'); }

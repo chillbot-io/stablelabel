@@ -63,30 +63,34 @@ describe('DlpPolicyDetail', () => {
 
   it('fetches policy and rules with correct commands', async () => {
     mockInvoke.mockImplementation((cmd: string) => {
-      if (cmd.includes('Get-SLDlpPolicy')) return Promise.resolve({ success: true, data: mockPolicy });
-      if (cmd.includes('Get-SLDlpRule')) return Promise.resolve({ success: true, data: mockRules });
+      if (cmd === 'Get-SLDlpPolicy') return Promise.resolve({ success: true, data: mockPolicy });
+      if (cmd === 'Get-SLDlpRule') return Promise.resolve({ success: true, data: mockRules });
       return Promise.resolve({ success: false, data: null });
     });
     render(<DlpPolicyDetail policyName="PII Protection" onEdit={onEdit} onDeleted={onDeleted} onOpenRule={onOpenRule} />);
     await waitFor(() => {
       expect(screen.getByText('PII Protection')).toBeInTheDocument();
     });
-    expect(mockInvoke).toHaveBeenCalledWith(expect.stringContaining("Get-SLDlpPolicy -Identity 'PII Protection'"));
-    expect(mockInvoke).toHaveBeenCalledWith(expect.stringContaining("Get-SLDlpRule -Policy 'PII Protection'"));
+    expect(mockInvoke).toHaveBeenCalledWith('Get-SLDlpPolicy', expect.objectContaining({ Identity: 'PII Protection' }));
+    expect(mockInvoke).toHaveBeenCalledWith('Get-SLDlpRule', expect.objectContaining({ Identity: 'PII Protection' }));
   });
 
-  it('escapes single quotes in policy name', async () => {
-    mockInvoke.mockImplementation(() => Promise.resolve({ success: true, data: mockPolicy }));
+  it('passes policy name directly without escaping', async () => {
+    mockInvoke.mockImplementation((cmd: string) => {
+      if (cmd === 'Get-SLDlpPolicy') return Promise.resolve({ success: true, data: mockPolicy });
+      if (cmd === 'Get-SLDlpRule') return Promise.resolve({ success: true, data: [] });
+      return Promise.resolve({ success: false, data: null });
+    });
     render(<DlpPolicyDetail policyName="It's a policy" onEdit={onEdit} onDeleted={onDeleted} onOpenRule={onOpenRule} />);
     await waitFor(() => {
-      expect(mockInvoke).toHaveBeenCalledWith(expect.stringContaining("It''s a policy"));
+      expect(mockInvoke).toHaveBeenCalledWith('Get-SLDlpPolicy', expect.objectContaining({ Identity: "It's a policy" }));
     });
   });
 
   it('displays policy name, comment, and mode badge', async () => {
     mockInvoke.mockImplementation((cmd: string) => {
-      if (cmd.includes('Get-SLDlpPolicy')) return Promise.resolve({ success: true, data: mockPolicy });
-      if (cmd.includes('Get-SLDlpRule')) return Promise.resolve({ success: true, data: mockRules });
+      if (cmd === 'Get-SLDlpPolicy') return Promise.resolve({ success: true, data: mockPolicy });
+      if (cmd === 'Get-SLDlpRule') return Promise.resolve({ success: true, data: mockRules });
       return Promise.resolve({ success: false, data: null });
     });
     render(<DlpPolicyDetail policyName="PII Protection" onEdit={onEdit} onDeleted={onDeleted} onOpenRule={onOpenRule} />);
@@ -99,8 +103,8 @@ describe('DlpPolicyDetail', () => {
 
   it('shows mode description for Enable mode', async () => {
     mockInvoke.mockImplementation((cmd: string) => {
-      if (cmd.includes('Get-SLDlpPolicy')) return Promise.resolve({ success: true, data: mockPolicy });
-      if (cmd.includes('Get-SLDlpRule')) return Promise.resolve({ success: true, data: [] });
+      if (cmd === 'Get-SLDlpPolicy') return Promise.resolve({ success: true, data: mockPolicy });
+      if (cmd === 'Get-SLDlpRule') return Promise.resolve({ success: true, data: [] });
       return Promise.resolve({ success: false, data: null });
     });
     render(<DlpPolicyDetail policyName="PII Protection" onEdit={onEdit} onDeleted={onDeleted} onOpenRule={onOpenRule} />);
@@ -112,8 +116,8 @@ describe('DlpPolicyDetail', () => {
   it('shows mode description for TestWithNotifications', async () => {
     const testPolicy = { ...mockPolicy, Mode: 'TestWithNotifications' };
     mockInvoke.mockImplementation((cmd: string) => {
-      if (cmd.includes('Get-SLDlpPolicy')) return Promise.resolve({ success: true, data: testPolicy });
-      if (cmd.includes('Get-SLDlpRule')) return Promise.resolve({ success: true, data: [] });
+      if (cmd === 'Get-SLDlpPolicy') return Promise.resolve({ success: true, data: testPolicy });
+      if (cmd === 'Get-SLDlpRule') return Promise.resolve({ success: true, data: [] });
       return Promise.resolve({ success: false, data: null });
     });
     render(<DlpPolicyDetail policyName="PII Protection" onEdit={onEdit} onDeleted={onDeleted} onOpenRule={onOpenRule} />);
@@ -126,8 +130,8 @@ describe('DlpPolicyDetail', () => {
   it('shows mode description for TestWithoutNotifications', async () => {
     const testPolicy = { ...mockPolicy, Mode: 'TestWithoutNotifications' };
     mockInvoke.mockImplementation((cmd: string) => {
-      if (cmd.includes('Get-SLDlpPolicy')) return Promise.resolve({ success: true, data: testPolicy });
-      if (cmd.includes('Get-SLDlpRule')) return Promise.resolve({ success: true, data: [] });
+      if (cmd === 'Get-SLDlpPolicy') return Promise.resolve({ success: true, data: testPolicy });
+      if (cmd === 'Get-SLDlpRule') return Promise.resolve({ success: true, data: [] });
       return Promise.resolve({ success: false, data: null });
     });
     render(<DlpPolicyDetail policyName="PII Protection" onEdit={onEdit} onDeleted={onDeleted} onOpenRule={onOpenRule} />);
@@ -140,8 +144,8 @@ describe('DlpPolicyDetail', () => {
   it('shows unknown mode without description', async () => {
     const testPolicy = { ...mockPolicy, Mode: null };
     mockInvoke.mockImplementation((cmd: string) => {
-      if (cmd.includes('Get-SLDlpPolicy')) return Promise.resolve({ success: true, data: testPolicy });
-      if (cmd.includes('Get-SLDlpRule')) return Promise.resolve({ success: true, data: [] });
+      if (cmd === 'Get-SLDlpPolicy') return Promise.resolve({ success: true, data: testPolicy });
+      if (cmd === 'Get-SLDlpRule') return Promise.resolve({ success: true, data: [] });
       return Promise.resolve({ success: false, data: null });
     });
     render(<DlpPolicyDetail policyName="PII Protection" onEdit={onEdit} onDeleted={onDeleted} onOpenRule={onOpenRule} />);
@@ -152,8 +156,8 @@ describe('DlpPolicyDetail', () => {
 
   it('displays GUID and dates', async () => {
     mockInvoke.mockImplementation((cmd: string) => {
-      if (cmd.includes('Get-SLDlpPolicy')) return Promise.resolve({ success: true, data: mockPolicy });
-      if (cmd.includes('Get-SLDlpRule')) return Promise.resolve({ success: true, data: [] });
+      if (cmd === 'Get-SLDlpPolicy') return Promise.resolve({ success: true, data: mockPolicy });
+      if (cmd === 'Get-SLDlpRule') return Promise.resolve({ success: true, data: [] });
       return Promise.resolve({ success: false, data: null });
     });
     render(<DlpPolicyDetail policyName="PII Protection" onEdit={onEdit} onDeleted={onDeleted} onOpenRule={onOpenRule} />);
@@ -167,8 +171,8 @@ describe('DlpPolicyDetail', () => {
 
   it('displays rules list with correct details', async () => {
     mockInvoke.mockImplementation((cmd: string) => {
-      if (cmd.includes('Get-SLDlpPolicy')) return Promise.resolve({ success: true, data: mockPolicy });
-      if (cmd.includes('Get-SLDlpRule')) return Promise.resolve({ success: true, data: mockRules });
+      if (cmd === 'Get-SLDlpPolicy') return Promise.resolve({ success: true, data: mockPolicy });
+      if (cmd === 'Get-SLDlpRule') return Promise.resolve({ success: true, data: mockRules });
       return Promise.resolve({ success: false, data: null });
     });
     render(<DlpPolicyDetail policyName="PII Protection" onEdit={onEdit} onDeleted={onDeleted} onOpenRule={onOpenRule} />);
@@ -184,8 +188,8 @@ describe('DlpPolicyDetail', () => {
 
   it('shows empty rules message when no rules', async () => {
     mockInvoke.mockImplementation((cmd: string) => {
-      if (cmd.includes('Get-SLDlpPolicy')) return Promise.resolve({ success: true, data: mockPolicy });
-      if (cmd.includes('Get-SLDlpRule')) return Promise.resolve({ success: true, data: [] });
+      if (cmd === 'Get-SLDlpPolicy') return Promise.resolve({ success: true, data: mockPolicy });
+      if (cmd === 'Get-SLDlpRule') return Promise.resolve({ success: true, data: [] });
       return Promise.resolve({ success: false, data: null });
     });
     render(<DlpPolicyDetail policyName="PII Protection" onEdit={onEdit} onDeleted={onDeleted} onOpenRule={onOpenRule} />);
@@ -197,8 +201,8 @@ describe('DlpPolicyDetail', () => {
   it('calls onOpenRule when a rule is clicked', async () => {
     const user = userEvent.setup();
     mockInvoke.mockImplementation((cmd: string) => {
-      if (cmd.includes('Get-SLDlpPolicy')) return Promise.resolve({ success: true, data: mockPolicy });
-      if (cmd.includes('Get-SLDlpRule')) return Promise.resolve({ success: true, data: mockRules });
+      if (cmd === 'Get-SLDlpPolicy') return Promise.resolve({ success: true, data: mockPolicy });
+      if (cmd === 'Get-SLDlpRule') return Promise.resolve({ success: true, data: mockRules });
       return Promise.resolve({ success: false, data: null });
     });
     render(<DlpPolicyDetail policyName="PII Protection" onEdit={onEdit} onDeleted={onDeleted} onOpenRule={onOpenRule} />);
@@ -212,8 +216,8 @@ describe('DlpPolicyDetail', () => {
   it('calls onEdit when Edit button is clicked', async () => {
     const user = userEvent.setup();
     mockInvoke.mockImplementation((cmd: string) => {
-      if (cmd.includes('Get-SLDlpPolicy')) return Promise.resolve({ success: true, data: mockPolicy });
-      if (cmd.includes('Get-SLDlpRule')) return Promise.resolve({ success: true, data: [] });
+      if (cmd === 'Get-SLDlpPolicy') return Promise.resolve({ success: true, data: mockPolicy });
+      if (cmd === 'Get-SLDlpRule') return Promise.resolve({ success: true, data: [] });
       return Promise.resolve({ success: false, data: null });
     });
     render(<DlpPolicyDetail policyName="PII Protection" onEdit={onEdit} onDeleted={onDeleted} onOpenRule={onOpenRule} />);
@@ -226,8 +230,8 @@ describe('DlpPolicyDetail', () => {
 
   it('renders error state when policy fetch fails', async () => {
     mockInvoke.mockImplementation((cmd: string) => {
-      if (cmd.includes('Get-SLDlpPolicy')) return Promise.resolve({ success: false, data: null, error: 'Policy not found' });
-      if (cmd.includes('Get-SLDlpRule')) return Promise.resolve({ success: true, data: [] });
+      if (cmd === 'Get-SLDlpPolicy') return Promise.resolve({ success: false, data: null, error: 'Policy not found' });
+      if (cmd === 'Get-SLDlpRule') return Promise.resolve({ success: true, data: [] });
       return Promise.resolve({ success: false, data: null });
     });
     render(<DlpPolicyDetail policyName="PII Protection" onEdit={onEdit} onDeleted={onDeleted} onOpenRule={onOpenRule} />);
@@ -238,8 +242,8 @@ describe('DlpPolicyDetail', () => {
 
   it('renders "Not found" when policy fetch returns null data without error', async () => {
     mockInvoke.mockImplementation((cmd: string) => {
-      if (cmd.includes('Get-SLDlpPolicy')) return Promise.resolve({ success: false, data: null });
-      if (cmd.includes('Get-SLDlpRule')) return Promise.resolve({ success: true, data: [] });
+      if (cmd === 'Get-SLDlpPolicy') return Promise.resolve({ success: false, data: null });
+      if (cmd === 'Get-SLDlpRule') return Promise.resolve({ success: true, data: [] });
       return Promise.resolve({ success: false, data: null });
     });
     render(<DlpPolicyDetail policyName="PII Protection" onEdit={onEdit} onDeleted={onDeleted} onOpenRule={onOpenRule} />);
@@ -250,8 +254,8 @@ describe('DlpPolicyDetail', () => {
 
   it('displays locations correctly', async () => {
     mockInvoke.mockImplementation((cmd: string) => {
-      if (cmd.includes('Get-SLDlpPolicy')) return Promise.resolve({ success: true, data: mockPolicy });
-      if (cmd.includes('Get-SLDlpRule')) return Promise.resolve({ success: true, data: [] });
+      if (cmd === 'Get-SLDlpPolicy') return Promise.resolve({ success: true, data: mockPolicy });
+      if (cmd === 'Get-SLDlpRule') return Promise.resolve({ success: true, data: [] });
       return Promise.resolve({ success: false, data: null });
     });
     render(<DlpPolicyDetail policyName="PII Protection" onEdit={onEdit} onDeleted={onDeleted} onOpenRule={onOpenRule} />);
@@ -271,8 +275,8 @@ describe('DlpPolicyDetail', () => {
   it('toggles raw JSON display', async () => {
     const user = userEvent.setup();
     mockInvoke.mockImplementation((cmd: string) => {
-      if (cmd.includes('Get-SLDlpPolicy')) return Promise.resolve({ success: true, data: mockPolicy });
-      if (cmd.includes('Get-SLDlpRule')) return Promise.resolve({ success: true, data: [] });
+      if (cmd === 'Get-SLDlpPolicy') return Promise.resolve({ success: true, data: mockPolicy });
+      if (cmd === 'Get-SLDlpRule') return Promise.resolve({ success: true, data: [] });
       return Promise.resolve({ success: false, data: null });
     });
     render(<DlpPolicyDetail policyName="PII Protection" onEdit={onEdit} onDeleted={onDeleted} onOpenRule={onOpenRule} />);
@@ -295,8 +299,8 @@ describe('DlpPolicyDetail', () => {
   it('handles null comment on policy', async () => {
     const policyNoComment = { ...mockPolicy, Comment: null };
     mockInvoke.mockImplementation((cmd: string) => {
-      if (cmd.includes('Get-SLDlpPolicy')) return Promise.resolve({ success: true, data: policyNoComment });
-      if (cmd.includes('Get-SLDlpRule')) return Promise.resolve({ success: true, data: [] });
+      if (cmd === 'Get-SLDlpPolicy') return Promise.resolve({ success: true, data: policyNoComment });
+      if (cmd === 'Get-SLDlpRule') return Promise.resolve({ success: true, data: [] });
       return Promise.resolve({ success: false, data: null });
     });
     render(<DlpPolicyDetail policyName="PII Protection" onEdit={onEdit} onDeleted={onDeleted} onOpenRule={onOpenRule} />);
@@ -310,8 +314,8 @@ describe('DlpPolicyDetail', () => {
   it('handles null WhenCreated date', async () => {
     const policyNoDates = { ...mockPolicy, WhenCreated: null, WhenChanged: null };
     mockInvoke.mockImplementation((cmd: string) => {
-      if (cmd.includes('Get-SLDlpPolicy')) return Promise.resolve({ success: true, data: policyNoDates });
-      if (cmd.includes('Get-SLDlpRule')) return Promise.resolve({ success: true, data: [] });
+      if (cmd === 'Get-SLDlpPolicy') return Promise.resolve({ success: true, data: policyNoDates });
+      if (cmd === 'Get-SLDlpRule') return Promise.resolve({ success: true, data: [] });
       return Promise.resolve({ success: false, data: null });
     });
     render(<DlpPolicyDetail policyName="PII Protection" onEdit={onEdit} onDeleted={onDeleted} onOpenRule={onOpenRule} />);

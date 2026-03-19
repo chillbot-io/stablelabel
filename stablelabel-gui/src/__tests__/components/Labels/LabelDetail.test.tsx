@@ -57,8 +57,8 @@ describe('LabelDetail', () => {
     expect(screen.getByText('#FF0000')).toBeInTheDocument();
 
     // Verify commands
-    expect(mockInvoke).toHaveBeenCalledWith(expect.stringContaining("Get-SLLabel -Id 'label-guid-123'"));
-    expect(mockInvoke).toHaveBeenCalledWith(expect.stringContaining('Get-SLLabelPolicy'));
+    expect(mockInvoke).toHaveBeenCalledWith('Get-SLLabel', expect.objectContaining({ Id: 'label-guid-123' }));
+    expect(mockInvoke).toHaveBeenCalledWith('Get-SLLabelPolicy');
   });
 
   it('shows inactive badge for inactive labels', async () => {

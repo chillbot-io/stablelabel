@@ -14,10 +14,8 @@ export default function SuperUserPanel() {
     setShowConfirm(null);
     setLoading(true); setMsg(null);
     try {
-      const cmd = action === 'enable'
-        ? `Enable-SLSuperUser${dryRun ? ' -DryRun' : ''} -Confirm:$false`
-        : `Disable-SLSuperUser${dryRun ? ' -DryRun' : ''} -Confirm:$false`;
-      const r = await invoke(cmd);
+      const cmdName = action === 'enable' ? 'Enable-SLSuperUser' : 'Disable-SLSuperUser';
+      const r = await invoke(cmdName, { DryRun: dryRun || undefined });
       if (r.success) setMsg({ type: 'success', text: dryRun ? `Dry run: would ${action} super user.` : `Super user ${action}d.` });
       else setMsg({ type: 'error', text: r.error ?? 'Failed' });
     } catch (e) { setMsg({ type: 'error', text: e instanceof Error ? e.message : 'Failed' }); }

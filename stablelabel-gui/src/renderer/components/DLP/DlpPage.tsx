@@ -228,7 +228,7 @@ function DlpPolicyFormWithData({ policyName, onSaved, onCancel, onDeleted }: { p
   const [loading, setLoading] = React.useState(true);
 
   React.useEffect(() => {
-    invoke<DlpPolicy>(`Get-SLDlpPolicy -Identity '${esc(policyName)}'`).then((r) => {
+    invoke<DlpPolicy>('Get-SLDlpPolicy', { Identity: policyName }).then((r) => {
       if (r.success && r.data) setPolicy(r.data);
       setLoading(false);
     });
@@ -244,7 +244,7 @@ function DlpRuleFormWithData({ ruleName, onSaved, onCancel, onDeleted }: { ruleN
   const [loading, setLoading] = React.useState(true);
 
   React.useEffect(() => {
-    invoke<DlpRule>(`Get-SLDlpRule -Identity '${esc(ruleName)}'`).then((r) => {
+    invoke<DlpRule>('Get-SLDlpRule', { Identity: ruleName }).then((r) => {
       if (r.success && r.data) setRule(r.data);
       setLoading(false);
     });
@@ -317,8 +317,4 @@ function QuickLink({ label, description, color, onClick }: { label: string; desc
       <div className="text-xs text-zinc-500 mt-0.5">{description}</div>
     </button>
   );
-}
-
-function esc(s: string): string {
-  return s.replace(/'/g, "''");
 }

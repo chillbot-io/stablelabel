@@ -99,9 +99,12 @@ describe('PimRolePanel', () => {
     await user.click(screen.getByText('Dry Run — Activate Role'));
 
     await waitFor(() => {
-      expect(mockInvoke).toHaveBeenCalledWith(
-        "Request-SLPimRole -RoleDefinitionId 'role-guid-123' -Justification 'Investigation' -DurationHours 8 -DryRun -Confirm:$false"
-      );
+      expect(mockInvoke).toHaveBeenCalledWith('Request-SLPimRole', expect.objectContaining({
+        RoleDefinitionId: 'role-guid-123',
+        Justification: 'Investigation',
+        DurationHours: 8,
+        DryRun: true,
+      }));
     });
     await waitFor(() => {
       expect(screen.getByText('Dry run: would activate role for 8h.')).toBeInTheDocument();
@@ -140,9 +143,13 @@ describe('PimRolePanel', () => {
     await user.click(screen.getByText('Activate'));
 
     await waitFor(() => {
-      expect(mockInvoke).toHaveBeenCalledWith(
-        "Request-SLPimRole -RoleDefinitionId 'role-guid-123' -Justification 'Investigation' -DurationHours 8 -Confirm:$false"
-      );
+      expect(mockInvoke).toHaveBeenCalledWith('Request-SLPimRole', expect.objectContaining({
+        RoleDefinitionId: 'role-guid-123',
+        Justification: 'Investigation',
+        DurationHours: 8,
+      }));
+      const callArgs = mockInvoke.mock.calls[0];
+      expect(callArgs[1]).not.toHaveProperty('DryRun');
     });
     await waitFor(() => {
       expect(screen.getByText('PIM role activated for 8 hours.')).toBeInTheDocument();
@@ -168,7 +175,9 @@ describe('PimRolePanel', () => {
     await user.click(screen.getByText('Dry Run — Activate Role'));
 
     await waitFor(() => {
-      expect(mockInvoke).toHaveBeenCalledWith(expect.stringContaining('-DurationHours 4'));
+      expect(mockInvoke).toHaveBeenCalledWith('Request-SLPimRole', expect.objectContaining({
+        DurationHours: 4,
+      }));
     });
     await waitFor(() => {
       expect(screen.getByText('Dry run: would activate role for 4h.')).toBeInTheDocument();
@@ -262,8 +271,8 @@ describe('PimRolePanel', () => {
     });
   });
 
-  // --- Escaping ---
-  it('escapes single quotes in role ID and justification', async () => {
+  // --- Special characters (structured API passes raw values) ---
+  it('passes special characters in role ID and justification as raw values', async () => {
     const user = userEvent.setup();
     mockInvoke.mockResolvedValue({ success: true, data: null });
     render(<PimRolePanel />);
@@ -276,8 +285,10 @@ describe('PimRolePanel', () => {
     await user.click(screen.getByText('Dry Run — Activate Role'));
 
     await waitFor(() => {
-      expect(mockInvoke).toHaveBeenCalledWith(expect.stringContaining("role''id"));
-      expect(mockInvoke).toHaveBeenCalledWith(expect.stringContaining("it''s needed"));
+      expect(mockInvoke).toHaveBeenCalledWith('Request-SLPimRole', expect.objectContaining({
+        RoleDefinitionId: "role'id",
+        Justification: "it's needed",
+      }));
     });
   });
 

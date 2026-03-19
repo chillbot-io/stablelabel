@@ -51,7 +51,10 @@ describe('FileShareConnect', () => {
 
     await waitFor(() => {
       expect(mockInvoke).toHaveBeenCalledWith(
-        expect.stringContaining('Connect-SLFileShare')
+        'Connect-SLFileShare',
+        expect.objectContaining({
+          Path: '\\\\myserver\\data',
+        })
       );
     });
   });
@@ -73,10 +76,12 @@ describe('FileShareConnect', () => {
 
     await waitFor(() => {
       expect(mockInvoke).toHaveBeenCalledWith(
-        expect.stringContaining("-DriveLetter 'Z'")
-      );
-      expect(mockInvoke).toHaveBeenCalledWith(
-        expect.stringContaining("-Name 'MyShare'")
+        'Connect-SLFileShare',
+        expect.objectContaining({
+          Path: '\\\\server\\share',
+          DriveLetter: 'Z',
+          Name: 'MyShare',
+        })
       );
     });
   });
@@ -220,7 +225,10 @@ describe('FileShareConnect', () => {
 
     await waitFor(() => {
       expect(mockInvoke).toHaveBeenCalledWith(
-        expect.stringContaining('Disconnect-SLFileShare')
+        'Disconnect-SLFileShare',
+        expect.objectContaining({
+          Path: '\\\\server\\finance',
+        })
       );
     });
   });
@@ -241,7 +249,10 @@ describe('FileShareConnect', () => {
     await user.click(screen.getByText('Disconnect All'));
 
     await waitFor(() => {
-      expect(mockInvoke).toHaveBeenCalledWith('Disconnect-SLFileShare -All');
+      expect(mockInvoke).toHaveBeenCalledWith(
+        'Disconnect-SLFileShare',
+        expect.objectContaining({ All: true })
+      );
     });
   });
 

@@ -10,10 +10,20 @@ export interface DeviceCodeInfo {
 declare global {
   interface Window {
     stablelabel: {
-      invoke: (command: string) => Promise<PsResult>;
+      invoke: (cmdlet: string, params?: Record<string, unknown>) => Promise<PsResult>;
       checkPwsh: () => Promise<{ available: boolean; path?: string; error?: string }>;
       getStatus: () => Promise<{ initialized: boolean; modulePath?: string }>;
       onDeviceCode: (callback: (info: DeviceCodeInfo) => void) => () => void;
+      openFileDialog: (options?: {
+        title?: string;
+        filters?: Array<{ name: string; extensions: string[] }>;
+      }) => Promise<string | null>;
+      saveFileDialog: (options?: {
+        title?: string;
+        defaultPath?: string;
+        filters?: Array<{ name: string; extensions: string[] }>;
+      }) => Promise<string | null>;
+      clearCredentials: () => Promise<void>;
       platform: string;
     };
   }
@@ -30,8 +40,11 @@ interface UseAsyncState<T> {
  * Returns a typed invoke function with loading/error state.
  */
 export function usePowerShell() {
-  const invoke = useCallback(async <T = unknown>(command: string): Promise<PsResult<T>> => {
-    const result = await window.stablelabel.invoke(command);
+  const invoke = useCallback(async <T = unknown>(
+    cmdlet: string,
+    params?: Record<string, unknown>,
+  ): Promise<PsResult<T>> => {
+    const result = await window.stablelabel.invoke(cmdlet, params);
     return result as PsResult<T>;
   }, []);
 
@@ -48,10 +61,10 @@ export function useAsyncOperation<T = unknown>() {
     error: null,
   });
 
-  const execute = useCallback(async (command: string) => {
+  const execute = useCallback(async (cmdlet: string, params?: Record<string, unknown>) => {
     setState({ data: null, loading: true, error: null });
     try {
-      const result = await window.stablelabel.invoke(command);
+      const result = await window.stablelabel.invoke(cmdlet, params);
       if (result.success) {
         setState({ data: result.data as T, loading: false, error: null });
         return result.data as T;

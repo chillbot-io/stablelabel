@@ -53,7 +53,7 @@ describe('DocumentTracking', () => {
 
     await user.click(screen.getByText('Search Logs'));
     await waitFor(() => {
-      expect(mockInvoke).toHaveBeenCalledWith('Get-SLDocumentTrack');
+      expect(mockInvoke).toHaveBeenCalledWith('Get-SLDocumentTrack', {});
     });
     expect(screen.getByText('2 Entries Found')).toBeInTheDocument();
   });
@@ -69,7 +69,7 @@ describe('DocumentTracking', () => {
     await user.click(screen.getByText('Search Logs'));
 
     await waitFor(() => {
-      expect(mockInvoke).toHaveBeenCalledWith("Get-SLDocumentTrack -UserEmail 'alice@contoso.com' -FromTime '2024-01-01' -ToTime '2024-12-31'");
+      expect(mockInvoke).toHaveBeenCalledWith('Get-SLDocumentTrack', expect.objectContaining({ UserEmail: 'alice@contoso.com', FromTime: '2024-01-01', ToTime: '2024-12-31' }));
     });
   });
 
@@ -247,7 +247,7 @@ describe('DocumentTracking', () => {
     await user.click(screen.getByText('Revoke'));
 
     await waitFor(() => {
-      expect(mockInvoke).toHaveBeenCalledWith("Revoke-SLDocumentAccess -ContentId 'doc-abc' -IssuerEmail 'user@test.com' -Confirm:$false");
+      expect(mockInvoke).toHaveBeenCalledWith('Revoke-SLDocumentAccess', { ContentId: 'doc-abc', IssuerEmail: 'user@test.com' });
     });
     expect(screen.getByText('Document access revoked.')).toBeInTheDocument();
   });
@@ -301,7 +301,7 @@ describe('DocumentTracking', () => {
     await user.click(restoreButtons[0]);
 
     await waitFor(() => {
-      expect(mockInvoke).toHaveBeenCalledWith("Restore-SLDocumentAccess -ContentId 'doc-xyz' -IssuerEmail 'admin@test.com' -Confirm:$false");
+      expect(mockInvoke).toHaveBeenCalledWith('Restore-SLDocumentAccess', { ContentId: 'doc-xyz', IssuerEmail: 'admin@test.com' });
     });
     expect(screen.getByText('Document access restored.')).toBeInTheDocument();
   });

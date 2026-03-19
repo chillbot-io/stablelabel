@@ -19,14 +19,14 @@ export default function DocumentLabelApply() {
     if (!labelName.trim() && !labelId.trim()) { setError('Either Label Name or Label ID is required.'); return; }
     setLoading(true); setError(null); setSuccess(null);
     try {
-      const parts = [`Set-SLDocumentLabel -DriveId '${esc(driveId)}' -ItemId '${esc(itemId)}'`];
-      if (labelId.trim()) parts.push(`-LabelId '${esc(labelId)}'`);
-      else parts.push(`-LabelName '${esc(labelName)}'`);
-      if (justification.trim()) parts.push(`-Justification '${esc(justification)}'`);
-      if (dryRun) parts.push('-DryRun');
-      parts.push('-Confirm:$false');
-
-      const r = await invoke(parts.join(' '));
+      const r = await invoke('Set-SLDocumentLabel', {
+        DriveId: driveId,
+        ItemId: itemId,
+        LabelId: labelId.trim() || undefined,
+        LabelName: labelName.trim() || undefined,
+        Justification: justification.trim() || undefined,
+        DryRun: dryRun || undefined,
+      });
       if (r.success) setSuccess(dryRun ? 'Dry run complete — no changes made.' : 'Label applied successfully.');
       else setError(r.error ?? 'Failed to apply label');
     } catch (e) { setError(e instanceof Error ? e.message : 'Failed'); }
@@ -62,5 +62,3 @@ export default function DocumentLabelApply() {
     </div>
   );
 }
-
-function esc(s: string) { return s.replace(/'/g, "''"); }

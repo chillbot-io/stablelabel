@@ -61,10 +61,11 @@ describe('DlpPolicyForm', () => {
       await user.click(screen.getByText('Create Policy'));
 
       await waitFor(() => {
-        expect(mockInvoke).toHaveBeenCalledWith(expect.stringContaining("New-SLDlpPolicy -Name 'My New Policy'"));
-        expect(mockInvoke).toHaveBeenCalledWith(expect.stringContaining("-Comment 'A test comment'"));
-        expect(mockInvoke).toHaveBeenCalledWith(expect.stringContaining("-Mode 'TestWithoutNotifications'"));
-        expect(mockInvoke).toHaveBeenCalledWith(expect.stringContaining('-Confirm:$false'));
+        expect(mockInvoke).toHaveBeenCalledWith('New-SLDlpPolicy', expect.objectContaining({
+          Name: 'My New Policy',
+          Comment: 'A test comment',
+          Mode: 'TestWithoutNotifications',
+        }));
       });
       expect(onSaved).toHaveBeenCalledWith('My New Policy');
     });
@@ -181,9 +182,10 @@ describe('DlpPolicyForm', () => {
       await user.click(screen.getByText('Save Changes'));
 
       await waitFor(() => {
-        expect(mockInvoke).toHaveBeenCalledWith(expect.stringContaining("Set-SLDlpPolicy -Identity 'PII Protection'"));
-        expect(mockInvoke).toHaveBeenCalledWith(expect.stringContaining("-Comment 'Updated comment'"));
-        expect(mockInvoke).toHaveBeenCalledWith(expect.stringContaining('-Confirm:$false'));
+        expect(mockInvoke).toHaveBeenCalledWith('Set-SLDlpPolicy', expect.objectContaining({
+          Identity: 'PII Protection',
+          Comment: 'Updated comment',
+        }));
       });
       expect(onSaved).toHaveBeenCalledWith('PII Protection');
     });
@@ -209,8 +211,7 @@ describe('DlpPolicyForm', () => {
 
       await user.click(screen.getByText('Delete Policy'));
       await waitFor(() => {
-        expect(mockInvoke).toHaveBeenCalledWith(expect.stringContaining("Remove-SLDlpPolicy -Identity 'PII Protection'"));
-        expect(mockInvoke).toHaveBeenCalledWith(expect.stringContaining('-Confirm:$false'));
+        expect(mockInvoke).toHaveBeenCalledWith('Remove-SLDlpPolicy', expect.objectContaining({ Identity: 'PII Protection' }));
       });
       expect(onDeleted).toHaveBeenCalled();
     });
@@ -297,7 +298,7 @@ describe('DlpPolicyForm', () => {
       await user.click(screen.getByText('Save Changes'));
 
       await waitFor(() => {
-        expect(mockInvoke).toHaveBeenCalledWith(expect.stringContaining("-Mode 'TestWithoutNotifications'"));
+        expect(mockInvoke).toHaveBeenCalledWith('Set-SLDlpPolicy', expect.objectContaining({ Mode: 'TestWithoutNotifications' }));
       });
     });
 
@@ -313,9 +314,12 @@ describe('DlpPolicyForm', () => {
       await user.click(screen.getByText('Save Changes'));
 
       await waitFor(() => {
-        expect(mockInvoke).toHaveBeenCalled();
-        const cmd = mockInvoke.mock.calls[0][0];
-        expect(cmd).not.toContain('-Mode');
+        expect(mockInvoke).toHaveBeenCalledWith('Set-SLDlpPolicy', expect.objectContaining({
+          Identity: 'PII Protection',
+          Comment: 'New comment',
+        }));
+        const params = mockInvoke.mock.calls[0][1];
+        expect(params.Mode).toBeUndefined();
       });
     });
   });

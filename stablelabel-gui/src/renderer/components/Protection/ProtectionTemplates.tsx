@@ -86,7 +86,7 @@ function TemplateDetail({ template, onRefresh }: { template: ProtectionTemplate;
   const handleDelete = async () => {
     setDeleting(true); setError(null);
     try {
-      const r = await invoke(`Remove-SLProtectionTemplate -TemplateId '${template.TemplateId}' -Confirm:$false`);
+      const r = await invoke('Remove-SLProtectionTemplate', { TemplateId: template.TemplateId });
       if (r.success) { setShowDelete(false); onRefresh(); }
       else setError(r.error ?? 'Failed to delete');
     } catch (e) { setError(e instanceof Error ? e.message : 'Failed'); }
@@ -162,11 +162,16 @@ function ExportTemplate({ templates }: { templates: ProtectionTemplate[] }) {
   const [loading, setLoading] = useState(false);
   const [msg, setMsg] = useState<{ type: 'error' | 'success'; text: string } | null>(null);
 
+  const pickExportPath = async () => {
+    const p = await window.stablelabel.saveFileDialog({ title: 'Export Template', defaultPath: 'template.xml', filters: [{ name: 'XML', extensions: ['xml'] }] });
+    if (p) setPath(p);
+  };
+
   const handleExport = async () => {
     if (!templateId || !path.trim()) { setMsg({ type: 'error', text: 'Template and path are required.' }); return; }
     setLoading(true); setMsg(null);
     try {
-      const r = await invoke(`Export-SLProtectionTemplate -TemplateId '${templateId}' -Path '${esc(path)}' -Confirm:$false`);
+      const r = await invoke('Export-SLProtectionTemplate', { TemplateId: templateId, Path: path });
       if (r.success) setMsg({ type: 'success', text: `Exported to ${path}` });
       else setMsg({ type: 'error', text: r.error ?? 'Export failed' });
     } catch (e) { setMsg({ type: 'error', text: e instanceof Error ? e.message : 'Failed' }); }
@@ -183,7 +188,12 @@ function ExportTemplate({ templates }: { templates: ProtectionTemplate[] }) {
           {templates.map(t => <option key={t.TemplateId} value={t.TemplateId}>{getTemplateName(t)}</option>)}
         </select>
       </div>
-      <TextField label="Output Path" value={path} onChange={setPath} placeholder="C:\exports\template.xml" />
+      <div className="flex items-end gap-2">
+        <div className="flex-1">
+          <TextField label="Output Path" value={path} onChange={setPath} placeholder="C:\exports\template.xml" />
+        </div>
+        <button onClick={pickExportPath} className="px-3 py-1.5 text-xs text-zinc-300 bg-white/[0.08] hover:bg-white/[0.12] border border-white/[0.08] rounded-lg transition-colors">Browse...</button>
+      </div>
       {msg && <div className={`p-2 rounded-lg text-xs ${msg.type === 'error' ? 'bg-red-900/20 border border-red-800 text-red-300' : 'bg-green-900/20 border border-green-800 text-green-300'}`}>{msg.text}</div>}
       <button onClick={handleExport} disabled={loading} className="px-3 py-1.5 text-xs text-blue-400 bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/20 rounded-lg transition-colors disabled:opacity-40">
         {loading ? 'Exporting...' : 'Export'}
@@ -198,11 +208,16 @@ function ImportTemplate({ onImported }: { onImported: () => void }) {
   const [loading, setLoading] = useState(false);
   const [msg, setMsg] = useState<{ type: 'error' | 'success'; text: string } | null>(null);
 
+  const pickImportPath = async () => {
+    const p = await window.stablelabel.openFileDialog({ title: 'Import Template', filters: [{ name: 'XML', extensions: ['xml'] }] });
+    if (p) setPath(p);
+  };
+
   const handleImport = async () => {
     if (!path.trim()) { setMsg({ type: 'error', text: 'Path is required.' }); return; }
     setLoading(true); setMsg(null);
     try {
-      const r = await invoke(`Import-SLProtectionTemplate -Path '${esc(path)}' -Confirm:$false`);
+      const r = await invoke('Import-SLProtectionTemplate', { Path: path });
       if (r.success) { setMsg({ type: 'success', text: 'Template imported successfully.' }); onImported(); }
       else setMsg({ type: 'error', text: r.error ?? 'Import failed' });
     } catch (e) { setMsg({ type: 'error', text: e instanceof Error ? e.message : 'Failed' }); }
@@ -212,7 +227,12 @@ function ImportTemplate({ onImported }: { onImported: () => void }) {
   return (
     <div className="bg-white/[0.03] rounded-xl p-4 space-y-3">
       <h4 className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">Import Template</h4>
-      <TextField label="XML File Path" value={path} onChange={setPath} placeholder="C:\templates\template.xml" />
+      <div className="flex items-end gap-2">
+        <div className="flex-1">
+          <TextField label="XML File Path" value={path} onChange={setPath} placeholder="C:\templates\template.xml" />
+        </div>
+        <button onClick={pickImportPath} className="px-3 py-1.5 text-xs text-zinc-300 bg-white/[0.08] hover:bg-white/[0.12] border border-white/[0.08] rounded-lg transition-colors">Browse...</button>
+      </div>
       {msg && <div className={`p-2 rounded-lg text-xs ${msg.type === 'error' ? 'bg-red-900/20 border border-red-800 text-red-300' : 'bg-green-900/20 border border-green-800 text-green-300'}`}>{msg.text}</div>}
       <button onClick={handleImport} disabled={loading} className="px-3 py-1.5 text-xs text-emerald-400 bg-emerald-400/10 hover:bg-emerald-400/20 border border-green-500/20 rounded-lg transition-colors disabled:opacity-40">
         {loading ? 'Importing...' : 'Import'}
@@ -229,4 +249,3 @@ function getTemplateName(t: ProtectionTemplate): string {
   return t.TemplateId;
 }
 
-function esc(s: string) { return s.replace(/'/g, "''"); }

@@ -232,7 +232,7 @@ function PolicyFormWithData({ policyName, onSaved, onCancel, onDeleted }: { poli
   const [loading, setLoading] = React.useState(true);
 
   React.useEffect(() => {
-    invoke<LabelPolicy>(`Get-SLLabelPolicy -Identity '${policyName.replace(/'/g, "''")}'`).then((r) => {
+    invoke<LabelPolicy>('Get-SLLabelPolicy', { Identity: policyName }).then((r) => {
       if (r.success && r.data) setPolicy(r.data);
       setLoading(false);
     });
@@ -249,7 +249,7 @@ function AutoLabelFormWithData({ policyName, onSaved, onCancel, onDeleted }: { p
   const [loading, setLoading] = React.useState(true);
 
   React.useEffect(() => {
-    invoke<AutoLabelPolicy>(`Get-SLAutoLabelPolicy -Identity '${policyName.replace(/'/g, "''")}'`).then((r) => {
+    invoke<AutoLabelPolicy>('Get-SLAutoLabelPolicy', { Identity: policyName }).then((r) => {
       if (r.success && r.data) setPolicy(r.data);
       setLoading(false);
     });

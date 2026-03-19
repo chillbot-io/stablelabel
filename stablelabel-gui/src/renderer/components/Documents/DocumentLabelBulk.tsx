@@ -36,16 +36,13 @@ export default function DocumentLabelBulk() {
 
     setLoading(true); setError(null); setResult(null);
     try {
-      // Build inline hashtable array for PowerShell
-      const hashEntries = items.map(i => `@{DriveId='${esc(i.DriveId)}';ItemId='${esc(i.ItemId)}'}`).join(',');
-      const parts = [`Set-SLDocumentLabelBulk -Items @(${hashEntries})`];
-      if (labelId.trim()) parts.push(`-LabelId '${esc(labelId)}'`);
-      else parts.push(`-LabelName '${esc(labelName)}'`);
-      if (justification.trim()) parts.push(`-Justification '${esc(justification)}'`);
-      if (dryRun) parts.push('-DryRun');
-      parts.push('-Confirm:$false');
-
-      const r = await invoke<BulkLabelResult>(parts.join(' '));
+      const r = await invoke<BulkLabelResult>('Set-SLDocumentLabelBulk', {
+        Items: items,
+        LabelId: labelId.trim() || undefined,
+        LabelName: labelName.trim() || undefined,
+        Justification: justification.trim() || undefined,
+        DryRun: dryRun || undefined,
+      });
       if (r.success && r.data) setResult(r.data);
       else setError(r.error ?? 'Bulk operation failed');
     } catch (e) { setError(e instanceof Error ? e.message : 'Failed'); }
@@ -140,5 +137,3 @@ function BulkResult({ result }: { result: BulkLabelResult }) {
     </div>
   );
 }
-
-function esc(s: string) { return s.replace(/'/g, "''"); }

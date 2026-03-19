@@ -21,7 +21,7 @@ export default function LabelDetail({ labelId, onOpenPolicy }: LabelDetailProps)
 
       let labelData: SensitivityLabel | null = null;
       try {
-        const result = await invoke<SensitivityLabel>(`Get-SLLabel -Id '${labelId}'`);
+        const result = await invoke<SensitivityLabel>('Get-SLLabel', { Id: labelId });
         if (result.success && result.data) {
           labelData = result.data;
           setLabel(result.data);

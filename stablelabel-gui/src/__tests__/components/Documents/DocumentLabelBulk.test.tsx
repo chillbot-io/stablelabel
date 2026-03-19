@@ -147,7 +147,11 @@ describe('DocumentLabelBulk', () => {
 
     await waitFor(() => {
       expect(mockInvoke).toHaveBeenCalledWith(
-        "Set-SLDocumentLabelBulk -Items @(@{DriveId='b!abc123';ItemId='01ABC'},@{DriveId='b!abc123';ItemId='02DEF'}) -LabelName 'Secret' -DryRun -Confirm:$false"
+        'Set-SLDocumentLabelBulk', expect.objectContaining({
+          Items: [{ DriveId: 'b!abc123', ItemId: '01ABC' }, { DriveId: 'b!abc123', ItemId: '02DEF' }],
+          LabelName: 'Secret',
+          DryRun: true,
+        })
       );
     });
   });
@@ -164,7 +168,11 @@ describe('DocumentLabelBulk', () => {
 
     await waitFor(() => {
       expect(mockInvoke).toHaveBeenCalledWith(
-        "Set-SLDocumentLabelBulk -Items @(@{DriveId='b!abc123';ItemId='01ABC'},@{DriveId='b!abc123';ItemId='02DEF'}) -LabelId 'guid-1234' -DryRun -Confirm:$false"
+        'Set-SLDocumentLabelBulk', expect.objectContaining({
+          Items: [{ DriveId: 'b!abc123', ItemId: '01ABC' }, { DriveId: 'b!abc123', ItemId: '02DEF' }],
+          LabelId: 'guid-1234',
+          DryRun: true,
+        })
       );
     });
   });
@@ -182,7 +190,9 @@ describe('DocumentLabelBulk', () => {
 
     await waitFor(() => {
       expect(mockInvoke).toHaveBeenCalledWith(
-        expect.stringContaining("-Justification 'Audit compliance'")
+        'Set-SLDocumentLabelBulk', expect.objectContaining({
+          Justification: 'Audit compliance',
+        })
       );
     });
   });
@@ -203,9 +213,13 @@ describe('DocumentLabelBulk', () => {
     await user.click(screen.getByRole('button', { name: 'Bulk Apply Labels' }));
 
     await waitFor(() => {
-      const cmd = mockInvoke.mock.calls[0][0] as string;
-      expect(cmd).not.toContain('-DryRun');
-      expect(cmd).toContain("-Confirm:$false");
+      expect(mockInvoke).toHaveBeenCalledWith(
+        'Set-SLDocumentLabelBulk', expect.objectContaining({
+          LabelName: 'Secret',
+        })
+      );
+      const params = mockInvoke.mock.calls[0][1] as Record<string, unknown>;
+      expect(params.DryRun).toBeUndefined();
     });
   });
 
@@ -308,7 +322,7 @@ describe('DocumentLabelBulk', () => {
     });
   });
 
-  it('escapes single quotes in items and fields', async () => {
+  it('passes raw values without escaping single quotes', async () => {
     const user = userEvent.setup();
     mockInvoke.mockResolvedValueOnce({ success: true, data: dryRunResultData });
     render(<DocumentLabelBulk />);
@@ -321,7 +335,11 @@ describe('DocumentLabelBulk', () => {
 
     await waitFor(() => {
       expect(mockInvoke).toHaveBeenCalledWith(
-        "Set-SLDocumentLabelBulk -Items @(@{DriveId='b!''123';ItemId='01''ABC'}) -LabelName 'Se''''cret' -DryRun -Confirm:$false"
+        'Set-SLDocumentLabelBulk', expect.objectContaining({
+          Items: [{ DriveId: "b!'123", ItemId: "01'ABC" }],
+          LabelName: "Se''cret",
+          DryRun: true,
+        })
       );
     });
   });

@@ -95,10 +95,10 @@ export default function TemplatesPage() {
   const handleDeploy = async (name: string, dryRun: boolean) => {
     if (dryRun) setDryRunning(name); else setDeploying(name);
     try {
-      const cmd = dryRun
-        ? `Deploy-SLTemplate -Name '${esc(name)}' -DryRun`
-        : `Deploy-SLTemplate -Name '${esc(name)}' -Confirm:$false`;
-      const r = await invoke<DeployResult>(cmd);
+      const r = await invoke<DeployResult>('Deploy-SLTemplate', {
+        Name: name,
+        DryRun: dryRun || undefined,
+      });
       if (r.success && r.data) {
         setResults(prev => ({ ...prev, [name]: { result: r.data!, isDryRun: dryRun } }));
       } else {
@@ -286,5 +286,3 @@ function TemplateDetail({
     </div>
   );
 }
-
-function esc(s: string) { return s.replace(/'/g, "''"); }

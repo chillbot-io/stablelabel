@@ -71,7 +71,8 @@ describe('RetentionLabelForm', () => {
 
       await waitFor(() => {
         expect(mockInvoke).toHaveBeenCalledWith(
-          "New-SLRetentionLabel -Name 'Test Label' -Confirm:$false",
+          'New-SLRetentionLabel',
+          expect.objectContaining({ Name: 'Test Label' }),
         );
       });
       expect(onSaved).toHaveBeenCalledWith('Test Label');
@@ -95,11 +96,14 @@ describe('RetentionLabelForm', () => {
       await waitFor(() => {
         expect(mockInvoke).toHaveBeenCalled();
       });
-      const call = mockInvoke.mock.calls[0][0] as string;
-      expect(call).toContain("New-SLRetentionLabel -Name 'My Label'");
-      expect(call).toContain("-Comment 'A comment'");
-      expect(call).toContain('-RetentionDuration 365');
-      expect(call).toContain("-Confirm:$false");
+      expect(mockInvoke).toHaveBeenCalledWith(
+        'New-SLRetentionLabel',
+        expect.objectContaining({
+          Name: 'My Label',
+          Comment: 'A comment',
+          RetentionDuration: 365,
+        }),
+      );
     });
 
     it('handles save failure with error message', async () => {
@@ -163,7 +167,7 @@ describe('RetentionLabelForm', () => {
       expect(onCancel).toHaveBeenCalledTimes(1);
     });
 
-    it('escapes single quotes in name', async () => {
+    it('passes raw single quotes in name', async () => {
       mockInvoke.mockResolvedValue({ success: true, data: null });
       const user = userEvent.setup();
       render(<RetentionLabelForm onSaved={onSaved} onCancel={onCancel} />);
@@ -173,7 +177,8 @@ describe('RetentionLabelForm', () => {
 
       await waitFor(() => {
         expect(mockInvoke).toHaveBeenCalledWith(
-          expect.stringContaining("O''Brien''s Label"),
+          'New-SLRetentionLabel',
+          expect.objectContaining({ Name: "O'Brien's Label" }),
         );
       });
     });
@@ -231,7 +236,8 @@ describe('RetentionLabelForm', () => {
 
       await waitFor(() => {
         expect(mockInvoke).toHaveBeenCalledWith(
-          "Set-SLRetentionLabel -Identity 'Financial Records 7yr' -Comment 'Updated comment' -Confirm:$false",
+          'Set-SLRetentionLabel',
+          expect.objectContaining({ Identity: 'Financial Records 7yr', Comment: 'Updated comment' }),
         );
       });
       expect(onSaved).toHaveBeenCalledWith('Financial Records 7yr');
@@ -248,7 +254,8 @@ describe('RetentionLabelForm', () => {
 
       await waitFor(() => {
         expect(mockInvoke).toHaveBeenCalledWith(
-          "Set-SLRetentionLabel -Identity 'Financial Records 7yr' -Confirm:$false",
+          'Set-SLRetentionLabel',
+          expect.objectContaining({ Identity: 'Financial Records 7yr' }),
         );
       });
     });
@@ -295,7 +302,8 @@ describe('RetentionLabelForm', () => {
 
         await waitFor(() => {
           expect(mockInvoke).toHaveBeenCalledWith(
-            "Remove-SLRetentionLabel -Identity 'Financial Records 7yr' -Confirm:$false",
+            'Remove-SLRetentionLabel',
+            expect.objectContaining({ Identity: 'Financial Records 7yr' }),
           );
         });
         expect(onDeleted).toHaveBeenCalledTimes(1);

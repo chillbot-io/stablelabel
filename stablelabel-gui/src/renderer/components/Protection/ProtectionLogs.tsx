@@ -18,12 +18,11 @@ export default function ProtectionLogs() {
   const handleSearch = async () => {
     setLoading(true); setError(null); setEntries(null);
     try {
-      const parts = ['Get-SLProtectionLog'];
-      if (userEmail.trim()) parts.push(`-UserEmail '${esc(userEmail)}'`);
-      if (fromTime.trim()) parts.push(`-FromTime '${esc(fromTime)}'`);
-      if (toTime.trim()) parts.push(`-ToTime '${esc(toTime)}'`);
-
-      const r = await invoke<LogEntry[]>(parts.join(' '));
+      const r = await invoke<LogEntry[]>('Get-SLProtectionLog', {
+        UserEmail: userEmail.trim() || undefined,
+        FromTime: fromTime.trim() || undefined,
+        ToTime: toTime.trim() || undefined,
+      });
       if (r.success) setEntries(Array.isArray(r.data) ? r.data : r.data ? [r.data as unknown as LogEntry] : []);
       else setError(r.error ?? 'Failed');
     } catch (e) { setError(e instanceof Error ? e.message : 'Failed'); }
@@ -103,4 +102,3 @@ function RawJson({ data }: { data: unknown }) {
   );
 }
 
-function esc(s: string) { return s.replace(/'/g, "''"); }

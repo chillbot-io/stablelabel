@@ -1,5 +1,7 @@
 import { spawn, ChildProcess } from 'node:child_process';
 import { platform } from 'node:os';
+import { randomUUID } from 'node:crypto';
+import { buildCommand } from './cmdlet-registry';
 
 interface PsResult {
   success: boolean;
@@ -12,6 +14,11 @@ function stripAnsi(text: string): string {
   // eslint-disable-next-line no-control-regex
   return text.replace(/\x1b\[[0-9;]*[A-Za-z]/g, '');
 }
+
+const ALLOWED_DEVICE_CODE_HOSTS = [
+  'microsoft.com',
+  'login.microsoftonline.com',
+];
 
 /**
  * Manages a persistent PowerShell 7 process for communicating with the StableLabel module.
@@ -44,23 +51,42 @@ export class PowerShellBridge {
 
   /**
    * Check a text chunk for a device-code authentication prompt and fire the callback.
-   * Connect-MgGraph -UseDeviceCode outputs via Write-Host (Information stream)
-   * which may arrive on stdout (if redirected) or stderr depending on the environment.
+   * Connect-MgGraph uses WriteWarning (stream 3) and Connect-IPPSSession may use
+   * Write-Host (stream 6). With 3>&1 6>&1 both reach stdout, but we also check
+   * stderr as a fallback.
+   *
+   * The verification URL is validated against a known Microsoft domain allowlist
+   * to prevent phishing via crafted PowerShell output.
    */
   private checkForDeviceCode(text: string): void {
     if (!this.onDeviceCode) return;
     const clean = stripAnsi(text);
+    // Primary pattern: standard MSAL device-code message
     const match = clean.match(
-      /open the page (https:\/\/\S+) and enter the code ([A-Z0-9]{6,12})/i,
+      /(?:open the page|visit|go to)\s+(https:\/\/\S+)\s+and\s+(?:enter|use)\s+(?:the\s+)?code:?\s+([A-Z0-9]{5,15})/i,
     );
     if (match) {
+      const url = match[1];
+      // Validate URL domain against allowlist
+      try {
+        const hostname = new URL(url).hostname;
+        const trusted = ALLOWED_DEVICE_CODE_HOSTS.some(
+          (d) => hostname === d || hostname.endsWith(`.${d}`),
+        );
+        if (!trusted) {
+          console.error(`[PS BRIDGE] Rejected untrusted device-code URL: ${url}`);
+          return;
+        }
+      } catch {
+        console.error(`[PS BRIDGE] Invalid device-code URL: ${url}`);
+        return;
+      }
+
       this.onDeviceCode({
-        verificationUrl: match[1],
+        verificationUrl: url,
         userCode: match[2],
         message: clean.trim(),
       });
-      // Only fire once per command
-      this.onDeviceCode = null;
     }
   }
 
@@ -136,8 +162,8 @@ export class PowerShellBridge {
       console.error('[PS STDERR]', text);
       this.stderrBuffer += text;
 
-      // Device code prompt may arrive via stderr (Warning stream) in some environments
-      this.checkForDeviceCode(text);
+      // Fallback: check accumulated stderr in case warnings bypass 3>&1 redirect
+      this.checkForDeviceCode(this.stderrBuffer);
     });
 
     this.process.on('close', (code) => {
@@ -178,11 +204,11 @@ export class PowerShellBridge {
 
     this.outputBuffer = '';
     this.stderrBuffer = '';
-    const marker = `___SL_DONE_${Date.now()}_${Math.random().toString(36).slice(2)}___`;
-    // Wrap in a script block with 6>&1 so Write-Host output from nested calls
-    // (e.g. device code prompt from Connect-MgGraph inside Connect-SLAll) is
-    // redirected to stdout where the bridge can capture it.
-    const wrappedCommand = `& { ${command} } 6>&1\nWrite-Output '${marker}'\n`;
+    const marker = `___SL_DONE_${randomUUID()}___`;
+    // Redirect Warning (3) and Information (6) streams to stdout so device-code
+    // prompts from Connect-MgGraph (WriteWarning) and Connect-IPPSSession reach
+    // the bridge regardless of which stream the cmdlet uses.
+    const wrappedCommand = `& { ${command} } 3>&1 6>&1\nWrite-Output '${marker}'\n`;
 
     const timeout = setTimeout(() => {
       this.currentMarker = null;
@@ -190,7 +216,7 @@ export class PowerShellBridge {
       this.processing = false;
       reject(new Error(`Command timed out: ${command.substring(0, 100)}`));
       this.processQueue();
-    }, 300000);
+    }, 600000);
 
     this.currentMarker = marker;
     this.currentResolve = (output: string) => {
@@ -203,7 +229,29 @@ export class PowerShellBridge {
     this.process.stdin.write(wrappedCommand);
   }
 
-  async invoke(command: string): Promise<PsResult> {
+  /**
+   * Invoke a structured command. The cmdlet name is validated against the
+   * allowlist and the command string is built server-side with proper escaping.
+   * This is the only public entry point for command execution.
+   */
+  async invokeStructured(
+    cmdlet: string,
+    params: Record<string, unknown> = {},
+  ): Promise<PsResult> {
+    try {
+      // buildCommand validates the cmdlet and params against the registry
+      const command = buildCommand(cmdlet, params);
+      return await this.invokeRaw(command);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      return { success: false, data: null, error: stripAnsi(message) };
+    }
+  }
+
+  /**
+   * Execute an already-validated command string. Internal use only.
+   */
+  private async invokeRaw(command: string): Promise<PsResult> {
     try {
       await this.ensureInitialized();
 

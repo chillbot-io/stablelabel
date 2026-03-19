@@ -18,11 +18,12 @@ export default function FileShareScan() {
     if (!path.trim()) { setError('Path is required.'); return; }
     setLoading(true); setError(null); setResult(null);
     try {
-      const parts = [`Get-SLFileShareScan -Path '${esc(path)}'`];
-      if (filter.trim() && filter !== '*') parts.push(`-Filter '${esc(filter)}'`);
-      if (recurse) parts.push('-Recurse');
-      if (reportOnly) parts.push('-ReportOnly');
-      const r = await invoke<FileShareScanResult>(parts.join(' '));
+      const r = await invoke<FileShareScanResult>('Get-SLFileShareScan', {
+        Path: path,
+        Filter: filter.trim() && filter !== '*' ? filter : undefined,
+        Recurse: recurse || undefined,
+        ReportOnly: reportOnly || undefined,
+      });
       if (r.success && r.data) setResult(r.data);
       else setError(r.error ?? 'Failed to scan');
     } catch (e) { setError(e instanceof Error ? e.message : 'Failed'); }
@@ -138,5 +139,3 @@ function Stat({ label, value, color }: { label: string; value: number; color?: s
     </div>
   );
 }
-
-function esc(s: string) { return s.replace(/'/g, "''"); }

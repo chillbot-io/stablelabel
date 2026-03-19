@@ -24,17 +24,16 @@ export default function FileShareLabelBulk() {
     if (!labelName.trim() && !labelId.trim()) { setError('Either Label Name or Label ID is required.'); return; }
     setLoading(true); setError(null); setResult(null);
     try {
-      const parts = [`Set-SLFileShareLabelBulk -Path '${esc(path)}'`];
-      if (labelId.trim()) parts.push(`-LabelId '${esc(labelId)}'`);
-      else parts.push(`-LabelName '${esc(labelName)}'`);
-      if (filter.trim()) parts.push(`-Filter '${esc(filter)}'`);
-      if (recurse) parts.push('-Recurse');
-      if (justification.trim()) parts.push(`-Justification '${esc(justification)}'`);
-      if (owner.trim()) parts.push(`-Owner '${esc(owner)}'`);
-      if (dryRun) parts.push('-DryRun');
-      parts.push('-Confirm:$false');
-
-      const r = await invoke<FileShareBulkResult>(parts.join(' '));
+      const r = await invoke<FileShareBulkResult>('Set-SLFileShareLabelBulk', {
+        Path: path,
+        LabelId: labelId.trim() || undefined,
+        LabelName: labelName.trim() || undefined,
+        Filter: filter.trim() || undefined,
+        Recurse: recurse || undefined,
+        Justification: justification.trim() || undefined,
+        Owner: owner.trim() || undefined,
+        DryRun: dryRun || undefined,
+      });
       if (r.success && r.data) setResult(r.data);
       else setError(r.error ?? 'Bulk operation failed');
     } catch (e) { setError(e instanceof Error ? e.message : 'Failed'); }
@@ -129,5 +128,3 @@ function StatCard({ label, value, color }: { label: string; value: number; color
     </div>
   );
 }
-
-function esc(s: string) { return s.replace(/'/g, "''"); }
