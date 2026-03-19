@@ -16,7 +16,7 @@ export default function RetentionPolicyDetail({ policyName, onEdit, onDeleted }:
 
   useEffect(() => {
     setLoading(true);
-    invoke<RetentionPolicy>(`Get-SLRetentionPolicy -Identity '${policyName}'`).then(r => {
+    invoke<RetentionPolicy>('Get-SLRetentionPolicy', { Identity: policyName }).then(r => {
       if (r.success && r.data) setPolicy(r.data);
       else setError(r.error ?? 'Not found');
       setLoading(false);

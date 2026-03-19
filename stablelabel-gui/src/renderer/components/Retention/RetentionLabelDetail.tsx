@@ -16,7 +16,7 @@ export default function RetentionLabelDetail({ labelName, onEdit, onDeleted }: P
 
   useEffect(() => {
     setLoading(true);
-    invoke<RetentionLabel>(`Get-SLRetentionLabel -Identity '${labelName}'`).then(r => {
+    invoke<RetentionLabel>('Get-SLRetentionLabel', { Identity: labelName }).then(r => {
       if (r.success && r.data) setLabel(r.data);
       else setError(r.error ?? 'Not found');
       setLoading(false);

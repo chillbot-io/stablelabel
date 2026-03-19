@@ -186,7 +186,10 @@ function Restore-SLSnapshot {
         # Capture pre-restore snapshot
         Write-Verbose 'Capturing pre-restore snapshot...'
         $preRestoreName = "pre-restore-$(Get-Date -Format 'yyyyMMdd-HHmmss')"
-        New-SLSnapshot -Name $preRestoreName -Scope $snapshot.Scope | Out-Null
+        $preRestoreResult = New-SLSnapshot -Name $preRestoreName -Scope $snapshot.Scope
+        if (-not $preRestoreResult -or -not (Test-Path (Join-Path $snapshotDir "$preRestoreName.json"))) {
+            throw "Pre-restore backup failed. Aborting restore to prevent data loss."
+        }
         Write-Host "Pre-restore snapshot saved as '$preRestoreName'" -ForegroundColor DarkGray
 
         # Execute the plan
@@ -204,9 +207,23 @@ function Restore-SLSnapshot {
                     'Create' {
                         # For creates, we need the full object from the snapshot
                         Write-Warning "Create operations require manual implementation per category. Skipping: $($step.Identity)"
+                        $results.Add([PSCustomObject]@{
+                            Step    = $step
+                            Status  = 'Skipped'
+                            Error   = 'Create operations not yet implemented'
+                        })
+                        $failCount++
+                        continue
                     }
                     'Update' {
                         Write-Warning "Update operations require manual implementation per category. Skipping: $($step.Identity)"
+                        $results.Add([PSCustomObject]@{
+                            Step    = $step
+                            Status  = 'Skipped'
+                            Error   = 'Update operations not yet implemented'
+                        })
+                        $failCount++
+                        continue
                     }
                 }
 
@@ -236,18 +253,26 @@ function Restore-SLSnapshot {
             }
         }
 
+        $skippedCount = @($results | Where-Object { $_.Status -eq 'Skipped' }).Count
+
         $finalResult = [PSCustomObject]@{
             SnapshotName      = $Name
             PreRestoreSnapshot = $preRestoreName
             TotalChanges      = $plan.Count
             Succeeded         = $successCount
             Failed            = $failCount
+            Skipped           = $skippedCount
             Results           = $results
         }
 
+        if ($skippedCount -gt 0) {
+            Write-Warning "$skippedCount operation(s) were skipped because Create/Update restore is not yet implemented. Review the Results for details."
+        }
+
         Write-SLAuditEntry -Action 'Restore-SLSnapshot' -Target $Name -Detail @{
-            Succeeded = $successCount
-            Failed    = $failCount
+            Succeeded  = $successCount
+            Failed     = $failCount
+            Skipped    = $skippedCount
             PreRestore = $preRestoreName
         }
 
