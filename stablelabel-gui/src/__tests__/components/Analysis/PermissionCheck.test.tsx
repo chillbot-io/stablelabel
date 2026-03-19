@@ -50,7 +50,7 @@ describe('PermissionCheck', () => {
     render(<PermissionCheck />);
 
     await user.click(screen.getByText('Run Check'));
-    expect(mockInvoke).toHaveBeenCalledWith("Test-SLPermission -Scope 'All'");
+    expect(mockInvoke).toHaveBeenCalledWith('Test-SLPermission', { Scope: 'All' });
   });
 
   it('calls invoke with selected scope', async () => {
@@ -62,7 +62,7 @@ describe('PermissionCheck', () => {
     await user.selectOptions(select, 'DLP');
     await user.click(screen.getByText('Run Check'));
 
-    expect(mockInvoke).toHaveBeenCalledWith("Test-SLPermission -Scope 'DLP'");
+    expect(mockInvoke).toHaveBeenCalledWith('Test-SLPermission', { Scope: 'DLP' });
   });
 
   it('displays user principal name', async () => {
