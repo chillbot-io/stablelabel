@@ -271,6 +271,110 @@ Describe 'Get-SLLabel' {
 }
 
 # =============================================================================
+# Build-SLLabelTree (additional scenarios)
+# =============================================================================
+Describe 'Build-SLLabelTree' {
+    BeforeEach {
+        $script:SLConnection.GraphConnected = $true
+    }
+
+    It 'Returns empty array for empty input' {
+        $result = Build-SLLabelTree -Labels @()
+        $result | Should -HaveCount 0
+    }
+
+    It 'Returns single parent with no sublabels' {
+        $labels = @(
+            [PSCustomObject]@{ id = 'p1'; name = 'TopLevel'; displayName = 'TopLevel'; isActive = $true; parent = $null; parentLabelId = $null; tooltip = 'tip1' }
+        )
+        $result = Build-SLLabelTree -Labels $labels
+        $result | Should -HaveCount 1
+        $result[0].Name | Should -Be 'TopLevel'
+        $result[0].SubLabels | Should -HaveCount 0
+    }
+
+    It 'Groups sublabels under their parent' {
+        $labels = @(
+            [PSCustomObject]@{ id = 'p1'; name = 'Parent'; displayName = 'Parent'; isActive = $true; parent = $null; parentLabelId = $null; tooltip = 'p-tip' }
+            [PSCustomObject]@{ id = 'c1'; name = 'ChildA'; displayName = 'ChildA'; isActive = $true; parent = [PSCustomObject]@{ id = 'p1' }; parentLabelId = 'p1'; tooltip = 'c1-tip' }
+            [PSCustomObject]@{ id = 'c2'; name = 'ChildB'; displayName = 'ChildB'; isActive = $false; parent = [PSCustomObject]@{ id = 'p1' }; parentLabelId = 'p1'; tooltip = $null }
+        )
+        $result = Build-SLLabelTree -Labels $labels
+        $result | Should -HaveCount 1
+        $result[0].SubLabels | Should -HaveCount 2
+    }
+
+    It 'Handles multiple parents each with sublabels' {
+        $labels = @(
+            [PSCustomObject]@{ id = 'p1'; name = 'ParentA'; displayName = 'ParentA'; isActive = $true; parent = $null; parentLabelId = $null; tooltip = $null }
+            [PSCustomObject]@{ id = 'p2'; name = 'ParentB'; displayName = 'ParentB'; isActive = $true; parent = $null; parentLabelId = $null; tooltip = $null }
+            [PSCustomObject]@{ id = 'c1'; name = 'ChildOfA'; displayName = 'ChildOfA'; isActive = $true; parent = [PSCustomObject]@{ id = 'p1' }; parentLabelId = 'p1'; tooltip = $null }
+            [PSCustomObject]@{ id = 'c2'; name = 'ChildOfB'; displayName = 'ChildOfB'; isActive = $true; parent = [PSCustomObject]@{ id = 'p2' }; parentLabelId = 'p2'; tooltip = $null }
+        )
+        $result = Build-SLLabelTree -Labels $labels
+        $result | Should -HaveCount 2
+        $result[0].SubLabels | Should -HaveCount 1
+        $result[1].SubLabels | Should -HaveCount 1
+    }
+
+    It 'Sorts parents alphabetically by displayName' {
+        $labels = @(
+            [PSCustomObject]@{ id = 'p2'; name = 'Zebra'; displayName = 'Zebra'; isActive = $true; parent = $null; parentLabelId = $null; tooltip = $null }
+            [PSCustomObject]@{ id = 'p1'; name = 'Alpha'; displayName = 'Alpha'; isActive = $true; parent = $null; parentLabelId = $null; tooltip = $null }
+        )
+        $result = Build-SLLabelTree -Labels $labels
+        $result[0].Name | Should -Be 'Alpha'
+        $result[1].Name | Should -Be 'Zebra'
+    }
+
+    It 'Sorts sublabels alphabetically by displayName' {
+        $labels = @(
+            [PSCustomObject]@{ id = 'p1'; name = 'Parent'; displayName = 'Parent'; isActive = $true; parent = $null; parentLabelId = $null; tooltip = $null }
+            [PSCustomObject]@{ id = 'c2'; name = 'ZChild'; displayName = 'ZChild'; isActive = $true; parent = [PSCustomObject]@{ id = 'p1' }; parentLabelId = 'p1'; tooltip = $null }
+            [PSCustomObject]@{ id = 'c1'; name = 'AChild'; displayName = 'AChild'; isActive = $true; parent = [PSCustomObject]@{ id = 'p1' }; parentLabelId = 'p1'; tooltip = $null }
+        )
+        $result = Build-SLLabelTree -Labels $labels
+        $result[0].SubLabels[0].Name | Should -Be 'AChild'
+        $result[0].SubLabels[1].Name | Should -Be 'ZChild'
+    }
+
+    It 'Includes Id, Name, Tooltip, IsActive, SubLabels on parent' {
+        $labels = @(
+            [PSCustomObject]@{ id = 'p1'; name = 'Test'; displayName = 'TestLabel'; isActive = $true; parent = $null; parentLabelId = $null; tooltip = 'My tooltip' }
+        )
+        $result = Build-SLLabelTree -Labels $labels
+        $result[0].Id | Should -Be 'p1'
+        $result[0].Name | Should -Be 'TestLabel'
+        $result[0].Tooltip | Should -Be 'My tooltip'
+        $result[0].IsActive | Should -BeTrue
+        $result[0].PSObject.Properties.Name | Should -Contain 'SubLabels'
+    }
+
+    It 'Includes Id, Name, Tooltip, IsActive on sublabels' {
+        $labels = @(
+            [PSCustomObject]@{ id = 'p1'; name = 'Parent'; displayName = 'Parent'; isActive = $true; parent = $null; parentLabelId = $null; tooltip = $null }
+            [PSCustomObject]@{ id = 'c1'; name = 'Child'; displayName = 'ChildLabel'; isActive = $false; parent = [PSCustomObject]@{ id = 'p1' }; parentLabelId = 'p1'; tooltip = 'child tip' }
+        )
+        $result = Build-SLLabelTree -Labels $labels
+        $child = $result[0].SubLabels[0]
+        $child.Id | Should -Be 'c1'
+        $child.Name | Should -Be 'ChildLabel'
+        $child.Tooltip | Should -Be 'child tip'
+        $child.IsActive | Should -BeFalse
+    }
+
+    It 'Resolves children via parentLabelId when parent.id is missing' {
+        $labels = @(
+            [PSCustomObject]@{ id = 'p1'; name = 'Parent'; displayName = 'Parent'; isActive = $true; parent = $null; parentLabelId = $null; tooltip = $null }
+            [PSCustomObject]@{ id = 'c1'; name = 'Child'; displayName = 'Child'; isActive = $true; parent = $null; parentLabelId = 'p1'; tooltip = $null }
+        )
+        $result = Build-SLLabelTree -Labels $labels
+        $result | Should -HaveCount 1
+        $result[0].SubLabels | Should -HaveCount 1
+    }
+}
+
+# =============================================================================
 # DLP
 # =============================================================================
 Describe 'Get-SLDlpPolicy' {

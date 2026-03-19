@@ -88,4 +88,66 @@ describe('SnapshotsPage', () => {
       expect(screen.getByText('0 snapshots')).toBeInTheDocument();
     });
   });
+
+  it('displays multiple snapshots in list', async () => {
+    mockInvoke.mockResolvedValue({
+      success: true,
+      data: [
+        { Name: 'snap-A', SnapshotId: 'id1', CreatedAt: '2026-01-01', Scope: 'Full', SizeMB: 1.0 },
+        { Name: 'snap-B', SnapshotId: 'id2', CreatedAt: '2026-02-01', Scope: 'Labels', SizeMB: 0.5 },
+      ],
+    });
+
+    render(<SnapshotsPage />);
+    await waitFor(() => {
+      expect(screen.getByText('snap-A')).toBeInTheDocument();
+      expect(screen.getByText('snap-B')).toBeInTheDocument();
+      expect(screen.getByText('2 snapshots')).toBeInTheDocument();
+    });
+  });
+
+  it('shows error state when snapshot fetch fails', async () => {
+    mockInvoke.mockResolvedValue({ success: false, data: null, error: 'Not connected' });
+
+    render(<SnapshotsPage />);
+    await waitFor(() => {
+      expect(screen.getByText('Not connected')).toBeInTheDocument();
+    });
+  });
+
+  it('has Retry button on error', async () => {
+    mockInvoke.mockResolvedValue({ success: false, data: null, error: 'Fetch failed' });
+
+    render(<SnapshotsPage />);
+    await waitFor(() => {
+      expect(screen.getByText('Retry')).toBeInTheDocument();
+    });
+  });
+
+  it('selects a snapshot and removes empty workspace', async () => {
+    const user = userEvent.setup();
+    mockInvoke.mockResolvedValue({
+      success: true,
+      data: [
+        { Name: 'snap-selected', SnapshotId: 'id1', CreatedAt: '2026-01-01', Scope: 'Full', SizeMB: 1.0 },
+      ],
+    });
+
+    render(<SnapshotsPage />);
+    await waitFor(() => {
+      expect(screen.getByText('snap-selected')).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByText('snap-selected'));
+    // Empty workspace message should be gone
+    expect(screen.queryByText(/Select a snapshot or create new/)).not.toBeInTheDocument();
+  });
+
+  it('fetches snapshots on mount', async () => {
+    render(<SnapshotsPage />);
+    await waitFor(() => {
+      const calls = mockInvoke.mock.calls.map((c: unknown[]) => c[0]);
+      expect(calls).toContain('Get-SLSnapshot');
+    });
+  });
 });

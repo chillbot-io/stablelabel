@@ -62,7 +62,7 @@ describe('LabelList', () => {
     expect(screen.getByText(/2 sublabels/)).toBeInTheDocument();
 
     // Calls correct command
-    expect(mockInvoke).toHaveBeenCalledWith('Get-SLLabel -Tree', undefined);
+    expect(mockInvoke).toHaveBeenCalledWith('Get-SLLabel', { Tree: true });
   });
 
   it('shows inactive badge for inactive labels', async () => {

@@ -55,6 +55,6 @@ describe('Sidebar', () => {
     );
     // The active item should have distinct styling (blue border/text)
     const labelsButton = screen.getByText('Labels').closest('button');
-    expect(labelsButton?.className).toContain('blue');
+    expect(labelsButton?.className).toContain('bg-blue-500/[0.12]');
   });
 });

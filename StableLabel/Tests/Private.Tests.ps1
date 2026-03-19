@@ -302,3 +302,256 @@ Describe 'Invoke-SLGraphRequest' {
         }
     }
 }
+
+# =============================================================================
+# Invoke-SLWithRetry
+# =============================================================================
+Describe 'Invoke-SLWithRetry' {
+    It 'Returns result on first successful attempt' {
+        $result = Invoke-SLWithRetry -ScriptBlock { 'success' } -MaxRetries 3
+        $result | Should -Be 'success'
+    }
+
+    It 'Retries on retryable HTTP status codes and eventually succeeds' {
+        $script:retryAttempt = 0
+        Mock Start-Sleep { }
+        $result = Invoke-SLWithRetry -ScriptBlock {
+            $script:retryAttempt++
+            if ($script:retryAttempt -lt 3) {
+                $ex = [System.Exception]::new("HTTP StatusCode: 429")
+                throw $ex
+            }
+            'recovered'
+        } -MaxRetries 3 -BaseDelaySeconds 1
+        $result | Should -Be 'recovered'
+        $script:retryAttempt | Should -Be 3
+        Should -Invoke Start-Sleep -Times 2
+    }
+
+    It 'Throws after exceeding MaxRetries' {
+        Mock Start-Sleep { }
+        { Invoke-SLWithRetry -ScriptBlock {
+            throw [System.Exception]::new("HTTP StatusCode: 503")
+        } -MaxRetries 2 -BaseDelaySeconds 1 } | Should -Throw '*503*'
+    }
+
+    It 'Does not retry on non-retryable errors' {
+        Mock Start-Sleep { }
+        { Invoke-SLWithRetry -ScriptBlock {
+            throw 'Not a retryable error'
+        } -MaxRetries 3 } | Should -Throw '*Not a retryable error*'
+        Should -Not -Invoke Start-Sleep
+    }
+
+    It 'Applies exponential backoff delay' {
+        $script:retryAttempt2 = 0
+        $delays = [System.Collections.Generic.List[int]]::new()
+        Mock Start-Sleep { $delays.Add($Seconds) }
+        { Invoke-SLWithRetry -ScriptBlock {
+            $script:retryAttempt2++
+            throw [System.Exception]::new("HTTP StatusCode: 500")
+        } -MaxRetries 3 -BaseDelaySeconds 2 } | Should -Throw
+        $delays.Count | Should -Be 3
+        # Exponential: 2^1=2, 2^2=4, 2^3=8
+        $delays[0] | Should -Be 2
+        $delays[1] | Should -Be 4
+        $delays[2] | Should -Be 8
+    }
+}
+
+# =============================================================================
+# Write-SLAuditEntry
+# =============================================================================
+Describe 'Write-SLAuditEntry' {
+    BeforeEach {
+        $script:SLConnection.UserPrincipalName = 'admin@contoso.com'
+        $script:SLConnection.TenantId = 'tenant-123'
+        $script:SLConfig.AuditLogPath = Join-Path $TestDrive 'audit-test.jsonl'
+        if (Test-Path $script:SLConfig.AuditLogPath) { Remove-Item $script:SLConfig.AuditLogPath -Force }
+    }
+
+    It 'Writes a valid JSON entry to the audit log' {
+        Write-SLAuditEntry -Action 'Test-Action' -Target 'TestTarget' -Result 'success'
+        $content = Get-Content -Path $script:SLConfig.AuditLogPath -Raw
+        $entry = $content.Trim() | ConvertFrom-Json
+        $entry.action | Should -Be 'Test-Action'
+        $entry.target | Should -Be 'TestTarget'
+        $entry.result | Should -Be 'success'
+        $entry.user | Should -Be 'admin@contoso.com'
+        $entry.tenantId | Should -Be 'tenant-123'
+        $entry.timestamp | Should -Not -BeNullOrEmpty
+    }
+
+    It 'Includes detail hashtable in JSON output' {
+        Write-SLAuditEntry -Action 'Test-Detail' -Target 'T1' -Detail @{ Key1 = 'Value1'; Key2 = 42 } -Result 'success'
+        $content = Get-Content -Path $script:SLConfig.AuditLogPath -Raw
+        $entry = $content.Trim() | ConvertFrom-Json
+        $entry.detail.Key1 | Should -Be 'Value1'
+        $entry.detail.Key2 | Should -Be 42
+    }
+
+    It 'Includes error field when ErrorMessage is provided' {
+        Write-SLAuditEntry -Action 'Test-Error' -Target 'T1' -Result 'failed' -ErrorMessage 'Something broke'
+        $content = Get-Content -Path $script:SLConfig.AuditLogPath -Raw
+        $entry = $content.Trim() | ConvertFrom-Json
+        $entry.result | Should -Be 'failed'
+        $entry.error | Should -Be 'Something broke'
+    }
+
+    It 'Appends multiple entries as separate lines' {
+        Write-SLAuditEntry -Action 'First' -Target 'T1' -Result 'success'
+        Write-SLAuditEntry -Action 'Second' -Target 'T2' -Result 'dry-run'
+        $lines = @(Get-Content -Path $script:SLConfig.AuditLogPath | Where-Object { $_.Trim() })
+        $lines.Count | Should -BeGreaterOrEqual 2
+        ($lines[0] | ConvertFrom-Json).action | Should -Be 'First'
+        ($lines[-1] | ConvertFrom-Json).action | Should -Be 'Second'
+    }
+}
+
+# =============================================================================
+# Test-SLDryRun
+# =============================================================================
+Describe 'Test-SLDryRun' {
+    It 'Returns true when -DryRun switch is set' {
+        $result = Test-SLDryRun -DryRun
+        $result | Should -BeTrue
+    }
+
+    It 'Returns false when -DryRun switch is not set' {
+        $result = Test-SLDryRun
+        $result | Should -BeFalse
+    }
+
+    It 'Returns false when -DryRun is explicitly false' {
+        $result = Test-SLDryRun -DryRun:$false
+        $result | Should -BeFalse
+    }
+}
+
+# =============================================================================
+# Assert-SLAipClient
+# =============================================================================
+Describe 'Assert-SLAipClient' {
+    BeforeEach {
+        $script:SLAipClientType = $null
+    }
+
+    It 'Throws on non-Windows platforms' -Skip:$IsWindows {
+        { Assert-SLAipClient } | Should -Throw '*requires Windows*'
+    }
+
+    It 'Sets client type to UnifiedLabeling when AIP module available' -Skip:(-not $IsWindows) {
+        Mock Get-Module {
+            [PSCustomObject]@{ Version = [version]'2.16.0'; Name = 'AzureInformationProtection' }
+        } -ParameterFilter { $ListAvailable -eq $true }
+        Mock Get-Module { $null } -ParameterFilter { $ListAvailable -ne $true }
+        Mock Import-Module { }
+
+        Assert-SLAipClient
+        $script:SLAipClientType | Should -Be 'UnifiedLabeling'
+    }
+
+    It 'Imports the module if not already loaded' -Skip:(-not $IsWindows) {
+        Mock Get-Module {
+            [PSCustomObject]@{ Version = [version]'2.16.0'; Name = 'AzureInformationProtection' }
+        } -ParameterFilter { $ListAvailable -eq $true }
+        Mock Get-Module { $null } -ParameterFilter { $ListAvailable -ne $true }
+        Mock Import-Module { } -Verifiable
+
+        Assert-SLAipClient
+        Should -InvokeVerifiable
+    }
+
+    It 'Skips import when module already loaded' -Skip:(-not $IsWindows) {
+        $loaded = [PSCustomObject]@{ Version = [version]'2.16.0'; Name = 'AzureInformationProtection' }
+        Mock Get-Module { $loaded } -ParameterFilter { $ListAvailable -eq $true }
+        Mock Get-Module { $loaded } -ParameterFilter { $ListAvailable -ne $true }
+        Mock Import-Module { }
+
+        Assert-SLAipClient
+        Should -Not -Invoke Import-Module
+    }
+
+    It 'Falls back to Legacy when Set-AIPFileLabel command exists' -Skip:(-not $IsWindows) {
+        Mock Get-Module { $null } -ParameterFilter { $ListAvailable -eq $true }
+        Mock Get-Command { [PSCustomObject]@{ Name = 'Set-AIPFileLabel' } } -ParameterFilter { $Name -eq 'Set-AIPFileLabel' }
+
+        Assert-SLAipClient
+        $script:SLAipClientType | Should -Be 'Legacy'
+    }
+
+    It 'Throws when neither module nor command available' -Skip:(-not $IsWindows) {
+        Mock Get-Module { $null }
+        Mock Get-Command { $null } -ParameterFilter { $Name -eq 'Set-AIPFileLabel' }
+
+        { Assert-SLAipClient } | Should -Throw '*not found*'
+    }
+
+    It 'Error message includes install URL' -Skip:(-not $IsWindows) {
+        Mock Get-Module { $null }
+        Mock Get-Command { $null } -ParameterFilter { $Name -eq 'Set-AIPFileLabel' }
+
+        $err = $null
+        try { Assert-SLAipClient } catch { $err = $_.Exception.Message }
+        $err | Should -Match 'learn.microsoft.com'
+        $err | Should -Match 'Install-Module'
+    }
+}
+
+# =============================================================================
+# Format-SLDryRunResult
+# =============================================================================
+Describe 'Format-SLDryRunResult' {
+    It 'Adds DryRun property to result' {
+        $obj = [PSCustomObject]@{ Name = 'TestPolicy'; Status = 'Active' }
+        $result = Format-SLDryRunResult -Result $obj
+        $result.DryRun | Should -BeTrue
+    }
+
+    It 'Preserves original properties' {
+        $obj = [PSCustomObject]@{ Name = 'TestPolicy'; Status = 'Active' }
+        $result = Format-SLDryRunResult -Result $obj
+        $result.Name | Should -Be 'TestPolicy'
+        $result.Status | Should -Be 'Active'
+    }
+
+    It 'Overwrites existing DryRun property with true' {
+        $obj = [PSCustomObject]@{ Name = 'TestPolicy'; DryRun = $false }
+        $result = Format-SLDryRunResult -Result $obj
+        $result.DryRun | Should -BeTrue
+    }
+
+    It 'Returns PSCustomObject by default (not JSON)' {
+        $obj = [PSCustomObject]@{ Name = 'TestPolicy' }
+        $result = Format-SLDryRunResult -Result $obj
+        $result | Should -BeOfType [PSCustomObject]
+    }
+
+    It 'Returns JSON string when -AsJson is specified' {
+        $obj = [PSCustomObject]@{ Name = 'TestPolicy' }
+        $result = Format-SLDryRunResult -Result $obj -AsJson
+        $result | Should -BeOfType [string]
+        $parsed = $result | ConvertFrom-Json
+        $parsed.Name | Should -Be 'TestPolicy'
+        $parsed.DryRun | Should -BeTrue
+    }
+
+    It 'JSON output respects MaxJsonDepth from config' {
+        $nested = [PSCustomObject]@{
+            Level1 = [PSCustomObject]@{
+                Level2 = [PSCustomObject]@{
+                    Value = 'deep'
+                }
+            }
+        }
+        $result = Format-SLDryRunResult -Result $nested -AsJson
+        $parsed = $result | ConvertFrom-Json
+        $parsed.Level1.Level2.Value | Should -Be 'deep'
+    }
+
+    It 'Returns the same object reference (mutates in place)' {
+        $obj = [PSCustomObject]@{ Name = 'TestPolicy' }
+        $result = Format-SLDryRunResult -Result $obj
+        [object]::ReferenceEquals($obj, $result) | Should -BeTrue
+    }
+}

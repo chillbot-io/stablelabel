@@ -111,6 +111,7 @@ describe('SettingsPage', () => {
     const saved = JSON.parse(localStorage.getItem('stablelabel-settings')!);
     expect(saved).toHaveProperty('timeout');
     expect(saved).toHaveProperty('logLevel');
+    expect(saved).toHaveProperty('modulePath');
     expect(saved.timeout).toBe(300);
     expect(saved.logLevel).toBe('Info');
   });
@@ -135,6 +136,9 @@ describe('SettingsPage', () => {
     // Should not throw
     render(<SettingsPage />);
     expect(screen.getByText('Settings')).toBeInTheDocument();
+    // Should fall back to default values — Info log level should be active
+    const infoBtn = screen.getByText('Info');
+    expect(infoBtn.className).toContain('bg-blue-500/[0.15]');
   });
 
   it('saves timeout value from input', async () => {

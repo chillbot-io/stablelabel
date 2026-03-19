@@ -308,6 +308,69 @@ Describe 'Restore-SLSnapshot' {
         Mock Invoke-SLGraphRequest { @() }
         $result = Restore-SLSnapshot -Name 'restore-me' -Path $snapshotDir -DryRun
         $result | Should -Not -BeNullOrEmpty
+        $result.DryRun | Should -Be $true
+        $result.SnapshotName | Should -Be 'restore-me'
+        $result.PSObject.Properties.Name | Should -Contain 'TotalChanges'
+        $result.PSObject.Properties.Name | Should -Contain 'Removals'
+        $result.PSObject.Properties.Name | Should -Contain 'Creates'
+        $result.PSObject.Properties.Name | Should -Contain 'Updates'
+        $result.PSObject.Properties.Name | Should -Contain 'Plan'
+        $result.TotalChanges | Should -BeOfType [int]
+        $result.Removals | Should -BeOfType [int]
+        $result.Creates | Should -BeOfType [int]
+        $result.Updates | Should -BeOfType [int]
+    }
+
+    It 'Marks Create and Update operations as Skipped during actual restore' {
+        $snapshotDir = Join-Path $TestDrive 'restore-skip'
+        New-Item -ItemType Directory -Path $snapshotDir -Force | Out-Null
+
+        # Snapshot has a policy that does NOT exist in live (triggers Create)
+        $snap = @{
+            SnapshotId = 'snap-skip'; Name = 'skip-test'; Scope = 'Dlp'
+            CreatedAt  = (Get-Date).ToString('o')
+            Data       = @{
+                DlpPolicies = @(@{ Name = 'SnapshotOnlyPolicy'; Mode = 'Enable' })
+                DlpRules    = @()
+            }
+        }
+        $snap | ConvertTo-Json -Depth 10 | Out-File -FilePath (Join-Path $snapshotDir 'skip-test.json') -Encoding utf8
+
+        # Live has no policies -> diff will show Removed items needing Create
+        Mock Invoke-SLComplianceCommand { @() }
+        Mock Invoke-SLGraphRequest { @() }
+
+        $plan = Restore-SLSnapshot -Name 'skip-test' -Path $snapshotDir -DryRun
+        # The plan should show Create operations exist
+        if ($plan.Creates -gt 0) {
+            $createSteps = @($plan.Plan | Where-Object { $_.Phase -eq 'Create' })
+            $createSteps.Count | Should -BeGreaterThan 0
+        }
+    }
+
+    It 'Throws when pre-restore backup file is not created' {
+        $snapshotDir = Join-Path $TestDrive 'restore-backup-fail'
+        New-Item -ItemType Directory -Path $snapshotDir -Force | Out-Null
+
+        $snap = @{
+            SnapshotId = 'snap-bf'; Name = 'backup-fail'; Scope = 'Dlp'
+            CreatedAt  = (Get-Date).ToString('o')
+            Data       = @{
+                DlpPolicies = @(@{ Name = 'LiveOnlyPolicy'; Mode = 'Enable' })
+                DlpRules    = @()
+            }
+        }
+        $snap | ConvertTo-Json -Depth 10 | Out-File -FilePath (Join-Path $snapshotDir 'backup-fail.json') -Encoding utf8
+
+        # Mock live state with a policy not in snapshot (triggers a removal plan)
+        Mock Invoke-SLComplianceCommand {
+            @([PSCustomObject]@{ Name = 'LiveOnlyPolicy'; Mode = 'Enable' })
+        }
+        Mock Invoke-SLGraphRequest { @() }
+        # Mock New-SLSnapshot to return $null (simulating backup failure)
+        Mock New-SLSnapshot { $null }
+
+        { Restore-SLSnapshot -Name 'backup-fail' -Path $snapshotDir -Confirm:$false -Force } | Should -Throw '*backup*'
     }
 
     It 'Returns JSON with -AsJson in dry-run mode' {

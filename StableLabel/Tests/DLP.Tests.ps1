@@ -85,6 +85,14 @@ Describe 'New-SLDlpPolicy' {
         Mock New-DlpCompliancePolicy { [PSCustomObject]@{ Name = 'PII Protection'; Mode = 'Enable' } }
         $result = New-SLDlpPolicy -Name 'PII Protection' -Mode 'Enable' -Confirm:$false
         $result.Name | Should -Be 'PII Protection'
+        Should -Invoke New-DlpCompliancePolicy -Times 1 -ParameterFilter {
+            $Name -eq 'PII Protection'
+        }
+    }
+
+    It 'Throws when underlying compliance command fails' {
+        Mock New-DlpCompliancePolicy { throw 'Access denied' }
+        { New-SLDlpPolicy -Name 'Fail Policy' -Mode 'Enable' -Confirm:$false } | Should -Throw '*Access denied*'
     }
 }
 
@@ -121,6 +129,20 @@ Describe 'Set-SLDlpPolicy' {
         $json = Set-SLDlpPolicy -Identity 'Test' -Mode 'Enable' -DryRun -AsJson
         ($json | ConvertFrom-Json).Action | Should -Be 'Set-DlpCompliancePolicy'
     }
+
+    It 'Updates a DLP policy and verifies Identity is passed' {
+        Mock Set-DlpCompliancePolicy { [PSCustomObject]@{ Name = 'PII Protection'; Mode = 'Enable' } }
+        $result = Set-SLDlpPolicy -Identity 'PII Protection' -Mode 'Enable' -Confirm:$false
+        $result.Name | Should -Be 'PII Protection'
+        Should -Invoke Set-DlpCompliancePolicy -Times 1 -ParameterFilter {
+            $Identity -eq 'PII Protection'
+        }
+    }
+
+    It 'Throws when underlying compliance command fails' {
+        Mock Set-DlpCompliancePolicy { throw 'Policy not found' }
+        { Set-SLDlpPolicy -Identity 'NonExistent' -Mode 'Enable' -Confirm:$false } | Should -Throw '*Policy not found*'
+    }
 }
 
 # =============================================================================
@@ -148,7 +170,9 @@ Describe 'Remove-SLDlpPolicy' {
     It 'Removes a DLP policy' {
         Mock Remove-DlpCompliancePolicy { }
         $null = Remove-SLDlpPolicy -Identity 'Old DLP Policy' -Confirm:$false
-        Should -Invoke Remove-DlpCompliancePolicy -Times 1
+        Should -Invoke Remove-DlpCompliancePolicy -Times 1 -ParameterFilter {
+            $Identity -eq 'Old DLP Policy'
+        }
     }
 }
 
@@ -176,6 +200,7 @@ Describe 'Get-SLDlpRule' {
         }
         $result = Get-SLDlpRule
         $result | Should -HaveCount 2
+        Should -Invoke Get-DlpComplianceRule -Times 1
     }
 
     It 'Returns specific rule by Identity' {
@@ -184,6 +209,9 @@ Describe 'Get-SLDlpRule' {
         }
         $result = Get-SLDlpRule -Identity 'Block Credit Cards'
         $result.Name | Should -Be 'Block Credit Cards'
+        Should -Invoke Get-DlpComplianceRule -Times 1 -ParameterFilter {
+            $Identity -eq 'Block Credit Cards'
+        }
     }
 
     It 'Filters by Policy name' {
@@ -245,6 +273,9 @@ Describe 'New-SLDlpRule' {
         Mock New-DlpComplianceRule { [PSCustomObject]@{ Name = 'Block Credit Cards' } }
         $result = New-SLDlpRule -Name 'Block Credit Cards' -Policy 'PII Protection' -Confirm:$false
         $result.Name | Should -Be 'Block Credit Cards'
+        Should -Invoke New-DlpComplianceRule -Times 1 -ParameterFilter {
+            $Name -eq 'Block Credit Cards'
+        }
     }
 }
 
@@ -307,7 +338,9 @@ Describe 'Remove-SLDlpRule' {
     It 'Removes a DLP rule' {
         Mock Remove-DlpComplianceRule { }
         $null = Remove-SLDlpRule -Identity 'Old DLP Rule' -Confirm:$false
-        Should -Invoke Remove-DlpComplianceRule -Times 1
+        Should -Invoke Remove-DlpComplianceRule -Times 1 -ParameterFilter {
+            $Identity -eq 'Old DLP Rule'
+        }
     }
 }
 
@@ -335,6 +368,7 @@ Describe 'Get-SLSensitiveInfoType' {
         }
         $result = Get-SLSensitiveInfoType
         $result | Should -HaveCount 2
+        Should -Invoke Get-DlpSensitiveInformationType -Times 1
     }
 
     It 'Filters custom-only types with -CustomOnly' {
@@ -399,5 +433,13 @@ Describe 'Set-SLSensitiveInfoType' {
         Mock Set-DlpSensitiveInformationType { [PSCustomObject]@{ Name = 'Test'; Description = 'Updated' } }
         $result = Set-SLSensitiveInfoType -Identity 'Test' -Description 'Updated' -Confirm:$false
         $result.Description | Should -Be 'Updated'
+        Should -Invoke Set-DlpSensitiveInformationType -Times 1 -ParameterFilter {
+            $Identity -eq 'Test'
+        }
+    }
+
+    It 'Throws when underlying compliance command fails' {
+        Mock Set-DlpSensitiveInformationType { throw 'Type not found' }
+        { Set-SLSensitiveInfoType -Identity 'NonExistent' -Description 'Fail' -Confirm:$false } | Should -Throw '*Type not found*'
     }
 }

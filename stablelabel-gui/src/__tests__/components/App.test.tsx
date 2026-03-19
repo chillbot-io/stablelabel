@@ -35,8 +35,9 @@ describe('App', () => {
 
   it('starts on the Dashboard page', () => {
     render(<App />);
-    // "Dashboard" appears in both sidebar and page header
-    expect(screen.getAllByText('Dashboard').length).toBeGreaterThanOrEqual(2);
+    // Verify sidebar button exists
+    expect(screen.getByRole('button', { name: 'Dashboard' })).toBeInTheDocument();
+    // Verify page-specific content
     expect(screen.getByText('Not Connected')).toBeInTheDocument();
   });
 
@@ -45,8 +46,7 @@ describe('App', () => {
     render(<App />);
 
     // Click Labels in the sidebar
-    const sidebarLabels = screen.getAllByText('Labels')[0];
-    await user.click(sidebarLabels);
+    await user.click(screen.getByRole('button', { name: 'Labels' }));
     // LabelsPage renders, so "Not Connected" should be gone
     expect(screen.queryByText('Not Connected')).not.toBeInTheDocument();
   });
@@ -72,11 +72,8 @@ describe('App', () => {
     const user = userEvent.setup();
     render(<App />);
 
-    // "Protection" appears in both sidebar and TopBar, click the sidebar one
-    const protectionItems = screen.getAllByText('Protection');
-    // The sidebar item is the button element
-    const sidebarButton = protectionItems.find((el) => el.closest('button'));
-    await user.click(sidebarButton!);
+    // Click Protection in the sidebar
+    await user.click(screen.getByRole('button', { name: 'Protection' }));
     expect(screen.getByText('AIP Protection')).toBeInTheDocument();
   });
 
@@ -117,8 +114,7 @@ describe('App', () => {
     render(<App />);
 
     await user.click(screen.getByText('Elevation'));
-    const dashboardItems = screen.getAllByText('Dashboard');
-    await user.click(dashboardItems[0]);
+    await user.click(screen.getByRole('button', { name: 'Dashboard' }));
     expect(screen.getByText('Tenant compliance overview')).toBeInTheDocument();
   });
 });
