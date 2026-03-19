@@ -149,7 +149,7 @@ describe('PimRolePanel', () => {
         DurationHours: 8,
       }));
       const callArgs = mockInvoke.mock.calls[0];
-      expect(callArgs[1]).not.toHaveProperty('DryRun');
+      expect(callArgs[1].DryRun).toBeUndefined();
     });
     await waitFor(() => {
       expect(screen.getByText('PIM role activated for 8 hours.')).toBeInTheDocument();

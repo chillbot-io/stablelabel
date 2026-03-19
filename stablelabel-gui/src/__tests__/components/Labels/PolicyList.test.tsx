@@ -62,7 +62,7 @@ describe('PolicyList', () => {
 
     expect(screen.getByText('Finance Policy')).toBeInTheDocument();
     expect(screen.getByText('2 label policies')).toBeInTheDocument();
-    expect(mockInvoke).toHaveBeenCalledWith('Get-SLLabelPolicy');
+    expect(mockInvoke).toHaveBeenCalledWith('Get-SLLabelPolicy', undefined);
   });
 
   it('shows singular "policy" for single item', async () => {

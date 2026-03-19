@@ -266,7 +266,7 @@ describe('RetentionPolicyList', () => {
     render(<RetentionPolicyList onOpenPolicy={onOpenPolicy} onNewPolicy={onNewPolicy} />);
 
     await waitFor(() => {
-      expect(mockInvoke).toHaveBeenCalledWith('Get-SLRetentionPolicy');
+      expect(mockInvoke).toHaveBeenCalledWith('Get-SLRetentionPolicy', undefined);
     });
   });
 

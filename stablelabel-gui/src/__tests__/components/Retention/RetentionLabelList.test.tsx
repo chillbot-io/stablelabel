@@ -281,7 +281,7 @@ describe('RetentionLabelList', () => {
     render(<RetentionLabelList onOpenLabel={onOpenLabel} onNewLabel={onNewLabel} />);
 
     await waitFor(() => {
-      expect(mockInvoke).toHaveBeenCalledWith('Get-SLRetentionLabel');
+      expect(mockInvoke).toHaveBeenCalledWith('Get-SLRetentionLabel', undefined);
     });
   });
 

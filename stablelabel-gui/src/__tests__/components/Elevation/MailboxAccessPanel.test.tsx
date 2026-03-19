@@ -171,7 +171,7 @@ describe('MailboxAccessPanel', () => {
         AccessRights: 'FullAccess',
       }));
       const callArgs = mockInvoke.mock.calls[0];
-      expect(callArgs[1]).not.toHaveProperty('DryRun');
+      expect(callArgs[1].DryRun).toBeUndefined();
     });
     await waitFor(() => {
       expect(screen.getByText('Mailbox access granted.')).toBeInTheDocument();
@@ -214,7 +214,7 @@ describe('MailboxAccessPanel', () => {
         AccessRights: 'FullAccess',
       }));
       const callArgs = mockInvoke.mock.calls[0];
-      expect(callArgs[1]).not.toHaveProperty('DryRun');
+      expect(callArgs[1].DryRun).toBeUndefined();
     });
     await waitFor(() => {
       expect(screen.getByText('Mailbox access revoked.')).toBeInTheDocument();

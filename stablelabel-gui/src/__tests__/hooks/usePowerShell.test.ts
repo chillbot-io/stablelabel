@@ -23,7 +23,7 @@ describe('usePowerShell', () => {
       response = await result.current.invoke('Get-SLLabel');
     });
 
-    expect(mockInvoke).toHaveBeenCalledWith('Get-SLLabel');
+    expect(mockInvoke).toHaveBeenCalledWith('Get-SLLabel', undefined);
     expect((response as { success: boolean }).success).toBe(true);
   });
 

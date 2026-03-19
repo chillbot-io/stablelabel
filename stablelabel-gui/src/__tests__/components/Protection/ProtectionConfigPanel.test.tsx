@@ -318,9 +318,9 @@ describe('ProtectionConfigPanel', () => {
       .mockResolvedValueOnce({ success: true, data: null });
     render(<ProtectionConfigPanel />);
     await waitFor(() => {
-      expect(mockInvoke).toHaveBeenCalledWith('Get-SLProtectionConfig');
-      expect(mockInvoke).toHaveBeenCalledWith('Get-SLProtectionAdmin');
-      expect(mockInvoke).toHaveBeenCalledWith('Get-SLProtectionKey');
+      expect(mockInvoke).toHaveBeenCalledWith('Get-SLProtectionConfig', undefined);
+      expect(mockInvoke).toHaveBeenCalledWith('Get-SLProtectionAdmin', undefined);
+      expect(mockInvoke).toHaveBeenCalledWith('Get-SLProtectionKey', undefined);
     });
   });
 

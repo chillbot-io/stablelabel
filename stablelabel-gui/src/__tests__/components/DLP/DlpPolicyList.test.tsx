@@ -95,7 +95,7 @@ describe('DlpPolicyList', () => {
     });
     expect(screen.getByText('Financial Data Policy')).toBeInTheDocument();
     expect(screen.getByText('Health Records')).toBeInTheDocument();
-    expect(mockInvoke).toHaveBeenCalledWith('Get-SLDlpPolicy');
+    expect(mockInvoke).toHaveBeenCalledWith('Get-SLDlpPolicy', undefined);
   });
 
   it('displays policy count text (plural)', async () => {

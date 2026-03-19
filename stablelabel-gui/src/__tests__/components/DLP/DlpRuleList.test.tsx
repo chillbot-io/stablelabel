@@ -66,7 +66,7 @@ describe('DlpRuleList', () => {
     });
     expect(screen.getByText('Monitor Credit Cards')).toBeInTheDocument();
     expect(screen.getByText('Health Data Rule')).toBeInTheDocument();
-    expect(mockInvoke).toHaveBeenCalledWith('Get-SLDlpRule');
+    expect(mockInvoke).toHaveBeenCalledWith('Get-SLDlpRule', undefined);
   });
 
   it('displays rule count (plural)', async () => {

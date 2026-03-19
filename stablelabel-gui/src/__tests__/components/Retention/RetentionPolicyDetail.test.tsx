@@ -58,7 +58,7 @@ describe('RetentionPolicyDetail', () => {
     );
 
     await waitFor(() => {
-      expect(mockInvoke).toHaveBeenCalledWith("Get-SLRetentionPolicy -Identity 'Exchange 7yr Retention'");
+      expect(mockInvoke).toHaveBeenCalledWith("Get-SLRetentionPolicy -Identity 'Exchange 7yr Retention'", undefined);
     });
   });
 
