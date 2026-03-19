@@ -4,6 +4,7 @@ import type { DeviceCodeInfo } from '../../hooks/usePowerShell';
 
 type ConnectStage = 'idle' | 'connecting' | 'done' | 'error';
 
+const COPIED_NOTIFICATION_MS = 2_000;
 const LAST_CONNECTION_KEY = 'stablelabel-last-connection';
 
 interface StepInfo {
@@ -220,7 +221,7 @@ export default function ConnectionDialog({ onClose, onConnected }: ConnectionDia
                       onClick={() => {
                         navigator.clipboard.writeText(deviceCode.userCode);
                         setCopied(true);
-                        setTimeout(() => setCopied(false), 2000);
+                        setTimeout(() => setCopied(false), COPIED_NOTIFICATION_MS);
                       }}
                       className="text-[11px] text-zinc-400 hover:text-zinc-200 transition-colors px-2 py-1 rounded bg-white/[0.04] hover:bg-white/[0.08]"
                     >

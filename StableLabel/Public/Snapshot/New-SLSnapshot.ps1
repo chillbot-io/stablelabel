@@ -6,6 +6,18 @@ function New-SLSnapshot {
     .DESCRIPTION
         Creates a point-in-time snapshot of the tenant's Purview configuration.
         Snapshots are stored as JSON files and can be compared or restored later.
+    .PARAMETER Name
+        The name for the new snapshot (used as the file name).
+    .PARAMETER Scope
+        The scope of data to capture: All, Labels, Dlp, or Retention.
+    .PARAMETER Path
+        Override the snapshot storage directory path.
+    .PARAMETER AsJson
+        Return results as a JSON string.
+    .EXAMPLE
+        New-SLSnapshot -Name "2024-01-15_baseline"
+    .EXAMPLE
+        New-SLSnapshot -Name "dlp-only" -Scope Dlp
     #>
     [CmdletBinding()]
     param(

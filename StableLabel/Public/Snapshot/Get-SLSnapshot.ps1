@@ -2,6 +2,16 @@ function Get-SLSnapshot {
     <#
     .SYNOPSIS
         Lists saved snapshots or retrieves a specific snapshot by name.
+    .PARAMETER Name
+        The name of a specific snapshot to retrieve.
+    .PARAMETER Path
+        Override the snapshot storage directory path.
+    .PARAMETER AsJson
+        Return results as a JSON string.
+    .EXAMPLE
+        Get-SLSnapshot
+    .EXAMPLE
+        Get-SLSnapshot -Name "2024-01-15_baseline"
     #>
     [CmdletBinding()]
     param(

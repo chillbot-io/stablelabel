@@ -346,7 +346,10 @@ describe('PowerShellBridge', () => {
       bridge.invokeStructured('Get-SLLabel');
       const proc = lastProc();
       proc.stderr.emit('data', Buffer.from('Warning: something'));
-      expect(consoleSpy).toHaveBeenCalledWith('[PS STDERR]', 'Warning: something');
+      expect(consoleSpy).toHaveBeenCalledWith(
+        expect.stringContaining('[PS_STDERR]'),
+        'Warning: something',
+      );
       consoleSpy.mockRestore();
     });
 
@@ -355,7 +358,10 @@ describe('PowerShellBridge', () => {
       bridge.invokeStructured('Get-SLLabel');
       const proc = lastProc();
       proc.emit('close', 0);
-      expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('exited with code 0'));
+      expect(consoleSpy).toHaveBeenCalledWith(
+        expect.stringContaining('[PS_BRIDGE]'),
+        expect.stringContaining('exited with code 0'),
+      );
       consoleSpy.mockRestore();
     });
   });
@@ -448,7 +454,10 @@ describe('PowerShellBridge', () => {
       );
 
       expect(callback).not.toHaveBeenCalled();
-      expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('Rejected untrusted'));
+      expect(consoleSpy).toHaveBeenCalledWith(
+        expect.stringContaining('[PS_BRIDGE]'),
+        expect.stringContaining('Rejected untrusted'),
+      );
       consoleSpy.mockRestore();
     });
   });

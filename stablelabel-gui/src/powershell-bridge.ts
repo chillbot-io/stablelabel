@@ -2,6 +2,12 @@ import { spawn, ChildProcess } from 'node:child_process';
 import { platform } from 'node:os';
 import { randomUUID } from 'node:crypto';
 import { buildCommand } from './cmdlet-registry';
+import { ALLOWED_DEVICE_CODE_HOSTS } from './trusted-hosts';
+import { logger } from './logger';
+
+const PS_READY_TIMEOUT_MS = 10_000;
+const COMMAND_TIMEOUT_MS = 600_000;
+const PROCESS_CLEANUP_DELAY_MS = 2_000;
 
 interface PsResult {
   success: boolean;
@@ -14,11 +20,6 @@ function stripAnsi(text: string): string {
   // eslint-disable-next-line no-control-regex
   return text.replace(/\x1b\[[0-9;]*[A-Za-z]/g, '');
 }
-
-const ALLOWED_DEVICE_CODE_HOSTS = [
-  'microsoft.com',
-  'login.microsoftonline.com',
-];
 
 /**
  * Manages a persistent PowerShell 7 process for communicating with the StableLabel module.
@@ -92,10 +93,10 @@ export class PowerShellBridge {
             (d) => hostname === d || hostname.endsWith(`.${d}`),
           );
           if (!trusted) {
-            console.error(`[PS BRIDGE] Rejected untrusted device-code URL: ${url}`);
+            logger.error('PS_BRIDGE', `Rejected untrusted device-code URL: ${url}`);
           }
         } catch {
-          console.error(`[PS BRIDGE] Invalid device-code URL: ${url}`);
+          logger.error('PS_BRIDGE', `Invalid device-code URL: ${url}`);
         }
         if (!trusted) continue;
 
@@ -147,7 +148,7 @@ export class PowerShellBridge {
       setTimeout(() => {
         proc.kill();
         resolve({ available: false, error: 'PowerShell check timed out' });
-      }, 10000);
+      }, PS_READY_TIMEOUT_MS);
     });
   }
 
@@ -185,7 +186,7 @@ export class PowerShellBridge {
 
     this.process.stderr?.on('data', (data: Buffer) => {
       const text = data.toString();
-      console.error('[PS STDERR]', text);
+      logger.error('PS_STDERR', text);
       this.stderrBuffer += text;
 
       // Fallback: check accumulated stderr in case warnings bypass 3>&1 redirect
@@ -193,7 +194,7 @@ export class PowerShellBridge {
     });
 
     this.process.on('close', (code) => {
-      console.log(`PowerShell process exited with code ${code}`);
+      logger.info('PS_BRIDGE', `PowerShell process exited with code ${code}`);
       this._initialized = false;
       this.process = null;
     });
@@ -255,7 +256,7 @@ export class PowerShellBridge {
       this.processing = false;
       reject(new Error(`Command timed out: ${command.substring(0, 100)}`));
       this.processQueue();
-    }, 600000);
+    }, COMMAND_TIMEOUT_MS);
 
     this.currentMarker = marker;
     this.currentResolve = (output: string) => {
@@ -344,7 +345,7 @@ export class PowerShellBridge {
       setTimeout(() => {
         this.process?.kill();
         this.process = null;
-      }, 2000);
+      }, PROCESS_CLEANUP_DELAY_MS);
       this._initialized = false;
     }
   }

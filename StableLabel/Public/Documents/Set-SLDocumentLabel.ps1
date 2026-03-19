@@ -84,13 +84,8 @@ function Set-SLDocumentLabel {
                 ItemId             = $ItemId
                 SensitivityLabelId = $labelId
                 Justification      = $Justification
-                DryRun             = $true
             }
-
-            if ($AsJson) {
-                return $dryRunResult | ConvertTo-Json -Depth $script:SLConfig.MaxJsonDepth
-            }
-            return $dryRunResult
+            return Format-SLDryRunResult -Result $dryRunResult -AsJson:$AsJson
         }
 
         if (-not $PSCmdlet.ShouldProcess($target, 'Assign sensitivity label')) {

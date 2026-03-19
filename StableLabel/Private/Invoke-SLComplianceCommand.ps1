@@ -58,7 +58,10 @@ function Invoke-SLComplianceCommand {
         }
         catch {
             $script:SLConnection.ComplianceConnected = $false
-            throw "Failed to recycle S&C PowerShell session: $_"
+            throw [System.Management.Automation.RuntimeException]::new(
+                "Failed to recycle S&C PowerShell session: $_",
+                $_.Exception
+            )
         }
     }
 
@@ -90,7 +93,10 @@ function Invoke-SLComplianceCommand {
             }
             catch {
                 $script:SLConnection.ComplianceConnected = $false
-                throw "S&C PowerShell session failed and reconnect was unsuccessful: $_"
+                throw [System.Management.Automation.RuntimeException]::new(
+                    "S&C PowerShell session failed and reconnect was unsuccessful: $_",
+                    $_.Exception
+                )
             }
         }
         throw

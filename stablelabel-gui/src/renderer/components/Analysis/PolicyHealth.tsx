@@ -14,7 +14,11 @@ export default function PolicyHealth() {
     setLoading(true); setError(null); setResults(null);
     try {
       const r = await invoke<PolicyHealthType[]>('Get-SLPolicyHealth', { PolicyType: policyType });
-      if (r.success) setResults(Array.isArray(r.data) ? r.data : r.data ? [r.data as unknown as PolicyHealthType] : []);
+      if (r.success) {
+        // PowerShell may return a single object instead of an array for one-element results
+        const data: PolicyHealthType | PolicyHealthType[] = r.data;
+        setResults(Array.isArray(data) ? data : data ? [data] : []);
+      }
       else setError(r.error ?? 'Failed');
     } catch (e) { setError(e instanceof Error ? e.message : 'Failed'); }
     setLoading(false);

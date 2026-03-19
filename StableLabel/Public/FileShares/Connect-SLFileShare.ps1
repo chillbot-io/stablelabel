@@ -96,13 +96,8 @@ function Connect-SLFileShare {
                 Server      = $server
                 ShareName   = $shareName
                 AuthType    = $authType
-                DryRun      = $true
             }
-
-            if ($AsJson) {
-                return $dryRunResult | ConvertTo-Json -Depth $script:SLConfig.MaxJsonDepth
-            }
-            return $dryRunResult
+            return Format-SLDryRunResult -Result $dryRunResult -AsJson:$AsJson
         }
 
         if (-not $PSCmdlet.ShouldProcess($Path, 'Mount file share')) {

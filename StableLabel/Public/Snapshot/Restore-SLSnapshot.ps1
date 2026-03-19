@@ -13,6 +13,21 @@ function Restore-SLSnapshot {
         3. Recreate/update rules from snapshot
 
         Sensitivity label definitions are NOT restored (read-only in API).
+    .PARAMETER Name
+        The name of the snapshot to restore.
+    .PARAMETER DryRun
+        Show the restore plan without applying any changes.
+    .PARAMETER Path
+        Override the snapshot storage directory path.
+    .PARAMETER Force
+        Override safety checks such as active auto-label simulations.
+    .PARAMETER AsJson
+        Return results as a JSON string.
+    .EXAMPLE
+        Restore-SLSnapshot -Name "2024-01-15_baseline"
+        Restores the snapshot named "2024-01-15_baseline" to the tenant.
+    .EXAMPLE
+        Restore-SLSnapshot -Name "2024-01-15_baseline" -DryRun
     #>
     [CmdletBinding(SupportsShouldProcess, ConfirmImpact = 'High')]
     param(

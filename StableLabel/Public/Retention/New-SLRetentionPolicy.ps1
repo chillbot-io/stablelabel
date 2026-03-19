@@ -91,13 +91,8 @@ function New-SLRetentionPolicy {
                 ModernGroupLocation  = $ModernGroupLocation
                 SkypeLocation        = $SkypeLocation
                 PublicFolderLocation = $PublicFolderLocation
-                DryRun               = $true
             }
-
-            if ($AsJson) {
-                return $dryRunResult | ConvertTo-Json -Depth $script:SLConfig.MaxJsonDepth
-            }
-            return $dryRunResult
+            return Format-SLDryRunResult -Result $dryRunResult -AsJson:$AsJson
         }
 
         if (-not $PSCmdlet.ShouldProcess($Name, 'Create retention policy')) {

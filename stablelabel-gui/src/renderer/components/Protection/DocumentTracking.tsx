@@ -21,7 +21,11 @@ export default function DocumentTracking() {
         FromTime: fromTime.trim() || undefined,
         ToTime: toTime.trim() || undefined,
       });
-      if (r.success) setEntries(Array.isArray(r.data) ? r.data : r.data ? [r.data as unknown as DocumentTrackEntry] : []);
+      if (r.success) {
+        // PowerShell may return a single object instead of an array for one-element results
+        const data: DocumentTrackEntry | DocumentTrackEntry[] = r.data;
+        setEntries(Array.isArray(data) ? data : data ? [data] : []);
+      }
       else setError(r.error ?? 'Failed');
     } catch (e) { setError(e instanceof Error ? e.message : 'Failed'); }
     setLoading(false);
