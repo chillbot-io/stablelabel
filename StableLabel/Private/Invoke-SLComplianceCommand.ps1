@@ -44,9 +44,12 @@ function Invoke-SLComplianceCommand {
                 UserPrincipalName = $script:SLConnection.UserPrincipalName
                 ErrorAction       = 'Stop'
             }
-            if ($script:SLConnection.UseDeviceCode) {
-                $ippsParams['Device'] = $true
-            }
+            # Do NOT use -Device for session recycles — the GUI only shows
+            # device-code prompts during the initial ConnectionDialog flow.
+            # A mid-operation device-code prompt would be invisible to the user
+            # and silently time out.  Omitting -Device allows
+            # Connect-IPPSSession to reuse cached credentials from the
+            # original interactive sign-in.
             Connect-IPPSSession @ippsParams
             $script:SLConnection.ComplianceCommandCount = 0
             $script:SLConnection.ComplianceSessionStart = Get-Date
@@ -75,9 +78,7 @@ function Invoke-SLComplianceCommand {
                     UserPrincipalName = $script:SLConnection.UserPrincipalName
                     ErrorAction       = 'Stop'
                 }
-                if ($script:SLConnection.UseDeviceCode) {
-                    $ippsParams['Device'] = $true
-                }
+                # Same as above: no -Device flag for auto-reconnect.
                 Connect-IPPSSession @ippsParams
                 $script:SLConnection.ComplianceCommandCount = 0
                 $script:SLConnection.ComplianceSessionStart = Get-Date

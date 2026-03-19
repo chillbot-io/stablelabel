@@ -382,6 +382,56 @@ describe('PowerShellBridge', () => {
       });
     });
 
+    it('does not re-fire callback for the same device code', async () => {
+      const callback = vi.fn();
+      bridge.onDeviceCode = callback;
+
+      bridge.invokeStructured('Connect-SLAll', { UseDeviceCode: true });
+      const proc = lastProc();
+      await completeInit(proc);
+      await vi.advanceTimersByTimeAsync(10);
+
+      // First chunk with the device code
+      proc.stdout.emit(
+        'data',
+        Buffer.from('To sign in, visit https://microsoft.com/devicelogin and enter the code ABC123456\n'),
+      );
+      expect(callback).toHaveBeenCalledTimes(1);
+
+      // Second chunk arrives (buffer accumulates) — same code should NOT re-fire
+      proc.stdout.emit(
+        'data',
+        Buffer.from('some more output\n'),
+      );
+      expect(callback).toHaveBeenCalledTimes(1);
+    });
+
+    it('fires callback for a NEW device code after a previous one (Graph → Compliance)', async () => {
+      const callback = vi.fn();
+      bridge.onDeviceCode = callback;
+
+      bridge.invokeStructured('Connect-SLAll', { UseDeviceCode: true });
+      const proc = lastProc();
+      await completeInit(proc);
+      await vi.advanceTimersByTimeAsync(10);
+
+      // First device code (Graph)
+      proc.stdout.emit(
+        'data',
+        Buffer.from('To sign in, visit https://microsoft.com/devicelogin and enter the code GRAPH1234\n'),
+      );
+      expect(callback).toHaveBeenCalledTimes(1);
+      expect(callback).toHaveBeenLastCalledWith(expect.objectContaining({ userCode: 'GRAPH1234' }));
+
+      // Second device code (Compliance) — buffer still has the first code
+      proc.stdout.emit(
+        'data',
+        Buffer.from('To sign in, visit https://microsoft.com/devicelogin and enter the code COMPLY567\n'),
+      );
+      expect(callback).toHaveBeenCalledTimes(2);
+      expect(callback).toHaveBeenLastCalledWith(expect.objectContaining({ userCode: 'COMPLY567' }));
+    });
+
     it('rejects device-code from untrusted domains', async () => {
       const callback = vi.fn();
       const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});

@@ -45,6 +45,12 @@ export class PowerShellBridge {
   /** Callback invoked when a device-code authentication message is detected in stdout. */
   onDeviceCode: ((info: { userCode: string; verificationUrl: string; message: string }) => void) | null = null;
 
+  /** Tracks the last device code that was fired so we skip stale matches.
+   *  Connect-SLAll triggers TWO device-code prompts (Graph then Compliance).
+   *  Without this, the accumulated outputBuffer causes the regex to re-match
+   *  the already-used Graph code instead of the new Compliance code. */
+  private lastFiredDeviceCode: string | null = null;
+
   constructor(modulePath: string) {
     this.modulePath = modulePath;
   }
@@ -63,45 +69,50 @@ export class PowerShellBridge {
     const clean = stripAnsi(text);
 
     // Try multiple patterns — MSAL message format varies across SDK versions.
-    // Pattern 1: "open the page <url> and enter the code <CODE>"
-    // Pattern 2: "open <url> and enter code <CODE>"  (no "the page", no "the")
-    // Pattern 3: "visit <url> ... code <CODE>"
-    // Pattern 4: URL and code on the same or adjacent lines
+    // Use global flag + matchAll so we can skip stale codes and find new ones.
+    // Connect-SLAll produces TWO device codes (Graph then Compliance) in the
+    // same accumulated buffer; we must skip the already-fired one.
     const patterns = [
       // Broad pattern: any mention of a Microsoft URL followed by a device code
-      /(?:open(?:\s+the\s+page)?|visit|go\s+to|browse\s+to)\s+(https:\/\/\S+)\s+and\s+(?:enter|use|input|type)\s+(?:the\s+)?code:?\s+([A-Z0-9]{5,15})/i,
+      /(?:open(?:\s+the\s+page)?|visit|go\s+to|browse\s+to)\s+(https:\/\/\S+)\s+and\s+(?:enter|use|input|type)\s+(?:the\s+)?code:?\s+([A-Z0-9]{5,15})/gi,
       // Fallback: devicelogin URL anywhere, then a standalone code nearby
-      /(https:\/\/\S*(?:devicelogin|devicecode|deviceauth)\S*)\S*\s[\s\S]{0,120}?\bcode:?\s+([A-Z0-9]{5,15})/i,
+      /(https:\/\/\S*(?:devicelogin|devicecode|deviceauth)\S*)\S*\s[\s\S]{0,120}?\bcode:?\s+([A-Z0-9]{5,15})/gi,
     ];
 
     for (const pattern of patterns) {
-      const match = clean.match(pattern);
-      if (!match) continue;
+      for (const match of clean.matchAll(pattern)) {
+        // Strip trailing punctuation from URL (periods, commas)
+        const url = match[1].replace(/[.,;:]+$/, '');
 
-      // Strip trailing punctuation from URL (periods, commas)
-      const url = match[1].replace(/[.,;:]+$/, '');
-
-      // Validate URL domain against allowlist
-      try {
-        const hostname = new URL(url).hostname;
-        const trusted = ALLOWED_DEVICE_CODE_HOSTS.some(
-          (d) => hostname === d || hostname.endsWith(`.${d}`),
-        );
-        if (!trusted) {
-          console.error(`[PS BRIDGE] Rejected untrusted device-code URL: ${url}`);
-          continue;
+        // Validate URL domain against allowlist
+        let trusted = false;
+        try {
+          const hostname = new URL(url).hostname;
+          trusted = ALLOWED_DEVICE_CODE_HOSTS.some(
+            (d) => hostname === d || hostname.endsWith(`.${d}`),
+          );
+          if (!trusted) {
+            console.error(`[PS BRIDGE] Rejected untrusted device-code URL: ${url}`);
+          }
+        } catch {
+          console.error(`[PS BRIDGE] Invalid device-code URL: ${url}`);
         }
-      } catch {
-        console.error(`[PS BRIDGE] Invalid device-code URL: ${url}`);
-        continue;
-      }
+        if (!trusted) continue;
 
-      this.onDeviceCode({
-        verificationUrl: url,
-        userCode: match[2],
-        message: clean.trim(),
-      });
-      return; // Stop after first successful match
+        const userCode = match[2].toUpperCase();
+
+        // Skip if this is the same code we already fired — prevents re-sending
+        // a stale Graph code when the Compliance code arrives in the same buffer.
+        if (userCode === this.lastFiredDeviceCode) continue;
+
+        this.lastFiredDeviceCode = userCode;
+        this.onDeviceCode({
+          verificationUrl: url,
+          userCode,
+          message: clean.trim(),
+        });
+        return; // Fire only the newest unhandled code
+      }
     }
   }
 
@@ -231,6 +242,7 @@ export class PowerShellBridge {
 
     this.outputBuffer = '';
     this.stderrBuffer = '';
+    this.lastFiredDeviceCode = null;
     const marker = `___SL_DONE_${randomUUID()}___`;
     // Redirect Warning (3) and Information (6) streams to stdout so device-code
     // prompts from Connect-MgGraph (WriteWarning) and Connect-IPPSSession reach
