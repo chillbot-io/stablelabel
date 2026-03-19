@@ -61,13 +61,17 @@ function Connect-SLGraph {
             Write-Verbose "Connecting to Microsoft Graph with $($requiredScopes.Count) scopes."
 
             $connectParams = @{
-                Scopes    = $requiredScopes
-                NoWelcome = $true
+                Scopes       = $requiredScopes
+                NoWelcome    = $true
+                ContextScope = 'Process'
             }
 
-            if ($TenantId) {
-                $connectParams['TenantId'] = $TenantId
-            }
+            # When no TenantId is supplied, default to the "organizations" endpoint
+            # so that multi-tenant work / school accounts are supported and the
+            # signed-in user's tenant is derived automatically.  This avoids the
+            # "common" endpoint which also permits personal Microsoft accounts that
+            # cannot access admin APIs.
+            $connectParams['TenantId'] = if ($TenantId) { $TenantId } else { 'organizations' }
 
             if ($UseDeviceCode) {
                 $connectParams['UseDeviceCode'] = $true

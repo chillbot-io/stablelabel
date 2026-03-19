@@ -61,12 +61,26 @@ export class PowerShellBridge {
   private checkForDeviceCode(text: string): void {
     if (!this.onDeviceCode) return;
     const clean = stripAnsi(text);
-    // Primary pattern: standard MSAL device-code message
-    const match = clean.match(
-      /(?:open the page|visit|go to)\s+(https:\/\/\S+)\s+and\s+(?:enter|use)\s+(?:the\s+)?code:?\s+([A-Z0-9]{5,15})/i,
-    );
-    if (match) {
-      const url = match[1];
+
+    // Try multiple patterns — MSAL message format varies across SDK versions.
+    // Pattern 1: "open the page <url> and enter the code <CODE>"
+    // Pattern 2: "open <url> and enter code <CODE>"  (no "the page", no "the")
+    // Pattern 3: "visit <url> ... code <CODE>"
+    // Pattern 4: URL and code on the same or adjacent lines
+    const patterns = [
+      // Broad pattern: any mention of a Microsoft URL followed by a device code
+      /(?:open(?:\s+the\s+page)?|visit|go\s+to|browse\s+to)\s+(https:\/\/\S+)\s+and\s+(?:enter|use|input|type)\s+(?:the\s+)?code:?\s+([A-Z0-9]{5,15})/i,
+      // Fallback: devicelogin URL anywhere, then a standalone code nearby
+      /(https:\/\/\S*(?:devicelogin|devicecode|deviceauth)\S*)\S*\s[\s\S]{0,120}?\bcode:?\s+([A-Z0-9]{5,15})/i,
+    ];
+
+    for (const pattern of patterns) {
+      const match = clean.match(pattern);
+      if (!match) continue;
+
+      // Strip trailing punctuation from URL (periods, commas)
+      const url = match[1].replace(/[.,;:]+$/, '');
+
       // Validate URL domain against allowlist
       try {
         const hostname = new URL(url).hostname;
@@ -75,11 +89,11 @@ export class PowerShellBridge {
         );
         if (!trusted) {
           console.error(`[PS BRIDGE] Rejected untrusted device-code URL: ${url}`);
-          return;
+          continue;
         }
       } catch {
         console.error(`[PS BRIDGE] Invalid device-code URL: ${url}`);
-        return;
+        continue;
       }
 
       this.onDeviceCode({
@@ -87,6 +101,7 @@ export class PowerShellBridge {
         userCode: match[2],
         message: clean.trim(),
       });
+      return; // Stop after first successful match
     }
   }
 
@@ -171,6 +186,18 @@ export class PowerShellBridge {
       this._initialized = false;
       this.process = null;
     });
+
+    // Force stdout/stderr auto-flush so device-code messages (and all other
+    // output) are delivered immediately over the pipe instead of sitting in
+    // .NET's StreamWriter buffer.  Without this, Connect-MgGraph -UseDeviceCode
+    // writes the "To sign in…" message but it never reaches Node because the
+    // pipe is block-buffered when stdout is not a terminal.
+    await this.sendRaw(
+      '[Console]::Out.AutoFlush = $true; ' +
+      'if ([Console]::Error) { [Console]::Error.AutoFlush = $true }; ' +
+      '[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false); ' +
+      'if ($PSStyle) { $PSStyle.OutputRendering = "PlainText" }',
+    );
 
     // Import the StableLabel module
     const escapedPath = this.modulePath.replace(/'/g, "''");

@@ -50,10 +50,28 @@ function lastProc() {
   return spawnedProcesses[spawnedProcesses.length - 1];
 }
 
-/** Helper: complete the Import-Module init sequence for a process */
-function completeInit(proc: ReturnType<typeof createMockProcess>) {
-  const importWrite = proc.stdin.write.mock.calls[0]?.[0] as string;
-  const importMarker = importWrite.split('\n').find((l: string) => l.startsWith("Write-Output '___SL_DONE_"))?.match(/'(.+)'/)?.[1];
+/**
+ * Helper: complete all init commands (AutoFlush + Import-Module) for a process.
+ * The bridge sends two sequential commands during init; the second is only
+ * queued after the first resolves, so we must emit markers one at a time
+ * with async ticks in between.
+ */
+async function completeInit(proc: ReturnType<typeof createMockProcess>) {
+  // Complete the first queued command (AutoFlush setup)
+  const firstWrite = proc.stdin.write.mock.calls[0]?.[0] as string | undefined;
+  const firstMarker = firstWrite?.match(/Write-Output '(___SL_DONE_[^']+)'/)?.[1];
+  if (firstMarker) {
+    proc.stdout.emit('data', Buffer.from(`ok\n${firstMarker}\n`));
+  }
+
+  // Allow the bridge to queue the Import-Module command
+  await vi.advanceTimersByTimeAsync(10);
+
+  // Complete the Import-Module command
+  const importCall = proc.stdin.write.mock.calls.find((c: string[]) =>
+    c[0]?.includes('Import-Module'),
+  );
+  const importMarker = (importCall?.[0] as string | undefined)?.match(/Write-Output '(___SL_DONE_[^']+)'/)?.[1];
   if (importMarker) {
     proc.stdout.emit('data', Buffer.from(`ok\n${importMarker}\n`));
   }
@@ -156,7 +174,7 @@ describe('PowerShellBridge', () => {
       expect(spawn).toHaveBeenCalled();
 
       // Complete Import-Module
-      completeInit(initProc);
+      await completeInit(initProc);
       await vi.advanceTimersByTimeAsync(10);
 
       // Find the Get-SLLabel command
@@ -181,7 +199,7 @@ describe('PowerShellBridge', () => {
       });
 
       const proc = lastProc();
-      completeInit(proc);
+      await completeInit(proc);
       await vi.advanceTimersByTimeAsync(10);
 
       const cmdWrite = proc.stdin.write.mock.calls.find((c: string[]) =>
@@ -202,7 +220,7 @@ describe('PowerShellBridge', () => {
       });
 
       const proc = lastProc();
-      completeInit(proc);
+      await completeInit(proc);
       await vi.advanceTimersByTimeAsync(10);
 
       const cmdWrite = proc.stdin.write.mock.calls.find((c: string[]) =>
@@ -252,7 +270,7 @@ describe('PowerShellBridge', () => {
       const invokePromise = bridge.invokeStructured('Get-SLLabel');
 
       const proc = lastProc();
-      completeInit(proc);
+      await completeInit(proc);
       await vi.advanceTimersByTimeAsync(10);
       completeCommand(proc, 'Get-SLLabel', 'not valid json');
 
@@ -290,7 +308,18 @@ describe('PowerShellBridge', () => {
       quoteBridge.invokeStructured('Get-SLLabel');
 
       const proc = lastProc();
-      const importWrite = proc.stdin.write.mock.calls[0]?.[0] as string;
+      // Complete the AutoFlush init command so Import-Module gets queued
+      const firstWrite = proc.stdin.write.mock.calls[0]?.[0] as string;
+      const firstMarker = firstWrite?.match(/Write-Output '(___SL_DONE_[^']+)'/)?.[1];
+      if (firstMarker) {
+        proc.stdout.emit('data', Buffer.from(`ok\n${firstMarker}\n`));
+      }
+      await vi.advanceTimersByTimeAsync(10);
+
+      // The Import-Module command is the second init call (after AutoFlush setup)
+      const importWrite = proc.stdin.write.mock.calls.find((c: string[]) =>
+        c[0]?.includes('Import-Module')
+      )?.[0] as string;
       expect(importWrite).toContain("it''s here");
     });
 
@@ -299,7 +328,7 @@ describe('PowerShellBridge', () => {
       const proc = lastProc();
 
       // Complete import
-      completeInit(proc);
+      await completeInit(proc);
       await vi.advanceTimersByTimeAsync(10);
 
       // Simulate process closing
@@ -338,7 +367,7 @@ describe('PowerShellBridge', () => {
 
       bridge.invokeStructured('Connect-SLAll', { UseDeviceCode: true });
       const proc = lastProc();
-      completeInit(proc);
+      await completeInit(proc);
       await vi.advanceTimersByTimeAsync(10);
 
       proc.stdout.emit(
@@ -360,7 +389,7 @@ describe('PowerShellBridge', () => {
 
       bridge.invokeStructured('Connect-SLAll', { UseDeviceCode: true });
       const proc = lastProc();
-      completeInit(proc);
+      await completeInit(proc);
       await vi.advanceTimersByTimeAsync(10);
 
       proc.stdout.emit(
@@ -386,7 +415,7 @@ describe('PowerShellBridge', () => {
       const proc = lastProc();
 
       // Complete initialization
-      completeInit(proc);
+      await completeInit(proc);
       await vi.advanceTimersByTimeAsync(10);
 
       bridge.dispose();
