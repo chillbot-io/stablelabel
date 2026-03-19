@@ -69,21 +69,33 @@ export class PowerShellBridge {
     if (!this.onDeviceCode) return;
     const clean = stripAnsi(text);
 
+    // Log when we detect a potential device-code related keyword for diagnostics
+    if (/devicelogin|devicecode|deviceauth|sign\s*in/i.test(clean)) {
+      logger.info('PS_BRIDGE', `Potential device-code text detected (${clean.length} chars)`);
+    }
+
     // Try multiple patterns — MSAL message format varies across SDK versions.
     // Use global flag + matchAll so we can skip stale codes and find new ones.
     // Connect-SLAll produces TWO device codes (Graph then Compliance) in the
     // same accumulated buffer; we must skip the already-fired one.
     const patterns = [
       // Broad pattern: any mention of a Microsoft URL followed by a device code
-      /(?:open(?:\s+the\s+page)?|visit|go\s+to|browse\s+to)\s+(https:\/\/\S+)\s+and\s+(?:enter|use|input|type)\s+(?:the\s+)?code:?\s+([A-Z0-9]{5,15})/gi,
+      /(?:open(?:\s+the\s+page)?|visit|go\s+to|browse\s+to|navigate\s+to)\s+(https:\/\/\S+)\s+and\s+(?:enter|use|input|type)\s+(?:the\s+)?code:?\s+([A-Z0-9]{5,15})/gi,
       // Fallback: devicelogin URL anywhere, then a standalone code nearby
       /(https:\/\/\S*(?:devicelogin|devicecode|deviceauth)\S*)\S*\s[\s\S]{0,120}?\bcode:?\s+([A-Z0-9]{5,15})/gi,
+      // Reverse order: code appears before URL (some MSAL versions)
+      /\bcode:?\s+([A-Z0-9]{5,15})\b[\s\S]{0,120}?(https:\/\/\S*(?:devicelogin|devicecode|deviceauth)\S*)/gi,
     ];
 
-    for (const pattern of patterns) {
+    for (let pi = 0; pi < patterns.length; pi++) {
+      const pattern = patterns[pi];
       for (const match of clean.matchAll(pattern)) {
+        // Pattern 3 (index 2) has groups reversed: code=group1, url=group2
+        const rawUrl = pi === 2 ? match[2] : match[1];
+        const rawCode = pi === 2 ? match[1] : match[2];
+
         // Strip trailing punctuation from URL (periods, commas)
-        const url = match[1].replace(/[.,;:]+$/, '');
+        const url = rawUrl.replace(/[.,;:]+$/, '');
 
         // Validate URL domain against allowlist
         let trusted = false;
@@ -100,7 +112,7 @@ export class PowerShellBridge {
         }
         if (!trusted) continue;
 
-        const userCode = match[2].toUpperCase();
+        const userCode = rawCode.toUpperCase();
 
         // Skip if this is the same code we already fired — prevents re-sending
         // a stale Graph code when the Compliance code arrives in the same buffer.
@@ -204,10 +216,19 @@ export class PowerShellBridge {
     // .NET's StreamWriter buffer.  Without this, Connect-MgGraph -UseDeviceCode
     // writes the "To sign in…" message but it never reaches Node because the
     // pipe is block-buffered when stdout is not a terminal.
+    //
+    // NOTE: [Console]::Out is a SyncTextWriter (from TextWriter.Synchronized()),
+    // which does NOT expose AutoFlush.  Setting it silently fails.  Instead we
+    // create explicit StreamWriter instances with AutoFlush = $true and replace
+    // the console writers via Console.SetOut / Console.SetError.
     await this.sendRaw(
-      '[Console]::Out.AutoFlush = $true; ' +
-      'if ([Console]::Error) { [Console]::Error.AutoFlush = $true }; ' +
       '[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false); ' +
+      '$_sw = [System.IO.StreamWriter]::new([Console]::OpenStandardOutput(), [Console]::OutputEncoding); ' +
+      '$_sw.AutoFlush = $true; ' +
+      '[Console]::SetOut($_sw); ' +
+      '$_ew = [System.IO.StreamWriter]::new([Console]::OpenStandardError(), [Console]::OutputEncoding); ' +
+      '$_ew.AutoFlush = $true; ' +
+      '[Console]::SetError($_ew); ' +
       'if ($PSStyle) { $PSStyle.OutputRendering = "PlainText" }',
     );
 
