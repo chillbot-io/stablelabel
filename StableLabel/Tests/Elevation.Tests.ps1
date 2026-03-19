@@ -141,6 +141,75 @@ Describe 'Get-SLSuperUserStatus' {
         $script:SLConnection.ProtectionConnected = $false
         { Get-SLSuperUserStatus } | Should -Throw '*Not connected to Protection*'
     }
+
+    It 'Returns FeatureEnabled and SuperUsers properties' {
+        Mock Invoke-SLProtectionCommand {
+            if ($OperationName -eq 'Get-AipServiceSuperUserFeature') { return $true }
+            if ($OperationName -eq 'Get-AipServiceSuperUser') { return @('admin@contoso.com') }
+        }
+
+        $result = Get-SLSuperUserStatus
+        $result.PSObject.Properties.Name | Should -Contain 'FeatureEnabled'
+        $result.PSObject.Properties.Name | Should -Contain 'SuperUsers'
+    }
+
+    It 'Returns FeatureEnabled as boolean true when enabled' {
+        Mock Invoke-SLProtectionCommand {
+            if ($OperationName -eq 'Get-AipServiceSuperUserFeature') { return $true }
+            if ($OperationName -eq 'Get-AipServiceSuperUser') { return @() }
+        }
+
+        $result = Get-SLSuperUserStatus
+        $result.FeatureEnabled | Should -BeTrue
+    }
+
+    It 'Returns FeatureEnabled as boolean false when disabled' {
+        Mock Invoke-SLProtectionCommand {
+            if ($OperationName -eq 'Get-AipServiceSuperUserFeature') { return $false }
+            if ($OperationName -eq 'Get-AipServiceSuperUser') { return @() }
+        }
+
+        $result = Get-SLSuperUserStatus
+        $result.FeatureEnabled | Should -BeFalse
+    }
+
+    It 'Returns super user list as array' {
+        Mock Invoke-SLProtectionCommand {
+            if ($OperationName -eq 'Get-AipServiceSuperUserFeature') { return $true }
+            if ($OperationName -eq 'Get-AipServiceSuperUser') { return @('admin@contoso.com', 'service@contoso.com') }
+        }
+
+        $result = Get-SLSuperUserStatus
+        $result.SuperUsers | Should -HaveCount 2
+        $result.SuperUsers | Should -Contain 'admin@contoso.com'
+        $result.SuperUsers | Should -Contain 'service@contoso.com'
+    }
+
+    It 'Returns empty array when no super users configured' {
+        Mock Invoke-SLProtectionCommand {
+            if ($OperationName -eq 'Get-AipServiceSuperUserFeature') { return $false }
+            if ($OperationName -eq 'Get-AipServiceSuperUser') { return @() }
+        }
+
+        $result = Get-SLSuperUserStatus
+        $result.SuperUsers | Should -HaveCount 0
+    }
+
+    It 'Returns JSON with -AsJson' {
+        Mock Invoke-SLProtectionCommand {
+            if ($OperationName -eq 'Get-AipServiceSuperUserFeature') { return $true }
+            if ($OperationName -eq 'Get-AipServiceSuperUser') { return @('admin@contoso.com') }
+        }
+
+        $json = Get-SLSuperUserStatus -AsJson
+        { $json | ConvertFrom-Json } | Should -Not -Throw
+        ($json | ConvertFrom-Json).FeatureEnabled | Should -BeTrue
+    }
+
+    It 'Throws on Protection command failure' {
+        Mock Invoke-SLProtectionCommand { throw 'Service unavailable' }
+        { Get-SLSuperUserStatus } | Should -Throw '*Service unavailable*'
+    }
 }
 
 # =============================================================================
@@ -471,5 +540,69 @@ Describe 'Invoke-SLElevatedAction' {
 
         $null = Invoke-SLElevatedAction -ScriptBlock { 'test' } -NoAutoCleanup -Confirm:$false
         Should -Not -Invoke Stop-SLElevatedJob
+    }
+}
+
+# =============================================================================
+# Save-SLJobState
+# =============================================================================
+Describe 'Save-SLJobState' {
+    BeforeEach {
+        $script:SLConfig.ElevationState = Join-Path $TestDrive 'elevation-state.json'
+        if (Test-Path $script:SLConfig.ElevationState) {
+            Remove-Item $script:SLConfig.ElevationState -Force
+        }
+    }
+
+    It 'Creates state file if it does not exist' {
+        $job = @{ JobId = 'SLJob-001'; Status = 'Active'; StartedAt = (Get-Date).ToString('o') }
+        Save-SLJobState -JobState $job
+        Test-Path $script:SLConfig.ElevationState | Should -BeTrue
+    }
+
+    It 'Creates parent directory if it does not exist' {
+        $script:SLConfig.ElevationState = Join-Path $TestDrive 'subdir' 'elevation-state.json'
+        $job = @{ JobId = 'SLJob-002'; Status = 'Active' }
+        Save-SLJobState -JobState $job
+        Test-Path $script:SLConfig.ElevationState | Should -BeTrue
+    }
+
+    It 'Writes valid JSON to the state file' {
+        $job = @{ JobId = 'SLJob-003'; Status = 'Active' }
+        Save-SLJobState -JobState $job
+        $content = Get-Content -Path $script:SLConfig.ElevationState -Raw
+        { $content | ConvertFrom-Json } | Should -Not -Throw
+    }
+
+    It 'Adds job to ActiveJobs list' {
+        $job = @{ JobId = 'SLJob-004'; Status = 'Active' }
+        Save-SLJobState -JobState $job
+        $state = Get-Content -Path $script:SLConfig.ElevationState -Raw | ConvertFrom-Json -AsHashtable
+        $state['ActiveJobs'] | Should -HaveCount 1
+        $state['ActiveJobs'][0]['JobId'] | Should -Be 'SLJob-004'
+    }
+
+    It 'Appends multiple jobs' {
+        Save-SLJobState -JobState @{ JobId = 'SLJob-A'; Status = 'Active' }
+        Save-SLJobState -JobState @{ JobId = 'SLJob-B'; Status = 'Active' }
+        $state = Get-Content -Path $script:SLConfig.ElevationState -Raw | ConvertFrom-Json -AsHashtable
+        $state['ActiveJobs'] | Should -HaveCount 2
+    }
+
+    It 'Updates existing job by JobId instead of duplicating' {
+        Save-SLJobState -JobState @{ JobId = 'SLJob-UPD'; Status = 'Active' }
+        Save-SLJobState -JobState @{ JobId = 'SLJob-UPD'; Status = 'Completed' }
+        $state = Get-Content -Path $script:SLConfig.ElevationState -Raw | ConvertFrom-Json -AsHashtable
+        $state['ActiveJobs'] | Should -HaveCount 1
+        $state['ActiveJobs'][0]['Status'] | Should -Be 'Completed'
+    }
+
+    It 'Handles corrupt state file gracefully' {
+        Set-Content -Path $script:SLConfig.ElevationState -Value 'not valid json {{'
+        $job = @{ JobId = 'SLJob-RECOVER'; Status = 'Active' }
+        { Save-SLJobState -JobState $job } | Should -Not -Throw
+        $state = Get-Content -Path $script:SLConfig.ElevationState -Raw | ConvertFrom-Json -AsHashtable
+        $state['ActiveJobs'] | Should -HaveCount 1
+        $state['ActiveJobs'][0]['JobId'] | Should -Be 'SLJob-RECOVER'
     }
 }
