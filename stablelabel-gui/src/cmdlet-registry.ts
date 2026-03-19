@@ -31,6 +31,8 @@ export interface ParamDef {
 export interface CmdletDef {
   /** Whether to auto-append -Confirm:$false */
   confirm?: boolean;
+  /** Whether the GUI must show a confirmation dialog before invoking this cmdlet. */
+  guiConfirm?: boolean;
   /** Parameter definitions. Params not listed here are rejected. */
   params?: Record<string, ParamDef>;
 }
@@ -211,6 +213,7 @@ export const CMDLET_REGISTRY: Record<string, CmdletDef> = {
   },
   'Remove-SLLabelPolicy': {
     confirm: true,
+    guiConfirm: true,
     params: {
       Identity: { type: 'string', required: true },
     },
@@ -242,6 +245,7 @@ export const CMDLET_REGISTRY: Record<string, CmdletDef> = {
   },
   'Remove-SLAutoLabelPolicy': {
     confirm: true,
+    guiConfirm: true,
     params: {
       Identity: { type: 'string', required: true },
     },
@@ -267,6 +271,7 @@ export const CMDLET_REGISTRY: Record<string, CmdletDef> = {
   },
   'Set-SLDlpPolicy': {
     confirm: true,
+    guiConfirm: true,
     params: {
       Identity: { type: 'string', required: true },
       Comment: { type: 'string' },
@@ -275,6 +280,7 @@ export const CMDLET_REGISTRY: Record<string, CmdletDef> = {
   },
   'Remove-SLDlpPolicy': {
     confirm: true,
+    guiConfirm: true,
     params: {
       Identity: { type: 'string', required: true },
     },
@@ -347,6 +353,7 @@ export const CMDLET_REGISTRY: Record<string, CmdletDef> = {
   },
   'Remove-SLRetentionPolicy': {
     confirm: true,
+    guiConfirm: true,
     params: {
       Identity: { type: 'string', required: true },
     },
@@ -378,6 +385,7 @@ export const CMDLET_REGISTRY: Record<string, CmdletDef> = {
   },
   'Remove-SLRetentionLabel': {
     confirm: true,
+    guiConfirm: true,
     params: {
       Identity: { type: 'string', required: true },
     },
@@ -431,7 +439,7 @@ export const CMDLET_REGISTRY: Record<string, CmdletDef> = {
   },
   'Disconnect-SLFileShare': {
     params: {
-      Path: { type: 'string' },
+      Path: { type: 'path' },
       All: { type: 'switch' },
     },
   },
@@ -554,6 +562,7 @@ export const CMDLET_REGISTRY: Record<string, CmdletDef> = {
   'Get-SLSuperUserStatus': {},
   'Enable-SLSuperUser': {
     confirm: true,
+    guiConfirm: true,
     params: {
       DryRun: { type: 'switch' },
     },

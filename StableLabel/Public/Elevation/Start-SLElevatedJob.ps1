@@ -133,6 +133,21 @@ function Start-SLElevatedJob {
         }
 
         try {
+            # === Write initial job state BEFORE any privilege grants ===
+            # This ensures crash recovery can find and clean up partial elevations.
+            $plannedOps = [System.Collections.Generic.List[string]]::new()
+            $plannedOps.Add('GraphAuth')
+            if (-not $SkipSuperUser) { $plannedOps.Add('SuperUser') }
+            if (-not $SkipSiteAdmin -and $SiteUrls) {
+                foreach ($s in $SiteUrls) { $plannedOps.Add("SiteAdmin:$s") }
+            }
+            if ($FileSharePaths) {
+                foreach ($s in $FileSharePaths) { $plannedOps.Add("FileShare:$s") }
+            }
+            $jobState['Status'] = 'InProgress'
+            $jobState['PlannedOperations'] = @($plannedOps)
+            Save-SLJobState -JobState $jobState
+
             # === Step 1: Separate GA Graph authentication ===
             Write-Verbose "[$jobId] Authenticating GA account: $UserPrincipalName"
             Write-Host "Opening Microsoft authentication prompt for Global Administrator..." -ForegroundColor Cyan
@@ -182,6 +197,9 @@ function Start-SLElevatedJob {
                 ActivatedAt = [datetime]::UtcNow.ToString('o')
             })
 
+            # Persist state after GraphAuth so crash recovery knows auth was granted
+            Save-SLJobState -JobState $jobState
+
             # === Step 2: Enable Super User (if not skipped) ===
             if (-not $SkipSuperUser) {
                 Write-Verbose "[$jobId] Enabling Super User feature..."
@@ -198,6 +216,9 @@ function Start-SLElevatedJob {
                     Status      = 'Active'
                     ActivatedAt = [datetime]::UtcNow.ToString('o')
                 })
+
+                # Persist state after SuperUser grant so crash recovery can revoke it
+                Save-SLJobState -JobState $jobState
 
                 Write-Host "  Super User enabled." -ForegroundColor Green
             }
@@ -218,6 +239,9 @@ function Start-SLElevatedJob {
                         Status            = 'Active'
                         ActivatedAt       = [datetime]::UtcNow.ToString('o')
                     })
+
+                    # Persist state after each SiteAdmin grant for incremental recovery
+                    Save-SLJobState -JobState $jobState
 
                     Write-Host "  Site Admin granted on: $siteUrl" -ForegroundColor Green
                 }
@@ -244,12 +268,16 @@ function Start-SLElevatedJob {
                         ActivatedAt = [datetime]::UtcNow.ToString('o')
                     })
 
+                    # Persist state after each file share mount for recovery
+                    Save-SLJobState -JobState $jobState
+
                     Write-Host "  File share mounted: $sharePath" -ForegroundColor Green
                 }
             }
 
-            # === Step 5: Record job state for tracking/recovery ===
+            # === Step 5: Mark job as fully active ===
             $jobState['Status'] = 'Active'
+            $jobState.Remove('PlannedOperations')
             Save-SLJobState -JobState $jobState
 
             # Store in module scope for Invoke-SLElevatedAction
