@@ -27,6 +27,46 @@ describe('TopBar', () => {
     expect(screen.getByText('Protection')).toBeInTheDocument();
   });
 
+  it('calls Get-SLConnectionStatus on mount', async () => {
+    mockInvoke.mockResolvedValue({
+      success: true,
+      data: {
+        GraphConnected: false,
+        ComplianceConnected: false,
+        ProtectionConnected: false,
+        UserPrincipalName: null,
+        TenantId: null,
+      },
+    });
+
+    render(<TopBar />);
+
+    await waitFor(() => {
+      expect(mockInvoke).toHaveBeenCalledWith('Get-SLConnectionStatus');
+    });
+  });
+
+  it('shows all three status dots with correct titles when disconnected', async () => {
+    mockInvoke.mockResolvedValue({
+      success: true,
+      data: {
+        GraphConnected: false,
+        ComplianceConnected: false,
+        ProtectionConnected: false,
+        UserPrincipalName: null,
+        TenantId: null,
+      },
+    });
+
+    render(<TopBar />);
+
+    await waitFor(() => {
+      expect(screen.getByTitle('Graph: Disconnected')).toBeInTheDocument();
+      expect(screen.getByTitle('Compliance: Disconnected')).toBeInTheDocument();
+      expect(screen.getByTitle('Protection: Disconnected')).toBeInTheDocument();
+    });
+  });
+
   it('displays UserPrincipalName when connected', async () => {
     mockInvoke.mockResolvedValue({
       success: true,

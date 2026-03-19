@@ -100,4 +100,20 @@ describe('ConfirmDialog', () => {
     expect(screen.getByText('Confirm')).toBeInTheDocument();
     expect(screen.queryByText('Working...')).not.toBeInTheDocument();
   });
+
+  it('does not call onConfirm when clicking disabled confirm button during loading', async () => {
+    const user = userEvent.setup();
+    render(<ConfirmDialog {...defaultProps} loading />);
+    const workingBtn = screen.getByText('Working...');
+    await user.click(workingBtn);
+    expect(defaultProps.onConfirm).not.toHaveBeenCalled();
+  });
+
+  it('does not call onCancel when clicking disabled cancel button during loading', async () => {
+    const user = userEvent.setup();
+    render(<ConfirmDialog {...defaultProps} loading />);
+    const cancelBtn = screen.getByText('Cancel');
+    await user.click(cancelBtn);
+    expect(defaultProps.onCancel).not.toHaveBeenCalled();
+  });
 });

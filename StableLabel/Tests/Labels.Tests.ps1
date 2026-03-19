@@ -68,6 +68,7 @@ Describe 'Get-SLLabelPolicy' {
         }
         $result = Get-SLLabelPolicy
         $result | Should -HaveCount 2
+        Should -Invoke Get-LabelPolicy -Times 1
     }
 
     It 'Returns specific policy by Identity' {
@@ -76,6 +77,9 @@ Describe 'Get-SLLabelPolicy' {
         }
         $result = Get-SLLabelPolicy -Identity 'Global Policy'
         $result.Name | Should -Be 'Global Policy'
+        Should -Invoke Get-LabelPolicy -Times 1 -ParameterFilter {
+            $Identity -eq 'Global Policy'
+        }
     }
 
     It 'Returns JSON with -AsJson' {
@@ -84,6 +88,7 @@ Describe 'Get-SLLabelPolicy' {
         }
         $json = Get-SLLabelPolicy -AsJson
         { $json | ConvertFrom-Json } | Should -Not -Throw
+        Should -Invoke Get-LabelPolicy -Times 1
     }
 }
 
@@ -106,6 +111,9 @@ Describe 'New-SLLabelPolicy' {
         Mock New-LabelPolicy { [PSCustomObject]@{ Name = 'Finance Policy'; Labels = @('Confidential') } }
         $result = New-SLLabelPolicy -Name 'Finance Policy' -Labels 'Confidential' -Confirm:$false
         $result.Name | Should -Be 'Finance Policy'
+        Should -Invoke New-LabelPolicy -Times 1 -ParameterFilter {
+            $Name -eq 'Finance Policy'
+        }
     }
 
     It 'Returns dry-run result with -DryRun' {
@@ -113,6 +121,31 @@ Describe 'New-SLLabelPolicy' {
         $result.DryRun | Should -BeTrue
         $result.Action | Should -Be 'New-LabelPolicy'
         $result.Name | Should -Be 'Test Policy'
+    }
+
+    It 'Writes audit entry on dry-run with valid JSON structure' {
+        $auditPath = $script:SLConfig.AuditLogPath
+        if (Test-Path $auditPath) { Remove-Item $auditPath -Force }
+        $null = New-SLLabelPolicy -Name 'Audit Test' -Labels 'Public' -DryRun
+        Test-Path $auditPath | Should -BeTrue
+        $content = Get-Content -Path $auditPath -Raw
+        $content | Should -Match 'New-LabelPolicy'
+        $content | Should -Match 'dry-run'
+        $content | Should -Match 'Audit Test'
+        # Verify the audit entry is valid JSON with expected fields
+        $auditEntry = $content.Trim().Split("`n") | Select-Object -Last 1 | ConvertFrom-Json
+        $auditEntry.action | Should -Be 'New-LabelPolicy'
+        $auditEntry.result | Should -Be 'dry-run'
+        $auditEntry.target | Should -Be 'Audit Test'
+        $auditEntry.timestamp | Should -Not -BeNullOrEmpty
+    }
+
+    It 'Throws when Name is empty' {
+        { New-SLLabelPolicy -Name '' -Labels 'Public' } | Should -Throw
+    }
+
+    It 'Throws when Name contains only whitespace' {
+        { New-SLLabelPolicy -Name '   ' -Labels 'Public' } | Should -Throw
     }
 
     It 'Includes labels in dry-run result' {
@@ -175,6 +208,9 @@ Describe 'Set-SLLabelPolicy' {
         Mock Set-LabelPolicy { [PSCustomObject]@{ Name = 'Global Policy'; Comment = 'Updated' } }
         $result = Set-SLLabelPolicy -Identity 'Global Policy' -Comment 'Updated' -Confirm:$false
         $result.Comment | Should -Be 'Updated'
+        Should -Invoke Set-LabelPolicy -Times 1 -ParameterFilter {
+            $Identity -eq 'Global Policy'
+        }
     }
 }
 
@@ -203,7 +239,9 @@ Describe 'Remove-SLLabelPolicy' {
     It 'Removes a label policy' {
         Mock Remove-LabelPolicy { }
         $null = Remove-SLLabelPolicy -Identity 'Old Policy' -Confirm:$false
-        Should -Invoke Remove-LabelPolicy -Times 1
+        Should -Invoke Remove-LabelPolicy -Times 1 -ParameterFilter {
+            $Identity -eq 'Old Policy'
+        }
     }
 }
 
@@ -231,6 +269,7 @@ Describe 'Get-SLAutoLabelPolicy' {
         }
         $result = Get-SLAutoLabelPolicy
         $result | Should -HaveCount 2
+        Should -Invoke Get-AutoSensitivityLabelPolicy -Times 1
     }
 
     It 'Returns specific policy by Identity' {
@@ -239,6 +278,7 @@ Describe 'Get-SLAutoLabelPolicy' {
         }
         $result = Get-SLAutoLabelPolicy -Identity 'PII Auto-Label'
         $result.Name | Should -Be 'PII Auto-Label'
+        Should -Invoke Get-AutoSensitivityLabelPolicy -Times 1
     }
 
     It 'Returns JSON with -AsJson' {
@@ -247,6 +287,7 @@ Describe 'Get-SLAutoLabelPolicy' {
         }
         $json = Get-SLAutoLabelPolicy -AsJson
         { $json | ConvertFrom-Json } | Should -Not -Throw
+        Should -Invoke Get-AutoSensitivityLabelPolicy -Times 1
     }
 }
 
@@ -294,6 +335,9 @@ Describe 'New-SLAutoLabelPolicy' {
         Mock New-AutoSensitivityLabelPolicy { [PSCustomObject]@{ Name = 'PII Auto-Label' } }
         $result = New-SLAutoLabelPolicy -Name 'PII Auto-Label' -ApplySensitivityLabel 'Confidential' -Confirm:$false
         $result.Name | Should -Be 'PII Auto-Label'
+        Should -Invoke New-AutoSensitivityLabelPolicy -Times 1 -ParameterFilter {
+            $Name -eq 'PII Auto-Label'
+        }
     }
 }
 
@@ -335,6 +379,9 @@ Describe 'Set-SLAutoLabelPolicy' {
         Mock Set-AutoSensitivityLabelPolicy { [PSCustomObject]@{ Name = 'PII Auto-Label'; Mode = 'Enable' } }
         $result = Set-SLAutoLabelPolicy -Identity 'PII Auto-Label' -Mode 'Enable' -Confirm:$false
         $result.Mode | Should -Be 'Enable'
+        Should -Invoke Set-AutoSensitivityLabelPolicy -Times 1 -ParameterFilter {
+            $Identity -eq 'PII Auto-Label'
+        }
     }
 }
 
@@ -363,6 +410,8 @@ Describe 'Remove-SLAutoLabelPolicy' {
     It 'Removes an auto-label policy' {
         Mock Remove-AutoSensitivityLabelPolicy { }
         $null = Remove-SLAutoLabelPolicy -Identity 'Old Auto-Label' -Confirm:$false
-        Should -Invoke Remove-AutoSensitivityLabelPolicy -Times 1
+        Should -Invoke Remove-AutoSensitivityLabelPolicy -Times 1 -ParameterFilter {
+            $Identity -eq 'Old Auto-Label'
+        }
     }
 }

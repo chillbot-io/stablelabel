@@ -124,11 +124,8 @@ describe('ExportButton', () => {
 
   it('escapes CSV values with commas', async () => {
     const user = userEvent.setup();
-    let blobContent = '';
-    global.URL.createObjectURL = vi.fn((blob: Blob) => {
-      blob.text().then(t => { blobContent = t; });
-      return 'blob:test';
-    });
+    const BlobSpy = vi.fn(global.Blob);
+    global.Blob = BlobSpy as unknown as typeof Blob;
 
     render(
       <ExportButton
@@ -143,7 +140,11 @@ describe('ExportButton', () => {
     await user.selectOptions(select, 'csv');
     await user.click(screen.getByText('Export'));
 
-    // Blob was created — verify the download was triggered
+    // Verify the Blob constructor was called with content containing quoted comma value
+    expect(BlobSpy).toHaveBeenCalled();
+    const blobArgs = BlobSpy.mock.calls[0][0] as string[];
+    const csvContent = blobArgs[0];
+    expect(csvContent).toContain('"Smith, John"');
     expect(clickSpy).toHaveBeenCalled();
     expect(lastAnchor.download).toBe('test.csv');
   });

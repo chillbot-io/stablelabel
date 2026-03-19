@@ -16,7 +16,9 @@ describe('TypeScript types', () => {
     const success: PsResult<string> = { success: true, data: 'hello' };
     const failure: PsResult = { success: false, data: null, error: 'fail' };
     expect(success.success).toBe(true);
+    expect(success.data).toBe('hello');
     expect(failure.error).toBe('fail');
+    expect(failure.data).toBeNull();
   });
 
   it('ConnectionStatus shape is valid', () => {
@@ -34,6 +36,16 @@ describe('TypeScript types', () => {
     };
     expect(status.GraphConnected).toBe(true);
     expect(status.UserPrincipalName).toBe('user@example.com');
+    // Verify all required fields are present
+    const requiredKeys: Array<keyof ConnectionStatus> = [
+      'GraphConnected', 'ComplianceConnected', 'ProtectionConnected',
+      'UserPrincipalName', 'TenantId', 'GraphConnectedAt',
+      'ComplianceConnectedAt', 'ProtectionConnectedAt',
+      'ComplianceSessionAge', 'ProtectionAvailable',
+    ];
+    for (const key of requiredKeys) {
+      expect(status).toHaveProperty(key);
+    }
   });
 
   it('SensitivityLabel shape is valid', () => {
@@ -53,14 +65,16 @@ describe('TypeScript types', () => {
     };
     expect(label.name).toBe('Confidential');
     expect(label.isActive).toBe(true);
+    expect(Array.isArray(label.contentFormats)).toBe(true);
   });
 
   it('Page type contains all expected pages', () => {
     const pages: Page[] = [
       'dashboard', 'labels', 'retention', 'dlp', 'documents',
-      'protection', 'elevation', 'snapshots', 'analysis', 'templates',
+      'fileshares', 'protection', 'elevation', 'snapshots', 'analysis',
+      'templates', 'settings',
     ];
-    expect(pages).toHaveLength(10);
+    expect(pages).toHaveLength(12);
   });
 
   it('SnapshotSummary shape is valid', () => {

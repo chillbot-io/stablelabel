@@ -302,3 +302,128 @@ Describe 'Invoke-SLGraphRequest' {
         }
     }
 }
+
+# =============================================================================
+# Invoke-SLWithRetry
+# =============================================================================
+Describe 'Invoke-SLWithRetry' {
+    It 'Returns result on first successful attempt' {
+        $result = Invoke-SLWithRetry -ScriptBlock { 'success' } -MaxRetries 3
+        $result | Should -Be 'success'
+    }
+
+    It 'Retries on retryable HTTP status codes and eventually succeeds' {
+        $script:retryAttempt = 0
+        Mock Start-Sleep { }
+        $result = Invoke-SLWithRetry -ScriptBlock {
+            $script:retryAttempt++
+            if ($script:retryAttempt -lt 3) {
+                $ex = [System.Exception]::new("HTTP StatusCode: 429")
+                throw $ex
+            }
+            'recovered'
+        } -MaxRetries 3 -BaseDelaySeconds 1
+        $result | Should -Be 'recovered'
+        $script:retryAttempt | Should -Be 3
+        Should -Invoke Start-Sleep -Times 2
+    }
+
+    It 'Throws after exceeding MaxRetries' {
+        Mock Start-Sleep { }
+        { Invoke-SLWithRetry -ScriptBlock {
+            throw [System.Exception]::new("HTTP StatusCode: 503")
+        } -MaxRetries 2 -BaseDelaySeconds 1 } | Should -Throw '*503*'
+    }
+
+    It 'Does not retry on non-retryable errors' {
+        Mock Start-Sleep { }
+        { Invoke-SLWithRetry -ScriptBlock {
+            throw 'Not a retryable error'
+        } -MaxRetries 3 } | Should -Throw '*Not a retryable error*'
+        Should -Not -Invoke Start-Sleep
+    }
+
+    It 'Applies exponential backoff delay' {
+        $script:retryAttempt2 = 0
+        $delays = [System.Collections.Generic.List[int]]::new()
+        Mock Start-Sleep { $delays.Add($Seconds) }
+        { Invoke-SLWithRetry -ScriptBlock {
+            $script:retryAttempt2++
+            throw [System.Exception]::new("HTTP StatusCode: 500")
+        } -MaxRetries 3 -BaseDelaySeconds 2 } | Should -Throw
+        $delays.Count | Should -Be 3
+        # Exponential: 2^1=2, 2^2=4, 2^3=8
+        $delays[0] | Should -Be 2
+        $delays[1] | Should -Be 4
+        $delays[2] | Should -Be 8
+    }
+}
+
+# =============================================================================
+# Write-SLAuditEntry
+# =============================================================================
+Describe 'Write-SLAuditEntry' {
+    BeforeEach {
+        $script:SLConnection.UserPrincipalName = 'admin@contoso.com'
+        $script:SLConnection.TenantId = 'tenant-123'
+        $script:SLConfig.AuditLogPath = Join-Path $TestDrive 'audit-test.jsonl'
+        if (Test-Path $script:SLConfig.AuditLogPath) { Remove-Item $script:SLConfig.AuditLogPath -Force }
+    }
+
+    It 'Writes a valid JSON entry to the audit log' {
+        Write-SLAuditEntry -Action 'Test-Action' -Target 'TestTarget' -Result 'success'
+        $content = Get-Content -Path $script:SLConfig.AuditLogPath -Raw
+        $entry = $content.Trim() | ConvertFrom-Json
+        $entry.action | Should -Be 'Test-Action'
+        $entry.target | Should -Be 'TestTarget'
+        $entry.result | Should -Be 'success'
+        $entry.user | Should -Be 'admin@contoso.com'
+        $entry.tenantId | Should -Be 'tenant-123'
+        $entry.timestamp | Should -Not -BeNullOrEmpty
+    }
+
+    It 'Includes detail hashtable in JSON output' {
+        Write-SLAuditEntry -Action 'Test-Detail' -Target 'T1' -Detail @{ Key1 = 'Value1'; Key2 = 42 } -Result 'success'
+        $content = Get-Content -Path $script:SLConfig.AuditLogPath -Raw
+        $entry = $content.Trim() | ConvertFrom-Json
+        $entry.detail.Key1 | Should -Be 'Value1'
+        $entry.detail.Key2 | Should -Be 42
+    }
+
+    It 'Includes error field when ErrorMessage is provided' {
+        Write-SLAuditEntry -Action 'Test-Error' -Target 'T1' -Result 'failed' -ErrorMessage 'Something broke'
+        $content = Get-Content -Path $script:SLConfig.AuditLogPath -Raw
+        $entry = $content.Trim() | ConvertFrom-Json
+        $entry.result | Should -Be 'failed'
+        $entry.error | Should -Be 'Something broke'
+    }
+
+    It 'Appends multiple entries as separate lines' {
+        Write-SLAuditEntry -Action 'First' -Target 'T1' -Result 'success'
+        Write-SLAuditEntry -Action 'Second' -Target 'T2' -Result 'dry-run'
+        $lines = @(Get-Content -Path $script:SLConfig.AuditLogPath | Where-Object { $_.Trim() })
+        $lines.Count | Should -BeGreaterOrEqual 2
+        ($lines[0] | ConvertFrom-Json).action | Should -Be 'First'
+        ($lines[-1] | ConvertFrom-Json).action | Should -Be 'Second'
+    }
+}
+
+# =============================================================================
+# Test-SLDryRun
+# =============================================================================
+Describe 'Test-SLDryRun' {
+    It 'Returns true when -DryRun switch is set' {
+        $result = Test-SLDryRun -DryRun
+        $result | Should -BeTrue
+    }
+
+    It 'Returns false when -DryRun switch is not set' {
+        $result = Test-SLDryRun
+        $result | Should -BeFalse
+    }
+
+    It 'Returns false when -DryRun is explicitly false' {
+        $result = Test-SLDryRun -DryRun:$false
+        $result | Should -BeFalse
+    }
+}

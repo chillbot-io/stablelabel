@@ -65,6 +65,33 @@ Describe 'Enable-SLSuperUser' {
         $result.DryRun | Should -BeTrue
         $result.Action | Should -Be 'Enable-SuperUser'
         $result.Target | Should -Be 'AipServiceSuperUserFeature'
+        $result.PSObject.Properties.Name | Should -Contain 'Action'
+        $result.PSObject.Properties.Name | Should -Contain 'Target'
+        $result.PSObject.Properties.Name | Should -Contain 'DryRun'
+    }
+
+    It 'Writes audit entry on dry-run' {
+        $auditPath = $script:SLConfig.AuditLogPath
+        if (Test-Path $auditPath) { Remove-Item $auditPath -Force }
+        $null = Enable-SLSuperUser -DryRun
+        Test-Path $auditPath | Should -BeTrue
+        $content = Get-Content -Path $auditPath -Raw
+        $auditEntry = $content.Trim().Split("`n") | Select-Object -Last 1 | ConvertFrom-Json
+        $auditEntry.action | Should -Be 'Enable-SuperUser'
+        $auditEntry.result | Should -Be 'dry-run'
+        $auditEntry.target | Should -Be 'AipServiceSuperUserFeature'
+    }
+
+    It 'Records elevation state file on success' -Skip:(-not $IsWindows) {
+        Mock Enable-AipServiceSuperUserFeature { }
+        $statePath = $script:SLConfig.ElevationState
+        if (Test-Path $statePath) { Remove-Item $statePath -Force }
+
+        $null = Enable-SLSuperUser -Confirm:$false
+        Test-Path $statePath | Should -BeTrue
+        $state = Get-Content -Path $statePath -Raw | ConvertFrom-Json
+        $state.SuperUser.Enabled | Should -BeTrue
+        $state.SuperUser.EnabledAt | Should -Not -BeNullOrEmpty
     }
 
     It 'Returns JSON with -AsJson in dry-run mode' {
@@ -91,6 +118,9 @@ Describe 'Disable-SLSuperUser' {
         $result.DryRun | Should -BeTrue
         $result.Action | Should -Be 'Disable-SuperUser'
         $result.Target | Should -Be 'AipServiceSuperUserFeature'
+        $result.PSObject.Properties.Name | Should -Contain 'Action'
+        $result.PSObject.Properties.Name | Should -Contain 'Target'
+        $result.PSObject.Properties.Name | Should -Contain 'DryRun'
     }
 
     It 'Returns JSON with -AsJson in dry-run mode' {
@@ -304,6 +334,13 @@ Describe 'Start-SLElevatedJob' {
         $result.Status | Should -Be 'DryRun'
         $result.DryRun | Should -BeTrue
         $result.UserPrincipalName | Should -Be 'ga@contoso.com'
+        $result.PSObject.Properties.Name | Should -Contain 'JobId'
+        $result.PSObject.Properties.Name | Should -Contain 'Status'
+        $result.PSObject.Properties.Name | Should -Contain 'DryRun'
+        $result.PSObject.Properties.Name | Should -Contain 'UserPrincipalName'
+        $result.PSObject.Properties.Name | Should -Contain 'SiteUrls'
+        $result.PSObject.Properties.Name | Should -Contain 'Elevations'
+        $result.PSObject.Properties.Name | Should -Contain 'StartedAt'
     }
 
     It 'Generates a job ID with SLJob prefix' {

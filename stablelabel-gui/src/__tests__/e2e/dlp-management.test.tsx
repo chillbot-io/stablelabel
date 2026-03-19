@@ -69,9 +69,12 @@ describe('DLP policy lifecycle (E2E)', () => {
 
     render(<DlpPage />);
 
-    // Should render without crashing
+    // Verify Get-SLDlpPolicy was attempted
     await waitFor(() => {
-      expect(document.body.children.length).toBeGreaterThan(0);
+      const dlpCall = mockInvoke.mock.calls.find(
+        (c: unknown[]) => c[0] === 'Get-SLDlpPolicy',
+      );
+      expect(dlpCall).toBeDefined();
     });
   });
 

@@ -200,4 +200,81 @@ Describe 'Get-SLConnectionStatus - Additional' {
         $result.ComplianceConnected | Should -BeFalse
         $result.ProtectionConnected | Should -BeFalse
     }
+
+    It 'Returns object with all expected fields' {
+        $result = Get-SLConnectionStatus
+        $result.PSObject.Properties.Name | Should -Contain 'GraphConnected'
+        $result.PSObject.Properties.Name | Should -Contain 'ComplianceConnected'
+        $result.PSObject.Properties.Name | Should -Contain 'ProtectionConnected'
+        $result.PSObject.Properties.Name | Should -Contain 'UserPrincipalName'
+        $result.PSObject.Properties.Name | Should -Contain 'TenantId'
+        $result.PSObject.Properties.Name | Should -Contain 'ConnectedAt'
+        $result.PSObject.Properties.Name | Should -Contain 'SessionAge'
+        $result.PSObject.Properties.Name | Should -Contain 'ComplianceCommandCount'
+        $result.PSObject.Properties.Name | Should -Contain 'ComplianceSessionStart'
+        $result.PSObject.Properties.Name | Should -Contain 'ComplianceSessionAge'
+    }
+}
+
+# =============================================================================
+# Connect-SLGraph
+# =============================================================================
+Describe 'Connect-SLGraph' {
+    BeforeEach {
+        $script:SLConnection.GraphConnected = $false
+        $script:SLConnection.ConnectedAt.Graph = $null
+        $script:SLConnection.UserPrincipalName = $null
+        $script:SLConnection.TenantId = $null
+    }
+
+    It 'Passes TenantId to Connect-MgGraph when provided' {
+        Mock Connect-MgGraph { }
+        Mock Get-MgContext { [PSCustomObject]@{ Account = 'admin@contoso.com'; TenantId = 'tenant-abc' } }
+
+        $null = Connect-SLGraph -TenantId 'tenant-abc'
+        Should -Invoke Connect-MgGraph -Times 1 -ParameterFilter {
+            $TenantId -eq 'tenant-abc'
+        }
+    }
+}
+
+# =============================================================================
+# Connect-SLCompliance
+# =============================================================================
+Describe 'Connect-SLCompliance' {
+    BeforeEach {
+        $script:SLConnection.ComplianceConnected = $false
+        $script:SLConnection.ComplianceSessionStart = $null
+        $script:SLConnection.ComplianceCommandCount = 0
+    }
+
+    It 'Sets ComplianceSessionStart after successful connection' {
+        Mock Connect-IPPSSession { }
+
+        $null = Connect-SLCompliance -UserPrincipalName 'admin@contoso.com'
+        $script:SLConnection.ComplianceSessionStart | Should -Not -BeNullOrEmpty
+        $script:SLConnection.ComplianceConnected | Should -BeTrue
+        $script:SLConnection.ComplianceCommandCount | Should -Be 0
+    }
+}
+
+# =============================================================================
+# Disconnect-SLGraph
+# =============================================================================
+Describe 'Disconnect-SLGraph' {
+    BeforeEach {
+        $script:SLConnection.GraphConnected = $true
+        $script:SLConnection.UserPrincipalName = 'admin@contoso.com'
+        $script:SLConnection.ConnectedAt.Graph = [datetime]::UtcNow
+    }
+
+    It 'Clears UserPrincipalName and sets GraphConnected to false' {
+        Mock Disconnect-MgGraph { }
+
+        $result = Disconnect-SLGraph
+        $script:SLConnection.GraphConnected | Should -BeFalse
+        $script:SLConnection.UserPrincipalName | Should -BeNullOrEmpty
+        $result.Status | Should -Be 'Disconnected'
+        $result.Backend | Should -Be 'Graph'
+    }
 }

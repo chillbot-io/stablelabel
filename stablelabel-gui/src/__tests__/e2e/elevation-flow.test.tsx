@@ -77,7 +77,7 @@ describe('Elevation page lifecycle (E2E)', () => {
     });
   });
 
-  it('all invoke calls use structured format (no injection vectors)', async () => {
+  it('all invoke calls use clean cmdlet names (no injection vectors)', async () => {
     render(<ElevationPage />);
 
     await waitFor(() => {
@@ -86,21 +86,29 @@ describe('Elevation page lifecycle (E2E)', () => {
 
     for (const call of mockInvoke.mock.calls) {
       const cmdlet = call[0] as string;
-      expect(cmdlet).not.toContain(' ');
-      expect(cmdlet).not.toContain("'");
-      expect(cmdlet).not.toContain('$');
+      // Cmdlet names must be clean Verb-SLNoun format
+      expect(cmdlet).toMatch(/^[A-Z][a-z]+-SL[A-Za-z]+$/);
     }
   });
 
-  it('handles elevation status error gracefully', async () => {
+  it('handles elevation status error gracefully without crashing', async () => {
     mockInvoke.mockImplementation(async () => {
       return { success: false, data: null, error: 'Not connected to Protection service' };
     });
 
     render(<ElevationPage />);
 
-    // Should not crash
+    // All section tabs should still render
     expect(screen.getByText('Status')).toBeInTheDocument();
     expect(screen.getByText('Elevation')).toBeInTheDocument();
+    expect(screen.getByText('Super User')).toBeInTheDocument();
+    expect(screen.getByText('Site Admin')).toBeInTheDocument();
+  });
+
+  it('Status section is visually highlighted as active by default', () => {
+    render(<ElevationPage />);
+
+    const statusButton = screen.getByText('Status').closest('button');
+    expect(statusButton?.className).toContain('border-yellow-400');
   });
 });

@@ -71,10 +71,16 @@ describe('Snapshot lifecycle (E2E)', () => {
 
     render(<SnapshotsPage />);
 
-    // Should not crash
+    // Verify Get-SLSnapshot was called
     await waitFor(() => {
-      expect(document.body.children.length).toBeGreaterThan(0);
+      const snapshotCall = mockInvoke.mock.calls.find(
+        (c: unknown[]) => c[0] === 'Get-SLSnapshot',
+      );
+      expect(snapshotCall).toBeDefined();
     });
+
+    // Page header should still render
+    expect(screen.getByText('Capture, compare, and restore tenant config')).toBeInTheDocument();
   });
 
   it('snapshot delete flow opens confirm dialog', async () => {
@@ -119,10 +125,8 @@ describe('Snapshot lifecycle (E2E)', () => {
 
     for (const call of mockInvoke.mock.calls) {
       const cmdlet = call[0] as string;
-      // Cmdlet should not contain embedded parameters or injection payloads
-      expect(cmdlet).not.toContain("'");
-      expect(cmdlet).not.toContain('$');
-      expect(cmdlet).not.toContain(';');
+      // Cmdlet names must be clean Verb-SLNoun format
+      expect(cmdlet).toMatch(/^[A-Z][a-z]+-SL[A-Za-z]+$/);
     }
   });
 });

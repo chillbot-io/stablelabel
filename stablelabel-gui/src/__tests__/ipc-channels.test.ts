@@ -14,7 +14,7 @@ describe('IPC channel constants', () => {
     expect(IPC.PS_GET_STATUS).toBe('ps:get-status');
   });
 
-  it('has exactly 3 channels', () => {
-    expect(Object.keys(IPC)).toHaveLength(3);
+  it('exports exactly the expected channel names', () => {
+    expect(Object.keys(IPC).sort()).toEqual(['PS_CHECK_PWSH', 'PS_GET_STATUS', 'PS_INVOKE']);
   });
 });

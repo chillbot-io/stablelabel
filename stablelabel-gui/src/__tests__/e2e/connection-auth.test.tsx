@@ -20,13 +20,15 @@ describe('Connection and authentication flow (E2E)', () => {
   it('renders app with sidebar and top bar', async () => {
     render(<App />);
 
-    // App renders sidebar navigation
-    await waitFor(() => {
-      expect(screen.getAllByText('Dashboard').length).toBeGreaterThan(0);
-    });
+    // App renders sidebar with StableLabel title and navigation buttons
+    expect(screen.getByText('StableLabel')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Dashboard' })).toBeInTheDocument();
+    // TopBar renders connection status dots
+    expect(screen.getByText('Graph')).toBeInTheDocument();
+    expect(screen.getByText('Compliance')).toBeInTheDocument();
   });
 
-  it('TopBar displays connection status dots', async () => {
+  it('TopBar displays connection status with UPN', async () => {
     mockInvoke.mockImplementation(async (cmdlet: string) => {
       if (cmdlet === 'Get-SLConnectionStatus') {
         return {
@@ -40,15 +42,24 @@ describe('Connection and authentication flow (E2E)', () => {
     render(<App />);
 
     await waitFor(() => {
-      expect(screen.getAllByText('admin@contoso.com').length).toBeGreaterThan(0);
+      // UPN appears in TopBar and possibly DashboardPage
+      const upnElements = screen.getAllByText('admin@contoso.com');
+      expect(upnElements.length).toBeGreaterThanOrEqual(1);
+      // Verify it rendered in the header area
+      const header = upnElements.find(el => el.closest('header'));
+      expect(header).toBeTruthy();
     });
   });
 
-  it('registers device code callback on mount', () => {
+  it('verifies Get-SLConnectionStatus is invoked on mount', async () => {
     render(<App />);
-    // The onDeviceCode is registered in the connection dialog or hook
-    // App itself renders fine
-    expect(document.body.children.length).toBeGreaterThan(0);
+
+    await waitFor(() => {
+      const statusCall = mockInvoke.mock.calls.find(
+        (c: unknown[]) => c[0] === 'Get-SLConnectionStatus',
+      );
+      expect(statusCall).toBeDefined();
+    });
   });
 
   it('handles connection error without crashing', async () => {
@@ -61,9 +72,9 @@ describe('Connection and authentication flow (E2E)', () => {
 
     render(<App />);
 
-    await waitFor(() => {
-      expect(screen.getAllByText('Dashboard').length).toBeGreaterThan(0);
-    });
+    // App should still render sidebar and dashboard
+    expect(screen.getByRole('button', { name: 'Dashboard' })).toBeInTheDocument();
+    expect(screen.getByText('StableLabel')).toBeInTheDocument();
   });
 
   it('shows partial connection state (Graph only)', async () => {
@@ -80,8 +91,15 @@ describe('Connection and authentication flow (E2E)', () => {
     render(<App />);
 
     await waitFor(() => {
-      // Should show UPN even with partial connection
-      expect(screen.getAllByText('admin@contoso.com').length).toBeGreaterThan(0);
+      // UPN should appear even with partial connection
+      const upnElements = screen.getAllByText('admin@contoso.com');
+      expect(upnElements.length).toBeGreaterThanOrEqual(1);
     });
+
+    // Graph dot should be connected (emerald), Compliance/Protection should not
+    const graphTitle = screen.getByTitle('Graph: Connected');
+    expect(graphTitle).toBeInTheDocument();
+    const complianceTitle = screen.getByTitle('Compliance: Disconnected');
+    expect(complianceTitle).toBeInTheDocument();
   });
 });

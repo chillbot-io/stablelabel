@@ -19,7 +19,7 @@ export default function LabelList({ onOpenLabel }: LabelListProps) {
     setLoading(true);
     setError(null);
     try {
-      const result = await invoke<LabelTreeNode[]>('Get-SLLabel -Tree');
+      const result = await invoke<LabelTreeNode[]>('Get-SLLabel', { Tree: true });
       if (result.success && Array.isArray(result.data)) {
         setTree(result.data);
         // Auto-expand all parents that have sublabels

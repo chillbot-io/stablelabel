@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import LabelDetail from '../../../renderer/components/Labels/LabelDetail';
 import { mockInvoke } from '../../setup';
@@ -372,7 +372,10 @@ describe('LabelDetail', () => {
       expect(screen.getByText('Confidential Display')).toBeInTheDocument();
     });
 
-    const naElements = screen.getAllByText('N/A');
-    expect(naElements.length).toBeGreaterThanOrEqual(1);
+    // Verify the N/A is specifically in the Priority card
+    const priorityCard = screen.getByText('Priority').closest('div');
+    expect(priorityCard).toBeInTheDocument();
+    const naInPriority = within(priorityCard!).getByText('N/A');
+    expect(naInPriority).toBeInTheDocument();
   });
 });
