@@ -96,13 +96,8 @@ function Connect-SLFileShare {
                 Server      = $server
                 ShareName   = $shareName
                 AuthType    = $authType
-                DryRun      = $true
             }
-
-            if ($AsJson) {
-                return $dryRunResult | ConvertTo-Json -Depth $script:SLConfig.MaxJsonDepth
-            }
-            return $dryRunResult
+            return Format-SLDryRunResult -Result $dryRunResult -AsJson:$AsJson
         }
 
         if (-not $PSCmdlet.ShouldProcess($Path, 'Mount file share')) {
@@ -173,7 +168,7 @@ function Connect-SLFileShare {
         catch {
             # Clean up partially created PSDrive
             if ($driveCreated) {
-                try { Remove-PSDrive -Name $driveName -Force -ErrorAction SilentlyContinue } catch { }
+                try { Remove-PSDrive -Name $driveName -Force -ErrorAction SilentlyContinue } catch { Write-Verbose "Remove-PSDrive cleanup failed: $($_.Exception.Message)" }
             }
 
             Write-SLAuditEntry -Action 'Connect-FileShare' -Target $Path -Result 'failed' -ErrorMessage $_.Exception.Message

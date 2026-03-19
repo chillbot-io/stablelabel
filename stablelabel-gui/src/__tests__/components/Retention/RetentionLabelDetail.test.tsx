@@ -54,7 +54,7 @@ describe('RetentionLabelDetail', () => {
     );
 
     await waitFor(() => {
-      expect(mockInvoke).toHaveBeenCalledWith("Get-SLRetentionLabel -Identity 'Financial Records 7yr'");
+      expect(mockInvoke).toHaveBeenCalledWith("Get-SLRetentionLabel -Identity 'Financial Records 7yr'", undefined);
     });
   });
 

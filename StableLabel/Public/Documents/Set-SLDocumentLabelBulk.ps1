@@ -70,7 +70,8 @@ function Set-SLDocumentLabelBulk {
         $totalItems = $Items.Count
         $successCount = 0
         $failedCount = 0
-        $results = [System.Collections.Generic.List[object]]::new()
+        $skippedCount = 0
+        $itemResults = [System.Collections.Generic.List[object]]::new()
 
         for ($i = 0; $i -lt $totalItems; $i++) {
             $item = $Items[$i]
@@ -90,19 +91,27 @@ function Set-SLDocumentLabelBulk {
                 if ($isDryRun)      { $splat['DryRun'] = $true }
 
                 $itemResult = Set-SLDocumentLabel @splat
-                $successCount++
 
-                $results.Add([PSCustomObject]@{
+                if ($isDryRun) {
+                    $skippedCount++
+                    $itemStatus = 'Skipped'
+                }
+                else {
+                    $successCount++
+                    $itemStatus = 'Success'
+                }
+
+                $itemResults.Add([PSCustomObject]@{
                     DriveId = $item.DriveId
                     ItemId  = $item.ItemId
-                    Status  = if ($isDryRun) { 'DryRun' } else { 'Success' }
+                    Status  = $itemStatus
                     Error   = $null
                 })
             }
             catch {
                 $failedCount++
 
-                $results.Add([PSCustomObject]@{
+                $itemResults.Add([PSCustomObject]@{
                     DriveId = $item.DriveId
                     ItemId  = $item.ItemId
                     Status  = 'Failed'
@@ -115,19 +124,21 @@ function Set-SLDocumentLabelBulk {
 
         $summary = [PSCustomObject]@{
             Action             = 'Set-DocumentLabelBulk'
-            TotalItems         = $totalItems
+            TotalCount         = $totalItems
             SuccessCount       = $successCount
             FailedCount        = $failedCount
+            SkippedCount       = $skippedCount
             SensitivityLabelId = $labelId
-            Results            = $results
+            Items              = $itemResults
             DryRun             = $isDryRun
         }
 
         Write-SLAuditEntry -Action 'Set-DocumentLabelBulk' -Target "Bulk ($totalItems items)" -Detail @{
             SensitivityLabelId = $labelId
-            TotalItems         = $totalItems
+            TotalCount         = $totalItems
             SuccessCount       = $successCount
             FailedCount        = $failedCount
+            SkippedCount       = $skippedCount
         } -Result $(if ($isDryRun) { 'dry-run' } elseif ($failedCount -eq 0) { 'success' } else { 'failed' })
 
         if ($AsJson) {

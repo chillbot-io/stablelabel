@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import type { PsResult } from '../lib/types';
 
 export interface DeviceCodeInfo {
@@ -60,11 +60,17 @@ export function useAsyncOperation<T = unknown>() {
     loading: false,
     error: null,
   });
+  const mountedRef = useRef(true);
+
+  useEffect(() => {
+    return () => { mountedRef.current = false; };
+  }, []);
 
   const execute = useCallback(async (cmdlet: string, params?: Record<string, unknown>) => {
     setState({ data: null, loading: true, error: null });
     try {
       const result = await window.stablelabel.invoke(cmdlet, params);
+      if (!mountedRef.current) return null;
       if (result.success) {
         setState({ data: result.data as T, loading: false, error: null });
         return result.data as T;
@@ -73,6 +79,7 @@ export function useAsyncOperation<T = unknown>() {
         return null;
       }
     } catch (err) {
+      if (!mountedRef.current) return null;
       const message = err instanceof Error ? err.message : String(err);
       setState({ data: null, loading: false, error: message });
       return null;

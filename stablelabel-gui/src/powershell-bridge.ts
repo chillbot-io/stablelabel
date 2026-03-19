@@ -2,6 +2,12 @@ import { spawn, ChildProcess } from 'node:child_process';
 import { platform } from 'node:os';
 import { randomUUID } from 'node:crypto';
 import { buildCommand } from './cmdlet-registry';
+import { ALLOWED_DEVICE_CODE_HOSTS } from './trusted-hosts';
+import { logger } from './logger';
+
+const PS_READY_TIMEOUT_MS = 10_000;
+const COMMAND_TIMEOUT_MS = 600_000;
+const PROCESS_CLEANUP_DELAY_MS = 2_000;
 
 interface PsResult {
   success: boolean;
@@ -14,11 +20,6 @@ function stripAnsi(text: string): string {
   // eslint-disable-next-line no-control-regex
   return text.replace(/\x1b\[[0-9;]*[A-Za-z]/g, '');
 }
-
-const ALLOWED_DEVICE_CODE_HOSTS = [
-  'microsoft.com',
-  'login.microsoftonline.com',
-];
 
 /**
  * Manages a persistent PowerShell 7 process for communicating with the StableLabel module.
@@ -45,6 +46,12 @@ export class PowerShellBridge {
   /** Callback invoked when a device-code authentication message is detected in stdout. */
   onDeviceCode: ((info: { userCode: string; verificationUrl: string; message: string }) => void) | null = null;
 
+  /** Tracks the last device code that was fired so we skip stale matches.
+   *  Connect-SLAll triggers TWO device-code prompts (Graph then Compliance).
+   *  Without this, the accumulated outputBuffer causes the regex to re-match
+   *  the already-used Graph code instead of the new Compliance code. */
+  private lastFiredDeviceCode: string | null = null;
+
   constructor(modulePath: string) {
     this.modulePath = modulePath;
   }
@@ -61,32 +68,52 @@ export class PowerShellBridge {
   private checkForDeviceCode(text: string): void {
     if (!this.onDeviceCode) return;
     const clean = stripAnsi(text);
-    // Primary pattern: standard MSAL device-code message
-    const match = clean.match(
-      /(?:open the page|visit|go to)\s+(https:\/\/\S+)\s+and\s+(?:enter|use)\s+(?:the\s+)?code:?\s+([A-Z0-9]{5,15})/i,
-    );
-    if (match) {
-      const url = match[1];
-      // Validate URL domain against allowlist
-      try {
-        const hostname = new URL(url).hostname;
-        const trusted = ALLOWED_DEVICE_CODE_HOSTS.some(
-          (d) => hostname === d || hostname.endsWith(`.${d}`),
-        );
-        if (!trusted) {
-          console.error(`[PS BRIDGE] Rejected untrusted device-code URL: ${url}`);
-          return;
-        }
-      } catch {
-        console.error(`[PS BRIDGE] Invalid device-code URL: ${url}`);
-        return;
-      }
 
-      this.onDeviceCode({
-        verificationUrl: url,
-        userCode: match[2],
-        message: clean.trim(),
-      });
+    // Try multiple patterns — MSAL message format varies across SDK versions.
+    // Use global flag + matchAll so we can skip stale codes and find new ones.
+    // Connect-SLAll produces TWO device codes (Graph then Compliance) in the
+    // same accumulated buffer; we must skip the already-fired one.
+    const patterns = [
+      // Broad pattern: any mention of a Microsoft URL followed by a device code
+      /(?:open(?:\s+the\s+page)?|visit|go\s+to|browse\s+to)\s+(https:\/\/\S+)\s+and\s+(?:enter|use|input|type)\s+(?:the\s+)?code:?\s+([A-Z0-9]{5,15})/gi,
+      // Fallback: devicelogin URL anywhere, then a standalone code nearby
+      /(https:\/\/\S*(?:devicelogin|devicecode|deviceauth)\S*)\S*\s[\s\S]{0,120}?\bcode:?\s+([A-Z0-9]{5,15})/gi,
+    ];
+
+    for (const pattern of patterns) {
+      for (const match of clean.matchAll(pattern)) {
+        // Strip trailing punctuation from URL (periods, commas)
+        const url = match[1].replace(/[.,;:]+$/, '');
+
+        // Validate URL domain against allowlist
+        let trusted = false;
+        try {
+          const hostname = new URL(url).hostname;
+          trusted = ALLOWED_DEVICE_CODE_HOSTS.some(
+            (d) => hostname === d || hostname.endsWith(`.${d}`),
+          );
+          if (!trusted) {
+            logger.error('PS_BRIDGE', `Rejected untrusted device-code URL: ${url}`);
+          }
+        } catch {
+          logger.error('PS_BRIDGE', `Invalid device-code URL: ${url}`);
+        }
+        if (!trusted) continue;
+
+        const userCode = match[2].toUpperCase();
+
+        // Skip if this is the same code we already fired — prevents re-sending
+        // a stale Graph code when the Compliance code arrives in the same buffer.
+        if (userCode === this.lastFiredDeviceCode) continue;
+
+        this.lastFiredDeviceCode = userCode;
+        this.onDeviceCode({
+          verificationUrl: url,
+          userCode,
+          message: clean.trim(),
+        });
+        return; // Fire only the newest unhandled code
+      }
     }
   }
 
@@ -121,7 +148,7 @@ export class PowerShellBridge {
       setTimeout(() => {
         proc.kill();
         resolve({ available: false, error: 'PowerShell check timed out' });
-      }, 10000);
+      }, PS_READY_TIMEOUT_MS);
     });
   }
 
@@ -159,7 +186,7 @@ export class PowerShellBridge {
 
     this.process.stderr?.on('data', (data: Buffer) => {
       const text = data.toString();
-      console.error('[PS STDERR]', text);
+      logger.error('PS_STDERR', text);
       this.stderrBuffer += text;
 
       // Fallback: check accumulated stderr in case warnings bypass 3>&1 redirect
@@ -167,10 +194,22 @@ export class PowerShellBridge {
     });
 
     this.process.on('close', (code) => {
-      console.log(`PowerShell process exited with code ${code}`);
+      logger.info('PS_BRIDGE', `PowerShell process exited with code ${code}`);
       this._initialized = false;
       this.process = null;
     });
+
+    // Force stdout/stderr auto-flush so device-code messages (and all other
+    // output) are delivered immediately over the pipe instead of sitting in
+    // .NET's StreamWriter buffer.  Without this, Connect-MgGraph -UseDeviceCode
+    // writes the "To sign in…" message but it never reaches Node because the
+    // pipe is block-buffered when stdout is not a terminal.
+    await this.sendRaw(
+      '[Console]::Out.AutoFlush = $true; ' +
+      'if ([Console]::Error) { [Console]::Error.AutoFlush = $true }; ' +
+      '[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false); ' +
+      'if ($PSStyle) { $PSStyle.OutputRendering = "PlainText" }',
+    );
 
     // Import the StableLabel module
     const escapedPath = this.modulePath.replace(/'/g, "''");
@@ -204,6 +243,7 @@ export class PowerShellBridge {
 
     this.outputBuffer = '';
     this.stderrBuffer = '';
+    this.lastFiredDeviceCode = null;
     const marker = `___SL_DONE_${randomUUID()}___`;
     // Redirect Warning (3) and Information (6) streams to stdout so device-code
     // prompts from Connect-MgGraph (WriteWarning) and Connect-IPPSSession reach
@@ -216,7 +256,7 @@ export class PowerShellBridge {
       this.processing = false;
       reject(new Error(`Command timed out: ${command.substring(0, 100)}`));
       this.processQueue();
-    }, 600000);
+    }, COMMAND_TIMEOUT_MS);
 
     this.currentMarker = marker;
     this.currentResolve = (output: string) => {
@@ -305,7 +345,7 @@ export class PowerShellBridge {
       setTimeout(() => {
         this.process?.kill();
         this.process = null;
-      }, 2000);
+      }, PROCESS_CLEANUP_DELAY_MS);
       this._initialized = false;
     }
   }

@@ -56,7 +56,7 @@ describe('PolicyConflicts', () => {
     render(<PolicyConflicts />);
 
     await user.click(screen.getByText('Detect Conflicts'));
-    expect(mockInvoke).toHaveBeenCalledWith("Test-SLPolicyConflict -PolicyType 'All'");
+    expect(mockInvoke).toHaveBeenCalledWith('Test-SLPolicyConflict', { PolicyType: 'All' });
   });
 
   it('calls invoke with selected policy type', async () => {
@@ -68,7 +68,7 @@ describe('PolicyConflicts', () => {
     await user.selectOptions(select, 'Label');
     await user.click(screen.getByText('Detect Conflicts'));
 
-    expect(mockInvoke).toHaveBeenCalledWith("Test-SLPolicyConflict -PolicyType 'Label'");
+    expect(mockInvoke).toHaveBeenCalledWith('Test-SLPolicyConflict', { PolicyType: 'Label' });
   });
 
   it('shows no conflicts message', async () => {

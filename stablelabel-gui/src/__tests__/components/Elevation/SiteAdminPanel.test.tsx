@@ -132,7 +132,7 @@ describe('SiteAdminPanel', () => {
         UserPrincipalName: 'user@contoso.com',
       }));
       const callArgs = mockInvoke.mock.calls[0];
-      expect(callArgs[1]).not.toHaveProperty('DryRun');
+      expect(callArgs[1].DryRun).toBeUndefined();
     });
     await waitFor(() => {
       expect(screen.getByText('Site admin granted.')).toBeInTheDocument();
@@ -174,7 +174,7 @@ describe('SiteAdminPanel', () => {
         UserPrincipalName: 'user@contoso.com',
       }));
       const callArgs = mockInvoke.mock.calls[0];
-      expect(callArgs[1]).not.toHaveProperty('DryRun');
+      expect(callArgs[1].DryRun).toBeUndefined();
     });
     await waitFor(() => {
       expect(screen.getByText('Site admin revoked.')).toBeInTheDocument();

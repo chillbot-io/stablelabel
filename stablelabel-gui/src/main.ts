@@ -3,6 +3,12 @@ import path from 'node:path';
 import { PowerShellBridge } from './powershell-bridge';
 import { CredentialStore } from './credential-store';
 import { CMDLET_REGISTRY } from './cmdlet-registry';
+import { TRUSTED_EXTERNAL_HOSTS } from './trusted-hosts';
+
+const MAIN_WINDOW_WIDTH = 1400;
+const MAIN_WINDOW_HEIGHT = 900;
+const MAIN_WINDOW_MIN_WIDTH = 1000;
+const MAIN_WINDOW_MIN_HEIGHT = 700;
 
 declare const MAIN_WINDOW_VITE_DEV_SERVER_URL: string | undefined;
 declare const MAIN_WINDOW_VITE_NAME: string;
@@ -21,10 +27,10 @@ function getModulePath(): string {
 
 function createWindow(): void {
   mainWindow = new BrowserWindow({
-    width: 1400,
-    height: 900,
-    minWidth: 1000,
-    minHeight: 700,
+    width: MAIN_WINDOW_WIDTH,
+    height: MAIN_WINDOW_HEIGHT,
+    minWidth: MAIN_WINDOW_MIN_WIDTH,
+    minHeight: MAIN_WINDOW_MIN_HEIGHT,
     title: 'StableLabel',
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
@@ -46,13 +52,7 @@ function createWindow(): void {
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     try {
       const hostname = new URL(url).hostname;
-      const trusted = [
-        'microsoft.com',
-        'login.microsoftonline.com',
-        'learn.microsoft.com',
-        'aka.ms',
-      ];
-      if (trusted.some((d) => hostname === d || hostname.endsWith(`.${d}`))) {
+      if (TRUSTED_EXTERNAL_HOSTS.some((d) => hostname === d || hostname.endsWith(`.${d}`))) {
         shell.openExternal(url);
       }
     } catch {

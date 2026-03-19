@@ -60,7 +60,7 @@ describe('LabelDlpAlignment', () => {
     render(<LabelDlpAlignment />);
 
     await user.click(screen.getByText('Check Alignment'));
-    expect(mockInvoke).toHaveBeenCalledWith('Test-SLLabelDlpAlignment');
+    expect(mockInvoke).toHaveBeenCalledWith('Test-SLLabelDlpAlignment', undefined);
   });
 
   it('displays summary counts for fully aligned result', async () => {

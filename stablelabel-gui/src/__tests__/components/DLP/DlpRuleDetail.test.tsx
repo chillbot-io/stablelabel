@@ -40,7 +40,7 @@ describe('DlpRuleDetail', () => {
     mockInvoke.mockResolvedValue({ success: true, data: mockRule });
     render(<DlpRuleDetail ruleName="Block SSN Sharing" onEdit={onEdit} onDeleted={onDeleted} onOpenPolicy={onOpenPolicy} />);
     await waitFor(() => {
-      expect(mockInvoke).toHaveBeenCalledWith("Get-SLDlpRule -Identity 'Block SSN Sharing'");
+      expect(mockInvoke).toHaveBeenCalledWith('Get-SLDlpRule', { Identity: 'Block SSN Sharing' });
     });
   });
 
@@ -48,7 +48,7 @@ describe('DlpRuleDetail', () => {
     mockInvoke.mockResolvedValue({ success: true, data: mockRule });
     render(<DlpRuleDetail ruleName="It's a rule" onEdit={onEdit} onDeleted={onDeleted} onOpenPolicy={onOpenPolicy} />);
     await waitFor(() => {
-      expect(mockInvoke).toHaveBeenCalledWith("Get-SLDlpRule -Identity 'It''s a rule'");
+      expect(mockInvoke).toHaveBeenCalledWith('Get-SLDlpRule', { Identity: "It's a rule" });
     });
   });
 

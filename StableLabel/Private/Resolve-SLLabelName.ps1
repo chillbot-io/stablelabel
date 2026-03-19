@@ -13,6 +13,15 @@ function Resolve-SLLabelName {
         [switch]$ForceRefresh
     )
 
+    # Invalidate cache immediately if the connected tenant has changed
+    if ($script:SLLabelCache.TenantId -and $script:SLConnection['TenantId'] -and
+        $script:SLLabelCache.TenantId -ne $script:SLConnection['TenantId']) {
+        Write-Verbose "Tenant changed from $($script:SLLabelCache.TenantId) to $($script:SLConnection['TenantId']) - invalidating label cache."
+        $script:SLLabelCache.Labels = @()
+        $script:SLLabelCache.CachedAt = $null
+        $script:SLLabelCache.TenantId = $script:SLConnection['TenantId']
+    }
+
     # Refresh cache if stale (>30 min) or forced
     $cacheAge = if ($script:SLLabelCache.CachedAt) {
         (Get-Date) - $script:SLLabelCache.CachedAt

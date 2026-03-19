@@ -29,7 +29,7 @@ describe('SensitiveInfoTypeDetail', () => {
     mockInvoke.mockResolvedValue({ success: true, data: mockSit });
     render(<SensitiveInfoTypeDetail sitName="U.S. Social Security Number" />);
     await waitFor(() => {
-      expect(mockInvoke).toHaveBeenCalledWith("Get-SLSensitiveInfoType -Identity 'U.S. Social Security Number'");
+      expect(mockInvoke).toHaveBeenCalledWith('Get-SLSensitiveInfoType', { Identity: 'U.S. Social Security Number' });
     });
   });
 
@@ -37,7 +37,7 @@ describe('SensitiveInfoTypeDetail', () => {
     mockInvoke.mockResolvedValue({ success: true, data: mockSit });
     render(<SensitiveInfoTypeDetail sitName="It's a type" />);
     await waitFor(() => {
-      expect(mockInvoke).toHaveBeenCalledWith("Get-SLSensitiveInfoType -Identity 'It''s a type'");
+      expect(mockInvoke).toHaveBeenCalledWith('Get-SLSensitiveInfoType', { Identity: "It's a type" });
     });
   });
 

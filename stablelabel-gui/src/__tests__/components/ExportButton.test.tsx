@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import ExportButton from '../../renderer/components/common/ExportButton';
@@ -24,6 +24,10 @@ describe('ExportButton', () => {
       }
       return origCreateElement(tag, options);
     });
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
   });
 
   it('renders the export button', () => {

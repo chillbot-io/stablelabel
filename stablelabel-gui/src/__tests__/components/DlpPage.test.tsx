@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import DlpPage from '../../renderer/components/DLP/DlpPage';
@@ -8,6 +8,10 @@ describe('DlpPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockInvoke.mockResolvedValue({ success: true, data: [] });
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
   });
 
   it('renders browser section tabs', () => {

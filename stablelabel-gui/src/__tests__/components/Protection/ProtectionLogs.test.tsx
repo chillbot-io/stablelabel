@@ -61,7 +61,7 @@ describe('ProtectionLogs', () => {
 
     await user.click(screen.getByText('Search Logs'));
     await waitFor(() => {
-      expect(mockInvoke).toHaveBeenCalledWith('Get-SLProtectionLog');
+      expect(mockInvoke).toHaveBeenCalledWith('Get-SLProtectionLog', { UserEmail: undefined, FromTime: undefined, ToTime: undefined });
     });
     expect(screen.getByText('4 Log Entries')).toBeInTheDocument();
   });
@@ -77,7 +77,7 @@ describe('ProtectionLogs', () => {
     await user.click(screen.getByText('Search Logs'));
 
     await waitFor(() => {
-      expect(mockInvoke).toHaveBeenCalledWith("Get-SLProtectionLog -UserEmail 'alice@contoso.com' -FromTime '2024-06-01' -ToTime '2024-06-30'");
+      expect(mockInvoke).toHaveBeenCalledWith('Get-SLProtectionLog', { UserEmail: 'alice@contoso.com', FromTime: '2024-06-01', ToTime: '2024-06-30' });
     });
   });
 
@@ -90,7 +90,7 @@ describe('ProtectionLogs', () => {
     await user.click(screen.getByText('Search Logs'));
 
     await waitFor(() => {
-      expect(mockInvoke).toHaveBeenCalledWith("Get-SLProtectionLog -UserEmail 'o''malley@test.com'");
+      expect(mockInvoke).toHaveBeenCalledWith('Get-SLProtectionLog', { UserEmail: "o'malley@test.com", FromTime: undefined, ToTime: undefined });
     });
   });
 

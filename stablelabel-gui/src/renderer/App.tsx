@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import ErrorBoundary from './components/common/ErrorBoundary';
 import Sidebar from './components/Layout/Sidebar';
 import TopBar from './components/Layout/TopBar';
 import DashboardPage from './components/Dashboard/DashboardPage';
@@ -50,14 +51,16 @@ export default function App() {
   };
 
   return (
-    <div className="flex h-screen">
-      <Sidebar currentPage={currentPage} onNavigate={setCurrentPage} />
-      <div className="flex-1 flex flex-col overflow-hidden">
-        <TopBar />
-        <main className={`flex-1 overflow-auto ${currentPage === 'labels' || currentPage === 'retention' || currentPage === 'dlp' || currentPage === 'documents' || currentPage === 'protection' || currentPage === 'elevation' || currentPage === 'snapshots' || currentPage === 'analysis' || currentPage === 'fileshares' || currentPage === 'templates' ? '' : 'p-6'}`}>
-          {renderPage()}
-        </main>
+    <ErrorBoundary>
+      <div className="flex h-screen">
+        <Sidebar currentPage={currentPage} onNavigate={setCurrentPage} />
+        <div className="flex-1 flex flex-col overflow-hidden">
+          <TopBar />
+          <main className={`flex-1 overflow-auto ${currentPage === 'labels' || currentPage === 'retention' || currentPage === 'dlp' || currentPage === 'documents' || currentPage === 'protection' || currentPage === 'elevation' || currentPage === 'snapshots' || currentPage === 'analysis' || currentPage === 'fileshares' || currentPage === 'templates' ? '' : 'p-6'}`}>
+            {renderPage()}
+          </main>
+        </div>
       </div>
-    </div>
+    </ErrorBoundary>
   );
 }

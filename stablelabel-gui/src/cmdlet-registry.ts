@@ -26,11 +26,15 @@ export interface ParamDef {
   required?: boolean;
   /** For 'enum' type only — the set of permitted values. */
   allowedValues?: string[];
+  /** Maximum allowed string length (for 'string' type). */
+  maxLength?: number;
 }
 
 export interface CmdletDef {
   /** Whether to auto-append -Confirm:$false */
   confirm?: boolean;
+  /** Whether the GUI must show a confirmation dialog before invoking this cmdlet. */
+  guiConfirm?: boolean;
   /** Parameter definitions. Params not listed here are rejected. */
   params?: Record<string, ParamDef>;
 }
@@ -102,6 +106,9 @@ export function buildCommand(
     switch (paramDef.type) {
       case 'string': {
         const s = String(value);
+        if (paramDef.maxLength && s.length > paramDef.maxLength) {
+          throw new Error(`Parameter "-${key}" exceeds maximum length of ${paramDef.maxLength} characters`);
+        }
         parts.push(`-${key} '${escapePS(s)}'`);
         break;
       }
@@ -198,7 +205,7 @@ export const CMDLET_REGISTRY: Record<string, CmdletDef> = {
     params: {
       Name: { type: 'string', required: true },
       Labels: { type: 'string[]' },
-      Comment: { type: 'string' },
+      Comment: { type: 'string', maxLength: 1024 },
     },
   },
   'Set-SLLabelPolicy': {
@@ -211,6 +218,7 @@ export const CMDLET_REGISTRY: Record<string, CmdletDef> = {
   },
   'Remove-SLLabelPolicy': {
     confirm: true,
+    guiConfirm: true,
     params: {
       Identity: { type: 'string', required: true },
     },
@@ -242,6 +250,7 @@ export const CMDLET_REGISTRY: Record<string, CmdletDef> = {
   },
   'Remove-SLAutoLabelPolicy': {
     confirm: true,
+    guiConfirm: true,
     params: {
       Identity: { type: 'string', required: true },
     },
@@ -256,8 +265,8 @@ export const CMDLET_REGISTRY: Record<string, CmdletDef> = {
   'New-SLDlpPolicy': {
     confirm: true,
     params: {
-      Name: { type: 'string', required: true },
-      Comment: { type: 'string' },
+      Name: { type: 'string', required: true, maxLength: 1024 },
+      Comment: { type: 'string', maxLength: 1024 },
       Mode: { type: 'enum', allowedValues: ['Enable', 'Disable', 'TestWithNotifications', 'TestWithoutNotifications'] },
       ExchangeLocation: { type: 'string[]' },
       SharePointLocation: { type: 'string[]' },
@@ -267,14 +276,16 @@ export const CMDLET_REGISTRY: Record<string, CmdletDef> = {
   },
   'Set-SLDlpPolicy': {
     confirm: true,
+    guiConfirm: true,
     params: {
       Identity: { type: 'string', required: true },
-      Comment: { type: 'string' },
+      Comment: { type: 'string', maxLength: 1024 },
       Mode: { type: 'enum', allowedValues: ['Enable', 'Disable', 'TestWithNotifications', 'TestWithoutNotifications'] },
     },
   },
   'Remove-SLDlpPolicy': {
     confirm: true,
+    guiConfirm: true,
     params: {
       Identity: { type: 'string', required: true },
     },
@@ -289,9 +300,9 @@ export const CMDLET_REGISTRY: Record<string, CmdletDef> = {
   'New-SLDlpRule': {
     confirm: true,
     params: {
-      Name: { type: 'string', required: true },
+      Name: { type: 'string', required: true, maxLength: 1024 },
       Policy: { type: 'string', required: true },
-      Comment: { type: 'string' },
+      Comment: { type: 'string', maxLength: 1024 },
       BlockAccess: { type: 'boolean' },
       NotifyUser: { type: 'string[]' },
       GenerateAlert: { type: 'string[]' },
@@ -301,7 +312,7 @@ export const CMDLET_REGISTRY: Record<string, CmdletDef> = {
     confirm: true,
     params: {
       Identity: { type: 'string', required: true },
-      Comment: { type: 'string' },
+      Comment: { type: 'string', maxLength: 1024 },
       BlockAccess: { type: 'boolean' },
     },
   },
@@ -328,8 +339,8 @@ export const CMDLET_REGISTRY: Record<string, CmdletDef> = {
   'New-SLRetentionPolicy': {
     confirm: true,
     params: {
-      Name: { type: 'string', required: true },
-      Comment: { type: 'string' },
+      Name: { type: 'string', required: true, maxLength: 1024 },
+      Comment: { type: 'string', maxLength: 1024 },
       Enabled: { type: 'boolean' },
       ExchangeLocation: { type: 'string[]' },
       SharePointLocation: { type: 'string[]' },
@@ -341,12 +352,13 @@ export const CMDLET_REGISTRY: Record<string, CmdletDef> = {
     confirm: true,
     params: {
       Identity: { type: 'string', required: true },
-      Comment: { type: 'string' },
+      Comment: { type: 'string', maxLength: 1024 },
       Enabled: { type: 'boolean' },
     },
   },
   'Remove-SLRetentionPolicy': {
     confirm: true,
+    guiConfirm: true,
     params: {
       Identity: { type: 'string', required: true },
     },
@@ -361,8 +373,8 @@ export const CMDLET_REGISTRY: Record<string, CmdletDef> = {
   'New-SLRetentionLabel': {
     confirm: true,
     params: {
-      Name: { type: 'string', required: true },
-      Comment: { type: 'string' },
+      Name: { type: 'string', required: true, maxLength: 1024 },
+      Comment: { type: 'string', maxLength: 1024 },
       RetentionDuration: { type: 'number' },
       RetentionAction: { type: 'enum', allowedValues: ['Keep', 'Delete', 'KeepAndDelete'] },
       RetentionType: { type: 'enum', allowedValues: ['CreationAgeInDays', 'ModificationAgeInDays', 'TaggedAgeInDays'] },
@@ -372,12 +384,13 @@ export const CMDLET_REGISTRY: Record<string, CmdletDef> = {
     confirm: true,
     params: {
       Identity: { type: 'string', required: true },
-      Comment: { type: 'string' },
+      Comment: { type: 'string', maxLength: 1024 },
       RetentionDuration: { type: 'number' },
     },
   },
   'Remove-SLRetentionLabel': {
     confirm: true,
+    guiConfirm: true,
     params: {
       Identity: { type: 'string', required: true },
     },
@@ -397,7 +410,7 @@ export const CMDLET_REGISTRY: Record<string, CmdletDef> = {
       ItemId: { type: 'string', required: true },
       LabelId: { type: 'string' },
       LabelName: { type: 'string' },
-      Justification: { type: 'string' },
+      Justification: { type: 'string', maxLength: 1024 },
       DryRun: { type: 'switch' },
     },
   },
@@ -416,7 +429,7 @@ export const CMDLET_REGISTRY: Record<string, CmdletDef> = {
     params: {
       DriveId: { type: 'string', required: true },
       ItemId: { type: 'string', required: true },
-      Justification: { type: 'string' },
+      Justification: { type: 'string', maxLength: 1024 },
       DryRun: { type: 'switch' },
     },
   },
@@ -431,7 +444,7 @@ export const CMDLET_REGISTRY: Record<string, CmdletDef> = {
   },
   'Disconnect-SLFileShare': {
     params: {
-      Path: { type: 'string' },
+      Path: { type: 'path' },
       All: { type: 'switch' },
     },
   },
@@ -461,7 +474,7 @@ export const CMDLET_REGISTRY: Record<string, CmdletDef> = {
       Path: { type: 'path', required: true },
       LabelId: { type: 'string' },
       LabelName: { type: 'string' },
-      Justification: { type: 'string' },
+      Justification: { type: 'string', maxLength: 1024 },
       Owner: { type: 'string' },
       DryRun: { type: 'switch' },
     },
@@ -482,7 +495,7 @@ export const CMDLET_REGISTRY: Record<string, CmdletDef> = {
     confirm: true,
     params: {
       Path: { type: 'path', required: true },
-      Justification: { type: 'string' },
+      Justification: { type: 'string', maxLength: 1024 },
       DryRun: { type: 'switch' },
     },
   },
@@ -554,6 +567,7 @@ export const CMDLET_REGISTRY: Record<string, CmdletDef> = {
   'Get-SLSuperUserStatus': {},
   'Enable-SLSuperUser': {
     confirm: true,
+    guiConfirm: true,
     params: {
       DryRun: { type: 'switch' },
     },

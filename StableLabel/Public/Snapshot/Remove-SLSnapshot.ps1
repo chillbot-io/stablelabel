@@ -2,6 +2,14 @@ function Remove-SLSnapshot {
     <#
     .SYNOPSIS
         Deletes a saved snapshot.
+    .PARAMETER Name
+        The name of the snapshot to delete.
+    .PARAMETER Path
+        Override the snapshot storage directory path.
+    .PARAMETER AsJson
+        Return results as a JSON string.
+    .EXAMPLE
+        Remove-SLSnapshot -Name "2024-01-15_baseline"
     #>
     [CmdletBinding(SupportsShouldProcess, ConfirmImpact = 'High')]
     param(

@@ -207,7 +207,7 @@ describe('SnapshotList', () => {
     render(<SnapshotList {...defaultProps} />);
 
     await waitFor(() => {
-      expect(mockInvoke).toHaveBeenCalledWith('Get-SLSnapshot');
+      expect(mockInvoke).toHaveBeenCalledWith('Get-SLSnapshot', undefined);
     });
   });
 

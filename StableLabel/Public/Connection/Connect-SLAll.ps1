@@ -69,7 +69,17 @@ function Connect-SLAll {
                     })
                 }
                 else {
-                    Write-Verbose "Installing $($mod.Name) (minimum $($mod.MinVersion))..."
+                    # Check if a lower version exists
+                    $existing = Get-Module -ListAvailable -Name $mod.Name |
+                        Sort-Object Version -Descending |
+                        Select-Object -First 1
+
+                    if ($existing) {
+                        Write-Warning "Upgrading $($mod.Name) from v$($existing.Version) to minimum v$($mod.MinVersion)..."
+                    } else {
+                        Write-Warning "Installing $($mod.Name) v$($mod.MinVersion) (not currently installed)..."
+                    }
+
                     try {
                         Install-Module -Name $mod.Name -MinimumVersion $mod.MinVersion `
                             -Scope CurrentUser -Force -AllowClobber -ErrorAction Stop

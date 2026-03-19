@@ -70,7 +70,10 @@ function Connect-SLCompliance {
         }
         catch {
             $script:SLConnection['ComplianceConnected'] = $false
-            throw "Failed to connect to Security & Compliance: $_"
+            throw [System.Management.Automation.RuntimeException]::new(
+                "Failed to connect to Security & Compliance: $_",
+                $_.Exception
+            )
         }
     }
 }

@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import ConnectionDialog from '../../renderer/components/Connection/ConnectionDialog';
@@ -11,6 +11,10 @@ describe('ConnectionDialog', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     localStorage.clear();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
   });
 
   it('renders the title and sign-in button', () => {
@@ -56,7 +60,7 @@ describe('ConnectionDialog', () => {
 
     await user.click(screen.getByRole('button', { name: 'Sign in with Microsoft' }));
 
-    expect(mockInvoke).toHaveBeenCalledWith('Connect-SLAll -UseDeviceCode');
+    expect(mockInvoke).toHaveBeenCalledWith('Connect-SLAll', { UseDeviceCode: true });
   });
 
   it('shows connected state on success', async () => {

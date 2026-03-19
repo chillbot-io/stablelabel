@@ -6,6 +6,18 @@ function New-SLSnapshot {
     .DESCRIPTION
         Creates a point-in-time snapshot of the tenant's Purview configuration.
         Snapshots are stored as JSON files and can be compared or restored later.
+    .PARAMETER Name
+        The name for the new snapshot (used as the file name).
+    .PARAMETER Scope
+        The scope of data to capture: All, Labels, Dlp, or Retention.
+    .PARAMETER Path
+        Override the snapshot storage directory path.
+    .PARAMETER AsJson
+        Return results as a JSON string.
+    .EXAMPLE
+        New-SLSnapshot -Name "2024-01-15_baseline"
+    .EXAMPLE
+        New-SLSnapshot -Name "dlp-only" -Scope Dlp
     #>
     [CmdletBinding()]
     param(
@@ -151,7 +163,18 @@ function New-SLSnapshot {
         # Write to file
         $fileName = "$Name.json"
         $filePath = Join-Path $snapshotDir $fileName
-        $snapshot | ConvertTo-Json -Depth $script:SLConfig.MaxJsonDepth | Out-File -FilePath $filePath -Encoding utf8
+        $tempPath = Join-Path $snapshotDir "$Name.tmp.$([System.IO.Path]::GetRandomFileName())"
+        try {
+            $json = $snapshot | ConvertTo-Json -Depth $script:SLConfig.MaxJsonDepth
+            $json | Out-File -FilePath $tempPath -Encoding utf8 -ErrorAction Stop
+            # Atomic rename — if this fails, the original file is untouched
+            Move-Item -Path $tempPath -Destination $filePath -Force -ErrorAction Stop
+        }
+        catch {
+            # Clean up temp file on failure
+            if (Test-Path $tempPath) { Remove-Item -Path $tempPath -Force -ErrorAction SilentlyContinue }
+            throw
+        }
 
         Write-SLAuditEntry -Action 'New-SLSnapshot' -Target $Name -Detail @{
             Scope = $Scope

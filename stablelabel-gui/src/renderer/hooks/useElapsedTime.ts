@@ -1,5 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 
+const TICK_INTERVAL_MS = 1_000;
+
 export function useElapsedTime(running: boolean): string {
   const [elapsed, setElapsed] = useState(0);
   const startRef = useRef(0);
@@ -15,7 +17,7 @@ export function useElapsedTime(running: boolean): string {
 
     const id = setInterval(() => {
       setElapsed(Math.floor((Date.now() - startRef.current) / 1000));
-    }, 1000);
+    }, TICK_INTERVAL_MS);
 
     return () => clearInterval(id);
   }, [running]);

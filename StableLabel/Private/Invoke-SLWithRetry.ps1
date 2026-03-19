@@ -3,8 +3,9 @@ function Invoke-SLWithRetry {
     .SYNOPSIS
         Executes a script block with exponential backoff retry logic.
     .DESCRIPTION
-        Handles HTTP 429 (throttled), 503/504 (transient), and 423 (locked)
-        errors with automatic retry. Respects Retry-After headers when present.
+        Handles HTTP 408 (timeout), 429 (throttled), 500 (server error),
+        503/504 (transient), and 423 (locked) errors with automatic retry.
+        Respects Retry-After headers when present.
     #>
     [CmdletBinding()]
     param(
@@ -34,14 +35,14 @@ function Invoke-SLWithRetry {
             }
 
             # Extract status code from error message if not in response
-            if (-not $statusCode -and $_.Exception.Message -match '(\d{3})') {
+            if (-not $statusCode -and $_.Exception.Message -match '(?:HTTP|StatusCode|status\s*code|Response status code)\s*:?\s*(\d{3})') {
                 $candidate = [int]$Matches[1]
-                if ($candidate -in 429, 503, 504, 423) {
+                if ($candidate -in 408, 429, 500, 503, 504, 423) {
                     $statusCode = $candidate
                 }
             }
 
-            $retryable = $statusCode -in 429, 503, 504, 423
+            $retryable = $statusCode -in 408, 429, 500, 503, 504, 423
 
             if (-not $retryable -or $attempt -gt $MaxRetries) {
                 throw

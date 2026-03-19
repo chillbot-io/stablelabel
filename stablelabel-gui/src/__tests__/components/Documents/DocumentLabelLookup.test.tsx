@@ -64,7 +64,7 @@ describe('DocumentLabelLookup', () => {
 
     await waitFor(() => {
       expect(mockInvoke).toHaveBeenCalledWith(
-        "Get-SLDocumentLabel -DriveId 'drive-123' -ItemId 'item-456'"
+        'Get-SLDocumentLabel', { DriveId: 'drive-123', ItemId: 'item-456' }
       );
     });
   });
@@ -83,7 +83,7 @@ describe('DocumentLabelLookup', () => {
 
     await waitFor(() => {
       expect(mockInvoke).toHaveBeenCalledWith(
-        "Get-SLDocumentLabel -DriveId 'drive''id' -ItemId 'item''id'"
+        'Get-SLDocumentLabel', { DriveId: "drive'id", ItemId: "item'id" }
       );
     });
   });

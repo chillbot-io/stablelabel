@@ -53,7 +53,7 @@ describe('SensitiveInfoTypeList', () => {
     });
     expect(screen.getByText('Credit Card Number')).toBeInTheDocument();
     expect(screen.getByText('Custom Employee ID')).toBeInTheDocument();
-    expect(mockInvoke).toHaveBeenCalledWith('Get-SLSensitiveInfoType');
+    expect(mockInvoke).toHaveBeenCalledWith('Get-SLSensitiveInfoType', undefined);
   });
 
   it('displays count of types', async () => {
@@ -201,7 +201,7 @@ describe('SensitiveInfoTypeList', () => {
     await waitFor(() => {
       expect(screen.getByText('Custom Only')).toBeInTheDocument();
     });
-    expect(mockInvoke).toHaveBeenCalledWith('Get-SLSensitiveInfoType -CustomOnly');
+    expect(mockInvoke).toHaveBeenCalledWith('Get-SLSensitiveInfoType -CustomOnly', undefined);
   });
 
   it('toggles back from custom only to all types', async () => {
@@ -225,7 +225,7 @@ describe('SensitiveInfoTypeList', () => {
     await waitFor(() => {
       expect(screen.getByText('All Types')).toBeInTheDocument();
     });
-    expect(mockInvoke).toHaveBeenCalledWith('Get-SLSensitiveInfoType');
+    expect(mockInvoke).toHaveBeenCalledWith('Get-SLSensitiveInfoType', undefined);
   });
 
   it('shows empty message when API returns empty array', async () => {

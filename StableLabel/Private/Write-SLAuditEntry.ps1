@@ -33,5 +33,22 @@ function Write-SLAuditEntry {
     }
 
     $json = $record | ConvertTo-Json -Depth $script:SLConfig.MaxJsonDepth -Compress
-    $json | Out-File -FilePath $script:SLConfig.AuditLogPath -Append -Encoding utf8
+    $auditPath = $script:SLConfig.AuditLogPath
+    $isNewFile = -not (Test-Path $auditPath)
+    $json | Out-File -FilePath $auditPath -Append -Encoding utf8
+
+    # Set restrictive permissions when the audit log is first created
+    if ($isNewFile -and (Test-Path $auditPath)) {
+        if ($IsWindows) {
+            $acl = Get-Acl -Path $auditPath
+            $acl.SetAccessRuleProtection($true, $false)
+            $rule = New-Object System.Security.AccessControl.FileSystemAccessRule(
+                [System.Security.Principal.WindowsIdentity]::GetCurrent().Name,
+                'FullControl', 'Allow')
+            $acl.AddAccessRule($rule)
+            Set-Acl -Path $auditPath -AclObject $acl -ErrorAction SilentlyContinue
+        } else {
+            chmod 600 $auditPath 2>$null
+        }
+    }
 }

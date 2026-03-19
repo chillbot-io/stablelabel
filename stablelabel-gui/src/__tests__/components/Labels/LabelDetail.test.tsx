@@ -58,7 +58,7 @@ describe('LabelDetail', () => {
 
     // Verify commands
     expect(mockInvoke).toHaveBeenCalledWith('Get-SLLabel', expect.objectContaining({ Id: 'label-guid-123' }));
-    expect(mockInvoke).toHaveBeenCalledWith('Get-SLLabelPolicy');
+    expect(mockInvoke).toHaveBeenCalledWith('Get-SLLabelPolicy', undefined);
   });
 
   it('shows inactive badge for inactive labels', async () => {

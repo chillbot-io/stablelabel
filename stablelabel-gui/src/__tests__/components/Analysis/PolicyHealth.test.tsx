@@ -47,7 +47,7 @@ describe('PolicyHealth', () => {
     render(<PolicyHealth />);
 
     await user.click(screen.getByText('Check Health'));
-    expect(mockInvoke).toHaveBeenCalledWith("Get-SLPolicyHealth -PolicyType 'All'");
+    expect(mockInvoke).toHaveBeenCalledWith('Get-SLPolicyHealth', { PolicyType: 'All' });
   });
 
   it('calls invoke with selected policy type', async () => {
@@ -59,7 +59,7 @@ describe('PolicyHealth', () => {
     await user.selectOptions(select, 'DLP');
     await user.click(screen.getByText('Check Health'));
 
-    expect(mockInvoke).toHaveBeenCalledWith("Get-SLPolicyHealth -PolicyType 'DLP'");
+    expect(mockInvoke).toHaveBeenCalledWith('Get-SLPolicyHealth', { PolicyType: 'DLP' });
   });
 
   it('displays summary counts', async () => {

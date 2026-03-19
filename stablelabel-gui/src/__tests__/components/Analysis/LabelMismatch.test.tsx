@@ -56,7 +56,7 @@ describe('LabelMismatch', () => {
     render(<LabelMismatch />);
 
     await user.click(screen.getByText('Check Mismatches'));
-    expect(mockInvoke).toHaveBeenCalledWith('Get-SLLabelMismatch');
+    expect(mockInvoke).toHaveBeenCalledWith('Get-SLLabelMismatch', undefined);
   });
 
   it('shows all-matched message when no mismatches', async () => {

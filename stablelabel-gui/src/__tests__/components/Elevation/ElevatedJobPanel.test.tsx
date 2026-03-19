@@ -104,9 +104,9 @@ describe('ElevatedJobPanel', () => {
           UserPrincipalName: 'admin@contoso.com',
         }));
       });
-      // Should NOT contain DryRun
+      // DryRun should not be truthy
       const callArgs = mockInvoke.mock.calls[0];
-      expect(callArgs[1]).not.toHaveProperty('DryRun');
+      expect(callArgs[1].DryRun).toBeUndefined();
       await waitFor(() => {
         expect(screen.getByText('Elevated job started successfully.')).toBeInTheDocument();
       });
@@ -346,7 +346,7 @@ describe('ElevatedJobPanel', () => {
           Force: true,
         }));
         const callArgs = mockInvoke.mock.calls[0];
-        expect(callArgs[1]).not.toHaveProperty('ReconnectOriginal');
+        expect(callArgs[1].ReconnectOriginal).toBeUndefined();
       });
     });
 

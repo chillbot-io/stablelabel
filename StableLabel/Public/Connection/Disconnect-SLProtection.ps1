@@ -31,13 +31,16 @@ function Disconnect-SLProtection {
             }
 
             if ($AsJson) {
-                return $result | ConvertTo-Json -Depth 20
+                return $result | ConvertTo-Json -Depth $script:SLConfig.MaxJsonDepth
             }
 
             return $result
         }
         catch {
-            throw "Failed to disconnect from AIP Service: $_"
+            throw [System.Management.Automation.RuntimeException]::new(
+                "Failed to disconnect from AIP Service: $_",
+                $_.Exception
+            )
         }
     }
 }

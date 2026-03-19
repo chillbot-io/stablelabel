@@ -163,7 +163,7 @@ describe('DeploymentReadiness', () => {
 
     await user.click(screen.getByText('Run Readiness Check'));
 
-    expect(mockInvoke).toHaveBeenCalledWith('Test-SLDeploymentReadiness');
+    expect(mockInvoke).toHaveBeenCalledWith('Test-SLDeploymentReadiness', undefined);
   });
 
   it('does not display result before running', () => {

@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, within, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import LabelsPage from '../../renderer/components/Labels/LabelsPage';
@@ -8,6 +8,10 @@ describe('LabelsPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockInvoke.mockResolvedValue({ success: true, data: [] });
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
   });
 
   it('renders browser section tabs', () => {

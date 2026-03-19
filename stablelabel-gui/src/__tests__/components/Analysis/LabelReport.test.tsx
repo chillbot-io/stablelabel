@@ -58,7 +58,7 @@ describe('LabelReport', () => {
     render(<LabelReport />);
 
     await user.click(screen.getByText('Generate Report'));
-    expect(mockInvoke).toHaveBeenCalledWith('Get-SLLabelReport');
+    expect(mockInvoke).toHaveBeenCalledWith('Get-SLLabelReport', undefined);
   });
 
   it('displays stat cards', async () => {

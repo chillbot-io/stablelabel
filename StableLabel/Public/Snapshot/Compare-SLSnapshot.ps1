@@ -5,6 +5,20 @@ function Compare-SLSnapshot {
     .DESCRIPTION
         Produces a structured diff showing Added, Removed, and Modified items
         per category with property-level changes for Modified items.
+    .PARAMETER Name
+        The name of the reference snapshot to compare from.
+    .PARAMETER Live
+        Compare the snapshot against the current live tenant state.
+    .PARAMETER CompareTo
+        The name of a second snapshot to compare against.
+    .PARAMETER Path
+        Override the snapshot storage directory path.
+    .PARAMETER AsJson
+        Return results as a JSON string.
+    .EXAMPLE
+        Compare-SLSnapshot -Name "2024-01-15_baseline" -Live
+    .EXAMPLE
+        Compare-SLSnapshot -Name "2024-01-15_baseline" -CompareTo "2024-02-01_post-change"
     #>
     [CmdletBinding()]
     param(

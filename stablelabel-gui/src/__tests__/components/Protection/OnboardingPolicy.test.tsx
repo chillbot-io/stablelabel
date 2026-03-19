@@ -205,7 +205,7 @@ describe('OnboardingPolicy', () => {
     await user.click(screen.getByText('Save Changes'));
     await waitFor(() => {
       expect(mockInvoke).toHaveBeenCalledWith('Set-SLOnboardingPolicy', expect.objectContaining({ UseRmsUserLicense: true, Scope: 'SecurityGroup' }));
-      expect(mockInvoke.mock.calls.find(c => c[0] === 'Set-SLOnboardingPolicy')![1]).not.toHaveProperty('SecurityGroupObjectId');
+      expect(mockInvoke.mock.calls.find(c => c[0] === 'Set-SLOnboardingPolicy')![1].SecurityGroupObjectId).toBeUndefined();
     });
   });
 
@@ -344,7 +344,7 @@ describe('OnboardingPolicy', () => {
     mockInvoke.mockResolvedValue({ success: true, data: mockPolicyAll });
     render(<OnboardingPolicy />);
     await waitFor(() => {
-      expect(mockInvoke).toHaveBeenCalledWith('Get-SLOnboardingPolicy');
+      expect(mockInvoke).toHaveBeenCalledWith('Get-SLOnboardingPolicy', undefined);
     });
   });
 

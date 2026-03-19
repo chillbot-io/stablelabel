@@ -661,7 +661,7 @@ describe('ProtectionTemplates', () => {
     mockInvoke.mockResolvedValue({ success: true, data: [] });
     render(<ProtectionTemplates />);
     await waitFor(() => {
-      expect(mockInvoke).toHaveBeenCalledWith('Get-SLProtectionTemplate');
+      expect(mockInvoke).toHaveBeenCalledWith('Get-SLProtectionTemplate', undefined);
     });
   });
 
