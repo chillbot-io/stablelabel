@@ -39,6 +39,22 @@ function Grant-SLSiteAdmin {
     }
 
     process {
+        # Validate SharePoint URL format
+        try {
+            $siteUri = [System.Uri]$SiteUrl
+        } catch {
+            throw "Invalid URL format: '$SiteUrl'"
+        }
+        if ($siteUri.Scheme -ne 'https') {
+            throw "Site URL must use HTTPS: '$SiteUrl'"
+        }
+        if ($siteUri.Host -notmatch '\.sharepoint\.(com|us|de|cn)$') {
+            throw "Site URL must be a SharePoint site (*.sharepoint.com): '$SiteUrl'"
+        }
+        if ([string]::IsNullOrWhiteSpace($siteUri.AbsolutePath) -or $siteUri.AbsolutePath -eq '/') {
+            throw "Site URL must include a path component: '$SiteUrl'"
+        }
+
         $target = "site '$SiteUrl', user '$UserPrincipalName'"
         $isDryRun = Test-SLDryRun -DryRun:$DryRun
 

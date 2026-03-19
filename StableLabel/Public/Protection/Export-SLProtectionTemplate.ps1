@@ -40,6 +40,11 @@ function Export-SLProtectionTemplate {
         try {
             Write-Verbose "Exporting protection template '$TemplateId' to '$Path'."
 
+            if (Test-Path $Path) {
+                Write-Warning "File already exists at '$Path'."
+                throw "File already exists at '$Path'. Remove it first or specify a different path to avoid accidental data loss."
+            }
+
             $result = Invoke-SLProtectionCommand -OperationName "Export-AipServiceTemplate '$TemplateId'" -ScriptBlock {
                 Export-AipServiceTemplate -TemplateId $TemplateId -Path $Path
             }

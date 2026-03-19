@@ -128,6 +128,18 @@ function Set-SLFileShareLabelBulk {
                 -Status "Processing file $($i + 1) of ${totalFiles}: $($file.Name)" `
                 -PercentComplete $percentComplete
 
+            # Guard against TOCTOU race: file may have been deleted/moved since enumeration
+            if (-not (Test-Path -LiteralPath $file.FullName)) {
+                $skippedCount++
+                $results.Add([PSCustomObject]@{
+                    Path   = $file.FullName
+                    Status = 'Skipped'
+                    Reason = 'File no longer exists'
+                })
+                Write-Verbose "Skipping '$($file.FullName)': file no longer exists (deleted or moved after enumeration)."
+                continue
+            }
+
             try {
                 $splat = @{
                     Path    = $file.FullName
@@ -145,6 +157,17 @@ function Set-SLFileShareLabelBulk {
                     Status = if ($isDryRun) { 'DryRun' } else { 'Success' }
                     Error  = $null
                 })
+            }
+            catch [System.IO.FileNotFoundException], [System.IO.DirectoryNotFoundException] {
+                # File disappeared between Test-Path and Set-SLFileShareLabel (narrow TOCTOU window)
+                $skippedCount++
+
+                $results.Add([PSCustomObject]@{
+                    Path   = $file.FullName
+                    Status = 'Skipped'
+                    Reason = 'File no longer exists'
+                })
+                Write-Verbose "Skipping '$($file.FullName)': file was removed during labeling."
             }
             catch {
                 $failedCount++

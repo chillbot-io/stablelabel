@@ -34,8 +34,21 @@ function Import-SLProtectionTemplate {
     }
 
     process {
-        if (-not (Test-Path -Path $Path)) {
-            throw "Template file not found: '$Path'. Verify the file exists and try again."
+        # Validate file before import
+        if (-not (Test-Path $Path)) {
+            throw "Template file not found: '$Path'"
+        }
+        $fileInfo = Get-Item -Path $Path -ErrorAction Stop
+        if ($fileInfo.Extension -notin '.xml', '.XML') {
+            throw "Template file must be an XML file. Got: '$($fileInfo.Extension)'"
+        }
+        if ($fileInfo.Length -gt 10MB) {
+            throw "Template file is unusually large ($([math]::Round($fileInfo.Length / 1MB, 1)) MB). Maximum allowed: 10 MB."
+        }
+        try {
+            [xml]$null = Get-Content -Path $Path -Raw -ErrorAction Stop
+        } catch {
+            throw "Template file is not valid XML: $($_.Exception.Message)"
         }
 
         $isDryRun = Test-SLDryRun -DryRun:$DryRun
