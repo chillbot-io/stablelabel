@@ -427,3 +427,131 @@ Describe 'Test-SLDryRun' {
         $result | Should -BeFalse
     }
 }
+
+# =============================================================================
+# Assert-SLAipClient
+# =============================================================================
+Describe 'Assert-SLAipClient' {
+    BeforeEach {
+        $script:SLAipClientType = $null
+    }
+
+    It 'Throws on non-Windows platforms' -Skip:$IsWindows {
+        { Assert-SLAipClient } | Should -Throw '*requires Windows*'
+    }
+
+    It 'Sets client type to UnifiedLabeling when AIP module available' -Skip:(-not $IsWindows) {
+        Mock Get-Module {
+            [PSCustomObject]@{ Version = [version]'2.16.0'; Name = 'AzureInformationProtection' }
+        } -ParameterFilter { $ListAvailable -eq $true }
+        Mock Get-Module { $null } -ParameterFilter { $ListAvailable -ne $true }
+        Mock Import-Module { }
+
+        Assert-SLAipClient
+        $script:SLAipClientType | Should -Be 'UnifiedLabeling'
+    }
+
+    It 'Imports the module if not already loaded' -Skip:(-not $IsWindows) {
+        Mock Get-Module {
+            [PSCustomObject]@{ Version = [version]'2.16.0'; Name = 'AzureInformationProtection' }
+        } -ParameterFilter { $ListAvailable -eq $true }
+        Mock Get-Module { $null } -ParameterFilter { $ListAvailable -ne $true }
+        Mock Import-Module { } -Verifiable
+
+        Assert-SLAipClient
+        Should -InvokeVerifiable
+    }
+
+    It 'Skips import when module already loaded' -Skip:(-not $IsWindows) {
+        $loaded = [PSCustomObject]@{ Version = [version]'2.16.0'; Name = 'AzureInformationProtection' }
+        Mock Get-Module { $loaded } -ParameterFilter { $ListAvailable -eq $true }
+        Mock Get-Module { $loaded } -ParameterFilter { $ListAvailable -ne $true }
+        Mock Import-Module { }
+
+        Assert-SLAipClient
+        Should -Not -Invoke Import-Module
+    }
+
+    It 'Falls back to Legacy when Set-AIPFileLabel command exists' -Skip:(-not $IsWindows) {
+        Mock Get-Module { $null } -ParameterFilter { $ListAvailable -eq $true }
+        Mock Get-Command { [PSCustomObject]@{ Name = 'Set-AIPFileLabel' } } -ParameterFilter { $Name -eq 'Set-AIPFileLabel' }
+
+        Assert-SLAipClient
+        $script:SLAipClientType | Should -Be 'Legacy'
+    }
+
+    It 'Throws when neither module nor command available' -Skip:(-not $IsWindows) {
+        Mock Get-Module { $null }
+        Mock Get-Command { $null } -ParameterFilter { $Name -eq 'Set-AIPFileLabel' }
+
+        { Assert-SLAipClient } | Should -Throw '*not found*'
+    }
+
+    It 'Error message includes install URL' -Skip:(-not $IsWindows) {
+        Mock Get-Module { $null }
+        Mock Get-Command { $null } -ParameterFilter { $Name -eq 'Set-AIPFileLabel' }
+
+        $err = $null
+        try { Assert-SLAipClient } catch { $err = $_.Exception.Message }
+        $err | Should -Match 'learn.microsoft.com'
+        $err | Should -Match 'Install-Module'
+    }
+}
+
+# =============================================================================
+# Format-SLDryRunResult
+# =============================================================================
+Describe 'Format-SLDryRunResult' {
+    It 'Adds DryRun property to result' {
+        $obj = [PSCustomObject]@{ Name = 'TestPolicy'; Status = 'Active' }
+        $result = Format-SLDryRunResult -Result $obj
+        $result.DryRun | Should -BeTrue
+    }
+
+    It 'Preserves original properties' {
+        $obj = [PSCustomObject]@{ Name = 'TestPolicy'; Status = 'Active' }
+        $result = Format-SLDryRunResult -Result $obj
+        $result.Name | Should -Be 'TestPolicy'
+        $result.Status | Should -Be 'Active'
+    }
+
+    It 'Overwrites existing DryRun property with true' {
+        $obj = [PSCustomObject]@{ Name = 'TestPolicy'; DryRun = $false }
+        $result = Format-SLDryRunResult -Result $obj
+        $result.DryRun | Should -BeTrue
+    }
+
+    It 'Returns PSCustomObject by default (not JSON)' {
+        $obj = [PSCustomObject]@{ Name = 'TestPolicy' }
+        $result = Format-SLDryRunResult -Result $obj
+        $result | Should -BeOfType [PSCustomObject]
+    }
+
+    It 'Returns JSON string when -AsJson is specified' {
+        $obj = [PSCustomObject]@{ Name = 'TestPolicy' }
+        $result = Format-SLDryRunResult -Result $obj -AsJson
+        $result | Should -BeOfType [string]
+        $parsed = $result | ConvertFrom-Json
+        $parsed.Name | Should -Be 'TestPolicy'
+        $parsed.DryRun | Should -BeTrue
+    }
+
+    It 'JSON output respects MaxJsonDepth from config' {
+        $nested = [PSCustomObject]@{
+            Level1 = [PSCustomObject]@{
+                Level2 = [PSCustomObject]@{
+                    Value = 'deep'
+                }
+            }
+        }
+        $result = Format-SLDryRunResult -Result $nested -AsJson
+        $parsed = $result | ConvertFrom-Json
+        $parsed.Level1.Level2.Value | Should -Be 'deep'
+    }
+
+    It 'Returns the same object reference (mutates in place)' {
+        $obj = [PSCustomObject]@{ Name = 'TestPolicy' }
+        $result = Format-SLDryRunResult -Result $obj
+        [object]::ReferenceEquals($obj, $result) | Should -BeTrue
+    }
+}
