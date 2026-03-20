@@ -217,11 +217,33 @@ export class PowerShellBridge {
     // writes the "To sign in…" message but it never reaches Node because the
     // pipe is block-buffered when stdout is not a terminal.
     //
-    // NOTE: [Console]::Out is a SyncTextWriter (from TextWriter.Synchronized()),
-    // which does NOT expose AutoFlush.  Setting it silently fails.  Instead we
-    // create explicit StreamWriter instances with AutoFlush = $true and replace
-    // the console writers via Console.SetOut / Console.SetError.
+    // Two-pronged approach:
+    //
+    // 1. Use reflection to enable AutoFlush on the ORIGINAL Console.Out /
+    //    Console.Error inner StreamWriters.  PowerShell's ConsoleHost caches
+    //    references to these writers at startup.  Console.SetOut() alone does
+    //    NOT affect the cached references, so host-level writes (like the
+    //    device-code warning from Connect-MgGraph) go through the originals
+    //    and stay block-buffered.  By reaching into the SyncTextWriter's
+    //    private `_out` field and flipping AutoFlush on the underlying
+    //    StreamWriter, all writes — even through cached references — flush
+    //    immediately.
+    //
+    // 2. Replace Console.Out / Console.Error with new StreamWriter instances
+    //    that have AutoFlush = $true (the previous approach, kept as a
+    //    belt-and-suspenders measure for any code path that reads the
+    //    Console.Out / Console.Error properties directly).
     await this.sendRaw(
+      // ── Reflection: fix the ORIGINAL writers ──
+      '$_bf = [System.Reflection.BindingFlags]"NonPublic,Instance"; ' +
+      'foreach ($_w in @([Console]::Out, [Console]::Error)) { ' +
+      '  $_f = $_w.GetType().GetField("_out", $_bf); ' +
+      '  if ($_f) { ' +
+      '    $_inner = $_f.GetValue($_w); ' +
+      '    if ($_inner -is [System.IO.StreamWriter]) { $_inner.AutoFlush = $true } ' +
+      '  } ' +
+      '}; ' +
+      // ── Replace writers (belt-and-suspenders) ──
       '[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false); ' +
       '$_sw = [System.IO.StreamWriter]::new([Console]::OpenStandardOutput(), [Console]::OutputEncoding); ' +
       '$_sw.AutoFlush = $true; ' +
