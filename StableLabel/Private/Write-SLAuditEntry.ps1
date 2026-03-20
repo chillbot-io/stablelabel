@@ -21,8 +21,8 @@ function Write-SLAuditEntry {
     $record = [ordered]@{
         timestamp = (Get-Date).ToUniversalTime().ToString('o')
         action    = $Action
-        user      = $script:SLConnection.UserPrincipalName
-        tenantId  = $script:SLConnection.TenantId
+        user      = ($script:SLConnection.UserPrincipalName ?? '(unknown)')
+        tenantId  = ($script:SLConnection.TenantId ?? '(unknown)')
         target    = $Target
         detail    = $Detail
         result    = $Result

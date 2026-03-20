@@ -10,13 +10,17 @@ function Connect-SLCompliance {
         UserPrincipalName is optional. When provided, it pre-populates the
         sign-in dialog. When omitted (e.g. device-code flow), the user is
         prompted interactively and the UPN is not pre-filled.
+
+        For device-code authentication, Connect-ExchangeOnline is used with
+        the Security & Compliance endpoint URI, because Connect-IPPSSession
+        does not support the -Device parameter.
     .PARAMETER UserPrincipalName
         The UPN of the account to authenticate with. Optional — when provided
-        it pre-populates the sign-in dialog in Connect-IPPSSession.
+        it pre-populates the sign-in dialog.
     .PARAMETER UseDeviceCode
         Use the device-code authentication flow instead of interactive browser
-        sign-in. Maps to Connect-IPPSSession -Device. Required when running
-        from the StableLabel GUI or other non-interactive environments.
+        sign-in. Required when running from the StableLabel GUI or other
+        non-interactive environments.
     .PARAMETER AsJson
         Return the connection result as a JSON string instead of a PSCustomObject.
     .EXAMPLE
@@ -44,16 +48,31 @@ function Connect-SLCompliance {
             $displayUpn = if ($UserPrincipalName) { $UserPrincipalName } else { '(interactive)' }
             Write-Verbose "Connecting to Security & Compliance as $displayUpn."
 
-            $ippsParams = @{
-                ErrorAction = 'Stop'
-            }
-            if ($UserPrincipalName) {
-                $ippsParams['UserPrincipalName'] = $UserPrincipalName
-            }
             if ($UseDeviceCode) {
-                $ippsParams['Device'] = $true
+                # Connect-IPPSSession does not support -Device.
+                # Use Connect-ExchangeOnline with the S&C endpoint instead.
+                $exoParams = @{
+                    Device                          = $true
+                    ConnectionUri                   = 'https://ps.compliance.protection.outlook.com/powershell-liveid/'
+                    AzureADAuthorizationEndpointUri = 'https://login.microsoftonline.com/organizations'
+                    ShowBanner                      = $false
+                    ErrorAction                     = 'Stop'
+                }
+                if ($UserPrincipalName) {
+                    $exoParams['UserPrincipalName'] = $UserPrincipalName
+                }
+                Connect-ExchangeOnline @exoParams
             }
-            Connect-IPPSSession @ippsParams
+            else {
+                # Standard interactive flow via Connect-IPPSSession
+                $ippsParams = @{
+                    ErrorAction = 'Stop'
+                }
+                if ($UserPrincipalName) {
+                    $ippsParams['UserPrincipalName'] = $UserPrincipalName
+                }
+                Connect-IPPSSession @ippsParams
+            }
 
             $now = [datetime]::UtcNow
 

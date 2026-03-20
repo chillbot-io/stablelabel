@@ -72,7 +72,7 @@ function Enable-SLSuperUser {
             $state['SuperUser'] = @{
                 Enabled   = $true
                 EnabledAt = [datetime]::UtcNow.ToString('o')
-                EnabledBy = $script:SLConnection.TenantId
+                EnabledBy = ($script:SLConnection.UserPrincipalName ?? '(unknown)')
             }
 
             $state | ConvertTo-Json -Depth $script:SLConfig.MaxJsonDepth |

@@ -76,8 +76,9 @@ export class PowerShellBridge {
 
     // Try multiple patterns — MSAL message format varies across SDK versions.
     // Use global flag + matchAll so we can skip stale codes and find new ones.
-    // Connect-SLAll produces TWO device codes (Graph then Compliance) in the
-    // same accumulated buffer; we must skip the already-fired one.
+    // Connect-SLAll now connects Compliance first (one device code). A second
+    // code may appear later if a Graph operation triggers lazy auto-connect.
+    // Deduplication ensures we only fire each unique code once.
     const patterns = [
       // Broad pattern: any mention of a Microsoft URL followed by a device code
       /(?:open(?:\s+the\s+page)?|visit|go\s+to|browse\s+to|navigate\s+to)\s+(https:\/\/\S+)\s+and\s+(?:enter|use|input|type)\s+(?:the\s+)?code:?\s+([A-Z0-9]{5,15})/gi,

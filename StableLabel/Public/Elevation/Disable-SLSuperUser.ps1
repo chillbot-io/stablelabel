@@ -72,7 +72,7 @@ function Disable-SLSuperUser {
             $state['SuperUser'] = @{
                 Enabled    = $false
                 DisabledAt = [datetime]::UtcNow.ToString('o')
-                DisabledBy = $script:SLConnection.TenantId
+                DisabledBy = ($script:SLConnection.UserPrincipalName ?? '(unknown)')
             }
 
             $state | ConvertTo-Json -Depth $script:SLConfig.MaxJsonDepth |
