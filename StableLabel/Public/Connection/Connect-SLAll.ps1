@@ -215,10 +215,17 @@ function Connect-SLAll {
             }
             $script:SLConnection['UseDeviceCode'] = [bool]$UseDeviceCode
 
+            # Check pre-warm status for user feedback
+            $preWarmStatus = 'not started'
+            if ($script:SLGraphPreWarmJob) {
+                $preWarmStatus = $script:SLGraphPreWarmJob.State.ToString().ToLower()
+            }
+
             $steps.Add([PSCustomObject]@{
-                Step   = 'Graph'
-                Status = 'Deferred'
-                Note   = 'Graph will connect lazily on first use. Pass -IncludeGraph to connect now.'
+                Step         = 'Graph'
+                Status       = 'Deferred'
+                PreWarmState = $preWarmStatus
+                Note         = 'Graph module is pre-loading in the background. It will auto-connect on first use.'
             })
         }
 
