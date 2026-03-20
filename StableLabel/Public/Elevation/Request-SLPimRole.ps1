@@ -81,13 +81,9 @@ function Request-SLPimRole {
         try {
             Write-Verbose "Activating PIM role '$RoleDefinitionId' for $DurationHours hour(s)."
 
-            # Get the current user's principal ID from the connection
-            $principalId = $script:SLConnection.UserId
-            if (-not $principalId) {
-                # Fallback: query Graph for the signed-in user
-                $me = Invoke-SLGraphRequest -Method GET -Uri '/me'
-                $principalId = $me.id
-            }
+            # Get the current user's principal ID from Graph
+            $me = Invoke-SLGraphRequest -Method GET -Uri '/me'
+            $principalId = $me.id
 
             $body = @{
                 action           = 'selfActivate'
