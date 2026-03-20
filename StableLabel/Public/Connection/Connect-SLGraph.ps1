@@ -60,24 +60,74 @@ function Connect-SLGraph {
         try {
             Write-Verbose "Connecting to Microsoft Graph with $($requiredScopes.Count) scopes."
 
-            $connectParams = @{
-                Scopes       = $requiredScopes
-                NoWelcome    = $true
-                ContextScope = 'Process'
-            }
-
-            # When no TenantId is supplied, default to the "organizations" endpoint
-            # so that multi-tenant work / school accounts are supported and the
-            # signed-in user's tenant is derived automatically.  This avoids the
-            # "common" endpoint which also permits personal Microsoft accounts that
-            # cannot access admin APIs.
-            $connectParams['TenantId'] = if ($TenantId) { $TenantId } else { 'organizations' }
+            $effectiveTenant = if ($TenantId) { $TenantId } else { 'organizations' }
 
             if ($UseDeviceCode) {
-                $connectParams['UseDeviceCode'] = $true
-            }
+                # ── MSAL direct device-code flow ──────────────────────────────
+                # Connect-MgGraph -UseDeviceCode writes the device-code prompt
+                # through the PowerShell host UI, which block-buffers stdout
+                # when it is a pipe (e.g. the StableLabel Electron GUI).  No
+                # amount of Console.SetOut / AutoFlush / reflection fixes this
+                # because ConsoleHost may cache the original writers or use
+                # internal write paths that bypass Console entirely.
+                #
+                # Instead we call MSAL directly, control the device-code
+                # callback ourselves, and write the prompt to the *raw* stdout
+                # stream (OS file-descriptor level — zero .NET buffering).
+                # Then we pass the token to Connect-MgGraph -AccessToken.
+                # ──────────────────────────────────────────────────────────────
 
-            Connect-MgGraph @connectParams -ErrorAction Stop
+                # Load MSAL from the Graph module's bundled dependencies
+                $graphMod = Get-Module Microsoft.Graph.Authentication -ListAvailable |
+                    Sort-Object Version -Descending | Select-Object -First 1
+                if (-not $graphMod) {
+                    throw 'Microsoft.Graph.Authentication module not found. Run Install-Module Microsoft.Graph.Authentication.'
+                }
+                $msalDll = Get-ChildItem -Path $graphMod.ModuleBase -Recurse -Filter 'Microsoft.Identity.Client.dll' |
+                    Select-Object -First 1
+                if (-not $msalDll) {
+                    throw 'MSAL library (Microsoft.Identity.Client.dll) not found inside Microsoft.Graph.Authentication module.'
+                }
+                Add-Type -Path $msalDll.FullName -ErrorAction SilentlyContinue
+
+                # Microsoft Graph Command Line Tools — well-known public client ID
+                $clientId = '14d82eec-204b-4c2f-b7e8-296a70dab67e'
+                $authority = "https://login.microsoftonline.com/$effectiveTenant"
+
+                $appBuilder = [Microsoft.Identity.Client.PublicClientApplicationBuilder]::Create($clientId)
+                $appBuilder = $appBuilder.WithAuthority($authority)
+                $appBuilder = $appBuilder.WithDefaultRedirectUri()
+                $msalApp    = $appBuilder.Build()
+
+                # Device-code callback: write the prompt to the raw stdout
+                # stream so the Electron bridge can detect it immediately.
+                $deviceCodeCallback = [System.Func[Microsoft.Identity.Client.DeviceCodeResult, System.Threading.Tasks.Task]]{
+                    param($dcr)
+                    $raw = [Console]::OpenStandardOutput()
+                    $bytes = [System.Text.Encoding]::UTF8.GetBytes($dcr.Message + [System.Environment]::NewLine)
+                    $raw.Write($bytes, 0, $bytes.Length)
+                    $raw.Flush()
+                    return [System.Threading.Tasks.Task]::CompletedTask
+                }
+
+                Write-Verbose 'Starting MSAL device-code flow...'
+                $tokenResult = $msalApp.AcquireTokenWithDeviceCode($requiredScopes, $deviceCodeCallback).
+                    ExecuteAsync().GetAwaiter().GetResult()
+
+                # Feed the token to Connect-MgGraph so the rest of the SDK
+                # (Get-MgContext, etc.) works normally.
+                $secureToken = $tokenResult.AccessToken | ConvertTo-SecureString -AsPlainText -Force
+                Connect-MgGraph -AccessToken $secureToken -NoWelcome -ErrorAction Stop
+            }
+            else {
+                $connectParams = @{
+                    Scopes       = $requiredScopes
+                    NoWelcome    = $true
+                    ContextScope = 'Process'
+                    TenantId     = $effectiveTenant
+                }
+                Connect-MgGraph @connectParams -ErrorAction Stop
+            }
 
             $context = Get-MgContext -ErrorAction Stop
 
