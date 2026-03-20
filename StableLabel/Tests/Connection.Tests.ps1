@@ -268,12 +268,13 @@ Describe 'Disconnect-SLGraph' {
         $script:SLConnection.ConnectedAt.Graph = [datetime]::UtcNow
     }
 
-    It 'Clears UserPrincipalName and sets GraphConnected to false' {
+    It 'Sets GraphConnected to false but preserves UPN' {
         Mock Disconnect-MgGraph { }
 
         $result = Disconnect-SLGraph
         $script:SLConnection.GraphConnected | Should -BeFalse
-        $script:SLConnection.UserPrincipalName | Should -BeNullOrEmpty
+        # UPN is preserved because it may have been set by Compliance
+        $script:SLConnection.UserPrincipalName | Should -Be 'admin@contoso.com'
         $result.Status | Should -Be 'Disconnected'
         $result.Backend | Should -Be 'Graph'
     }
@@ -290,105 +291,103 @@ Describe 'Connect-SLAll' {
             ProtectionConnected = $false
             UserPrincipalName   = $null
             TenantId            = $null
+            UseDeviceCode       = $false
             ConnectedAt         = @{ Graph = $null; Compliance = $null; Protection = $null }
             ComplianceCommandCount = 0
             ComplianceSessionStart = $null
         }
     }
 
-    It 'Returns Connected status when both Graph and Compliance succeed' {
-        Mock Connect-SLGraph {
-            [PSCustomObject]@{ UserPrincipalName = 'admin@contoso.com'; TenantId = 'tenant-123' }
+    It 'Returns Connected status with Compliance only (Graph deferred by default)' {
+        Mock Connect-SLCompliance {
+            [PSCustomObject]@{ UserPrincipalName = 'admin@contoso.com' }
         }
-        Mock Connect-SLCompliance { }
         Mock Get-Module {
             [PSCustomObject]@{ Version = [version]'3.0.0'; Name = $Name }
         } -ParameterFilter { $ListAvailable }
 
-        $result = Connect-SLAll -SkipPrereqs
+        $result = Connect-SLAll -SkipPrereqs -UserPrincipalName 'admin@contoso.com'
         $result.Status | Should -Be 'Connected'
         $result.UserPrincipalName | Should -Be 'admin@contoso.com'
+        $result.GraphConnected | Should -BeFalse
+        $result.ComplianceConnected | Should -BeTrue
+    }
+
+    It 'Returns Connected status with both Graph and Compliance when -IncludeGraph is used' {
+        Mock Connect-SLCompliance {
+            [PSCustomObject]@{ UserPrincipalName = 'admin@contoso.com' }
+        }
+        Mock Connect-SLGraph {
+            [PSCustomObject]@{ UserPrincipalName = 'admin@contoso.com'; TenantId = 'tenant-123' }
+        }
+        Mock Get-Module {
+            [PSCustomObject]@{ Version = [version]'3.0.0'; Name = $Name }
+        } -ParameterFilter { $ListAvailable }
+
+        $result = Connect-SLAll -SkipPrereqs -UserPrincipalName 'admin@contoso.com' -IncludeGraph
+        $result.Status | Should -Be 'Connected'
         $result.GraphConnected | Should -BeTrue
         $result.ComplianceConnected | Should -BeTrue
     }
 
-    It 'Returns Failed status when Graph connection fails' {
-        Mock Connect-SLGraph { throw 'Graph auth failed' }
-        Mock Get-Module {
-            [PSCustomObject]@{ Version = [version]'3.0.0'; Name = $Name }
-        } -ParameterFilter { $ListAvailable }
+    It 'Returns Failed status when Compliance connection fails' {
+        Mock Connect-SLCompliance { throw 'Compliance auth failed' }
 
         $result = Connect-SLAll -SkipPrereqs
         $result.Status | Should -Be 'Failed'
-        $result.Stage | Should -Be 'Graph'
-        $result.Error | Should -Match 'Graph.*failed'
-    }
-
-    It 'Returns PartiallyConnected when Compliance fails but Graph succeeds' {
-        Mock Connect-SLGraph {
-            [PSCustomObject]@{ UserPrincipalName = 'admin@contoso.com'; TenantId = 'tenant-123' }
-        }
-        Mock Connect-SLCompliance { throw 'Compliance auth failed' }
-        Mock Get-Module {
-            [PSCustomObject]@{ Version = [version]'3.0.0'; Name = $Name }
-        } -ParameterFilter { $ListAvailable }
-
-        $result = Connect-SLAll -SkipPrereqs
-        $result.Status | Should -Be 'PartiallyConnected'
         $result.Stage | Should -Be 'Compliance'
+        $result.Error | Should -Match 'Compliance.*failed'
     }
 
-    It 'Passes TenantId to Connect-SLGraph' {
+    It 'Still succeeds when Graph fails but Compliance succeeds with -IncludeGraph' {
+        Mock Connect-SLCompliance {
+            [PSCustomObject]@{ UserPrincipalName = 'admin@contoso.com' }
+        }
+        Mock Connect-SLGraph { throw 'Graph auth failed' }
+
+        $result = Connect-SLAll -SkipPrereqs -UserPrincipalName 'admin@contoso.com' -IncludeGraph
+        $result.Status | Should -Be 'Connected'
+        $result.ComplianceConnected | Should -BeTrue
+        $result.GraphConnected | Should -BeFalse
+    }
+
+    It 'Passes TenantId to Connect-SLGraph when -IncludeGraph is used' {
+        Mock Connect-SLCompliance {
+            [PSCustomObject]@{ UserPrincipalName = 'admin@contoso.com' }
+        }
         Mock Connect-SLGraph {
             [PSCustomObject]@{ UserPrincipalName = 'admin@contoso.com'; TenantId = 'tenant-abc' }
         }
-        Mock Connect-SLCompliance { }
 
-        $null = Connect-SLAll -SkipPrereqs -TenantId 'tenant-abc'
+        $null = Connect-SLAll -SkipPrereqs -UserPrincipalName 'admin@contoso.com' -TenantId 'tenant-abc' -IncludeGraph
         Should -Invoke Connect-SLGraph -ParameterFilter { $TenantId -eq 'tenant-abc' }
     }
 
-    It 'Passes UseDeviceCode to Connect-SLGraph and Connect-SLCompliance' {
-        Mock Connect-SLGraph {
-            [PSCustomObject]@{ UserPrincipalName = 'admin@contoso.com'; TenantId = 'tenant-123' }
+    It 'Passes UseDeviceCode to Connect-SLCompliance' {
+        Mock Connect-SLCompliance {
+            [PSCustomObject]@{ UserPrincipalName = $null }
         }
-        Mock Connect-SLCompliance { }
 
         $null = Connect-SLAll -SkipPrereqs -UseDeviceCode
-        Should -Invoke Connect-SLGraph -ParameterFilter { $UseDeviceCode -eq $true }
         Should -Invoke Connect-SLCompliance -ParameterFilter { $UseDeviceCode -eq $true }
     }
 
-    It 'Passes Graph UPN to Connect-SLCompliance' {
-        Mock Connect-SLGraph {
-            [PSCustomObject]@{ UserPrincipalName = 'svc@contoso.com'; TenantId = 'tenant-123' }
-        }
-        Mock Connect-SLCompliance { }
-
-        $null = Connect-SLAll -SkipPrereqs
-        Should -Invoke Connect-SLCompliance -ParameterFilter {
-            $UserPrincipalName -eq 'svc@contoso.com'
-        }
-    }
-
     It 'Includes step details in result' {
-        Mock Connect-SLGraph {
-            [PSCustomObject]@{ UserPrincipalName = 'admin@contoso.com'; TenantId = 'tenant-123' }
+        Mock Connect-SLCompliance {
+            [PSCustomObject]@{ UserPrincipalName = 'admin@contoso.com' }
         }
-        Mock Connect-SLCompliance { }
 
-        $result = Connect-SLAll -SkipPrereqs
+        $result = Connect-SLAll -SkipPrereqs -UserPrincipalName 'admin@contoso.com'
         $result.Steps | Should -Not -BeNullOrEmpty
         $result.Steps.Count | Should -BeGreaterOrEqual 2
     }
 
     It 'Returns JSON with -AsJson' {
-        Mock Connect-SLGraph {
-            [PSCustomObject]@{ UserPrincipalName = 'admin@contoso.com'; TenantId = 'tenant-123' }
+        Mock Connect-SLCompliance {
+            [PSCustomObject]@{ UserPrincipalName = 'admin@contoso.com' }
         }
-        Mock Connect-SLCompliance { }
 
-        $json = Connect-SLAll -SkipPrereqs -AsJson
+        $json = Connect-SLAll -SkipPrereqs -UserPrincipalName 'admin@contoso.com' -AsJson
         { $json | ConvertFrom-Json } | Should -Not -Throw
         ($json | ConvertFrom-Json).Status | Should -Be 'Connected'
     }
@@ -397,16 +396,15 @@ Describe 'Connect-SLAll' {
         Mock Get-Module {
             [PSCustomObject]@{ Version = [version]'3.0.0'; Name = $Name }
         } -ParameterFilter { $ListAvailable }
-        Mock Connect-SLGraph {
-            [PSCustomObject]@{ UserPrincipalName = 'admin@contoso.com'; TenantId = 'tenant-123' }
+        Mock Connect-SLCompliance {
+            [PSCustomObject]@{ UserPrincipalName = 'admin@contoso.com' }
         }
-        Mock Connect-SLCompliance { }
 
-        $result = Connect-SLAll
+        $result = Connect-SLAll -UserPrincipalName 'admin@contoso.com'
         $result.Status | Should -Be 'Connected'
-        # Prereq steps should appear
+        # Prereq steps should appear (at least ExchangeOnlineManagement)
         $prereqSteps = $result.Steps | Where-Object { $_.Step -eq 'Prereq' }
-        $prereqSteps.Count | Should -BeGreaterOrEqual 2
+        $prereqSteps.Count | Should -BeGreaterOrEqual 1
     }
 
     It 'Fails when prerequisite installation fails' {
@@ -418,14 +416,23 @@ Describe 'Connect-SLAll' {
         $result.Stage | Should -Be 'Prerequisites'
     }
 
-    It 'Fails when Graph returns no UPN' {
-        Mock Connect-SLGraph {
-            [PSCustomObject]@{ UserPrincipalName = $null; TenantId = 'tenant-123' }
+    It 'Stores TenantId and UseDeviceCode for lazy Graph connection' {
+        Mock Connect-SLCompliance {
+            [PSCustomObject]@{ UserPrincipalName = 'admin@contoso.com' }
         }
 
-        $result = Connect-SLAll -SkipPrereqs
-        $result.Status | Should -Be 'Failed'
-        $result.Stage | Should -Be 'Compliance'
-        $result.Error | Should -Match 'UPN'
+        $null = Connect-SLAll -SkipPrereqs -UserPrincipalName 'admin@contoso.com' -TenantId 'tenant-abc' -UseDeviceCode
+        $script:SLConnection['TenantId'] | Should -Be 'tenant-abc'
+        $script:SLConnection['UseDeviceCode'] | Should -BeTrue
+    }
+
+    It 'Includes Graph Deferred step when -IncludeGraph is not specified' {
+        Mock Connect-SLCompliance {
+            [PSCustomObject]@{ UserPrincipalName = 'admin@contoso.com' }
+        }
+
+        $result = Connect-SLAll -SkipPrereqs -UserPrincipalName 'admin@contoso.com'
+        $graphStep = $result.Steps | Where-Object { $_.Step -eq 'Graph' }
+        $graphStep.Status | Should -Be 'Deferred'
     }
 }

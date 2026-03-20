@@ -114,13 +114,14 @@ Describe 'Disconnect-SLGraph' {
         $script:SLConnection.ConnectedAt.Graph = [datetime]::UtcNow
     }
 
-    It 'Clears connection state' {
+    It 'Clears Graph connection state but preserves UPN and TenantId' {
         Mock Disconnect-MgGraph { }
 
         $result = Disconnect-SLGraph
         $script:SLConnection.GraphConnected | Should -BeFalse
-        $script:SLConnection.UserPrincipalName | Should -BeNullOrEmpty
-        $script:SLConnection.TenantId | Should -BeNullOrEmpty
+        # UPN and TenantId are preserved because they may have been set by Compliance
+        $script:SLConnection.UserPrincipalName | Should -Be 'user@contoso.com'
+        $script:SLConnection.TenantId | Should -Be 'tenant-123'
         $result.Status | Should -Be 'Disconnected'
     }
 
@@ -204,19 +205,21 @@ Describe 'Disconnect-SLCompliance' {
 # =============================================================================
 Describe 'Get-SLLabel' {
     BeforeEach {
-        $script:SLConnection.GraphConnected = $true
+        $script:SLConnection.ComplianceConnected = $true
+        $script:SLConnection.ComplianceSessionStart = [datetime]::UtcNow
+        $script:SLConnection.ComplianceCommandCount = 0
     }
 
-    It 'Requires Graph connection' {
-        $script:SLConnection.GraphConnected = $false
-        { Get-SLLabel } | Should -Throw '*Not connected to Graph*'
+    It 'Requires Compliance connection' {
+        $script:SLConnection.ComplianceConnected = $false
+        { Get-SLLabel } | Should -Throw '*Not connected to Compliance*'
     }
 
     It 'Returns all labels' {
-        Mock Invoke-SLGraphRequest {
+        Mock Get-Label {
             @(
-                [PSCustomObject]@{ id = 'g1'; name = 'Confidential'; displayName = 'Confidential'; isActive = $true; parent = $null; parentLabelId = $null; tooltip = $null }
-                [PSCustomObject]@{ id = 'g2'; name = 'Internal'; displayName = 'Internal'; isActive = $true; parent = $null; parentLabelId = $null; tooltip = $null }
+                [PSCustomObject]@{ Guid = [guid]'00000000-0000-0000-0000-000000000001'; Name = 'Confidential'; DisplayName = 'Confidential'; Mode = 'Enforce'; ParentId = [guid]::Empty; Tooltip = $null; Priority = 0; Comment = $null; ContentType = 'File, Email' }
+                [PSCustomObject]@{ Guid = [guid]'00000000-0000-0000-0000-000000000002'; Name = 'Internal'; DisplayName = 'Internal'; Mode = 'Enforce'; ParentId = [guid]::Empty; Tooltip = $null; Priority = 1; Comment = $null; ContentType = 'File, Email' }
             )
         }
         $result = Get-SLLabel
@@ -224,35 +227,35 @@ Describe 'Get-SLLabel' {
     }
 
     It 'Returns single label by ID' {
-        Mock Invoke-SLGraphRequest {
-            [PSCustomObject]@{ id = 'g1'; name = 'Confidential'; displayName = 'Confidential' }
+        Mock Get-Label {
+            [PSCustomObject]@{ Guid = [guid]'00000000-0000-0000-0000-000000000001'; Name = 'Confidential'; DisplayName = 'Confidential'; Mode = 'Enforce'; ParentId = [guid]::Empty; Tooltip = $null; Priority = 0; Comment = $null; ContentType = 'File' }
         }
-        $result = Get-SLLabel -Id 'g1'
+        $result = Get-SLLabel -Id '00000000-0000-0000-0000-000000000001'
         $result.name | Should -Be 'Confidential'
     }
 
     It 'Returns label by Name' {
-        Mock Invoke-SLGraphRequest {
+        Mock Get-Label {
             @(
-                [PSCustomObject]@{ id = 'g1'; name = 'Confidential'; displayName = 'Confidential' }
-                [PSCustomObject]@{ id = 'g2'; name = 'Internal'; displayName = 'Internal' }
+                [PSCustomObject]@{ Guid = [guid]'00000000-0000-0000-0000-000000000001'; Name = 'Confidential'; DisplayName = 'Confidential'; Mode = 'Enforce'; ParentId = [guid]::Empty; Tooltip = $null; Priority = 0; Comment = $null; ContentType = 'File' }
+                [PSCustomObject]@{ Guid = [guid]'00000000-0000-0000-0000-000000000002'; Name = 'Internal'; DisplayName = 'Internal'; Mode = 'Enforce'; ParentId = [guid]::Empty; Tooltip = $null; Priority = 1; Comment = $null; ContentType = 'File' }
             )
         }
         $result = Get-SLLabel -Name 'Confidential'
-        $result.id | Should -Be 'g1'
+        $result.id | Should -Be '00000000-0000-0000-0000-000000000001'
     }
 
     It 'Warns when label name not found' {
-        Mock Invoke-SLGraphRequest { @() }
+        Mock Get-Label { @() }
         $result = Get-SLLabel -Name 'NonExistent' -WarningAction SilentlyContinue
         $result | Should -BeNullOrEmpty
     }
 
     It 'Builds tree hierarchy with -Tree' {
-        Mock Invoke-SLGraphRequest {
+        Mock Get-Label {
             @(
-                [PSCustomObject]@{ id = 'p1'; name = 'Parent'; displayName = 'Parent'; isActive = $true; parent = $null; parentLabelId = $null; tooltip = 'tip' }
-                [PSCustomObject]@{ id = 'c1'; name = 'Child'; displayName = 'Child'; isActive = $true; parent = [PSCustomObject]@{ id = 'p1' }; parentLabelId = 'p1'; tooltip = $null }
+                [PSCustomObject]@{ Guid = [guid]'00000000-0000-0000-0000-000000000001'; Name = 'Parent'; DisplayName = 'Parent'; Mode = 'Enforce'; ParentId = [guid]::Empty; Tooltip = 'tip'; Priority = 0; Comment = $null; ContentType = 'File' }
+                [PSCustomObject]@{ Guid = [guid]'00000000-0000-0000-0000-000000000002'; Name = 'Child'; DisplayName = 'Child'; Mode = 'Enforce'; ParentId = [guid]'00000000-0000-0000-0000-000000000001'; Tooltip = $null; Priority = 1; Comment = $null; ContentType = 'File' }
             )
         }
         $result = Get-SLLabel -Tree
@@ -262,8 +265,8 @@ Describe 'Get-SLLabel' {
     }
 
     It 'Returns JSON with -AsJson' {
-        Mock Invoke-SLGraphRequest {
-            @([PSCustomObject]@{ id = 'g1'; name = 'Test'; displayName = 'Test'; isActive = $true; parent = $null; parentLabelId = $null; tooltip = $null })
+        Mock Get-Label {
+            @([PSCustomObject]@{ Guid = [guid]'00000000-0000-0000-0000-000000000001'; Name = 'Test'; DisplayName = 'Test'; Mode = 'Enforce'; ParentId = [guid]::Empty; Tooltip = $null; Priority = 0; Comment = $null; ContentType = 'File' })
         }
         $json = Get-SLLabel -AsJson
         { $json | ConvertFrom-Json } | Should -Not -Throw
@@ -274,9 +277,6 @@ Describe 'Get-SLLabel' {
 # Build-SLLabelTree (additional scenarios)
 # =============================================================================
 Describe 'Build-SLLabelTree' {
-    BeforeEach {
-        $script:SLConnection.GraphConnected = $true
-    }
 
     It 'Returns empty array for empty input' {
         $result = Build-SLLabelTree -Labels @()
@@ -739,11 +739,6 @@ Describe 'Get-SLAuditLog' {
 Describe 'Get-SLDocumentLabel' {
     BeforeEach {
         $script:SLConnection.GraphConnected = $true
-    }
-
-    It 'Requires Graph connection' {
-        $script:SLConnection.GraphConnected = $false
-        { Get-SLDocumentLabel -DriveId 'drive1' -ItemId 'item1' } | Should -Throw '*Not connected to Graph*'
     }
 
     It 'Calls extractSensitivityLabels endpoint' {

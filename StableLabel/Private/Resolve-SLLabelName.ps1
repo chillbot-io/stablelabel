@@ -3,6 +3,7 @@ function Resolve-SLLabelName {
     .SYNOPSIS
         Bidirectional GUID-to-name and name-to-GUID resolution for sensitivity labels.
         Uses a module-scoped cache that refreshes every 30 minutes.
+        Retrieves labels from the Compliance Center (Get-Label) instead of Graph.
     #>
     [CmdletBinding()]
     param(
@@ -32,7 +33,10 @@ function Resolve-SLLabelName {
 
     if ($ForceRefresh -or $cacheAge.TotalMinutes -gt 30 -or $script:SLLabelCache.Labels.Count -eq 0) {
         try {
-            $labels = Invoke-SLGraphRequest -Method GET -Uri '/security/informationProtection/sensitivityLabels' -ApiVersion beta -AutoPaginate
+            $rawLabels = Invoke-SLComplianceCommand -OperationName 'Get-Label (cache refresh)' -ScriptBlock {
+                Get-Label -ErrorAction Stop
+            }
+            $labels = @($rawLabels | ForEach-Object { Convert-SLComplianceLabel -Label $_ })
             $script:SLLabelCache.Labels = $labels
             $script:SLLabelCache.CachedAt = Get-Date
             $script:SLLabelCache.TenantId = $script:SLConnection.TenantId

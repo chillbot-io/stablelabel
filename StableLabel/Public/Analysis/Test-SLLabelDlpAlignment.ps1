@@ -21,16 +21,16 @@ function Test-SLLabelDlpAlignment {
     )
 
     begin {
-        Assert-SLConnected -Require Graph
         Assert-SLConnected -Require Compliance
     }
 
     process {
         try {
-            Write-Verbose 'Retrieving sensitivity labels from Graph.'
-            $labels = Invoke-SLGraphRequest -Method GET `
-                -Uri '/security/informationProtection/sensitivityLabels' `
-                -ApiVersion beta -AutoPaginate
+            Write-Verbose 'Retrieving sensitivity labels from Compliance.'
+            $rawLabels = Invoke-SLComplianceCommand -OperationName 'Get-Label (DLP alignment)' -ScriptBlock {
+                Get-Label -ErrorAction Stop
+            }
+            $labels = @($rawLabels | ForEach-Object { Convert-SLComplianceLabel -Label $_ })
 
             Write-Verbose 'Retrieving DLP policies from Compliance.'
             $dlpPolicies = Invoke-SLComplianceCommand -OperationName 'Get-DlpCompliancePolicy (all)' -ScriptBlock {

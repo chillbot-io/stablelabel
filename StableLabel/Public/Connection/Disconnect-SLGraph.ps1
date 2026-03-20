@@ -23,9 +23,9 @@ function Disconnect-SLGraph {
             Disconnect-MgGraph -ErrorAction Stop
 
             $script:SLConnection['GraphConnected']       = $false
-            $script:SLConnection['UserPrincipalName']    = $null
-            $script:SLConnection['TenantId']             = $null
             $script:SLConnection['ConnectedAt']['Graph'] = $null
+            # Note: UPN and TenantId are not cleared here because they may
+            # have been set by the Compliance connection independently.
 
             $result = [PSCustomObject]@{
                 Status  = 'Disconnected'

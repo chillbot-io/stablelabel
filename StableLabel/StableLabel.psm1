@@ -78,4 +78,32 @@ foreach ($file in $publicFiles) {
     . $file.FullName
 }
 
+# ── Graph module pre-warm ────────────────────────────────────────────────
+# The Microsoft.Graph.Authentication module takes 10-30 seconds to import
+# due to heavy .NET assembly loading. Start importing it in a background
+# thread now so that by the time any function actually needs Graph, the
+# assemblies are already loaded and Connect-MgGraph is near-instant.
+#
+# This is a fire-and-forget optimization — if the module isn't installed
+# or the job fails, the lazy-connect path in Invoke-SLGraphRequest will
+# handle it normally.
+$script:SLGraphPreWarmJob = $null
+try {
+    $graphMod = Get-Module -ListAvailable -Name 'Microsoft.Graph.Authentication' |
+        Where-Object { $_.Version -ge [version]'2.10.0' } |
+        Sort-Object Version -Descending |
+        Select-Object -First 1
+
+    if ($graphMod) {
+        $script:SLGraphPreWarmJob = Start-ThreadJob -Name 'SLGraphPreWarm' -ScriptBlock {
+            Import-Module 'Microsoft.Graph.Authentication' -MinimumVersion '2.10.0' -ErrorAction Stop
+        }
+        Write-Verbose 'Graph module pre-warm started in background thread.'
+    }
+}
+catch {
+    # Pre-warm is best-effort — don't block module import
+    Write-Verbose "Graph pre-warm skipped: $_"
+}
+
 # Export only public functions (controlled by manifest FunctionsToExport)

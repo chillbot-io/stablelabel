@@ -6,9 +6,13 @@ function Connect-SLCompliance {
         Wraps Connect-IPPSSession to establish a connection to the Microsoft
         Purview compliance center. Tracks the session start time so the module
         can proactively recycle the session before the server-side idle timeout.
+
+        UserPrincipalName is optional. When provided, it pre-populates the
+        sign-in dialog. When omitted (e.g. device-code flow), the user is
+        prompted interactively and the UPN is not pre-filled.
     .PARAMETER UserPrincipalName
-        The UPN of the account to authenticate with. Required so that
-        Connect-IPPSSession can pre-populate the sign-in dialog.
+        The UPN of the account to authenticate with. Optional — when provided
+        it pre-populates the sign-in dialog in Connect-IPPSSession.
     .PARAMETER UseDeviceCode
         Use the device-code authentication flow instead of interactive browser
         sign-in. Maps to Connect-IPPSSession -Device. Required when running
@@ -18,11 +22,13 @@ function Connect-SLCompliance {
     .EXAMPLE
         Connect-SLCompliance -UserPrincipalName admin@contoso.com
     .EXAMPLE
+        Connect-SLCompliance -UseDeviceCode
+    .EXAMPLE
         Connect-SLCompliance -UserPrincipalName admin@contoso.com -UseDeviceCode
     #>
     [CmdletBinding()]
     param(
-        [Parameter(Mandatory)]
+        [Parameter()]
         [ValidateNotNullOrEmpty()]
         [string]$UserPrincipalName,
 
@@ -35,11 +41,14 @@ function Connect-SLCompliance {
 
     process {
         try {
-            Write-Verbose "Connecting to Security & Compliance as $UserPrincipalName."
+            $displayUpn = if ($UserPrincipalName) { $UserPrincipalName } else { '(interactive)' }
+            Write-Verbose "Connecting to Security & Compliance as $displayUpn."
 
             $ippsParams = @{
-                UserPrincipalName = $UserPrincipalName
-                ErrorAction       = 'Stop'
+                ErrorAction = 'Stop'
+            }
+            if ($UserPrincipalName) {
+                $ippsParams['UserPrincipalName'] = $UserPrincipalName
             }
             if ($UseDeviceCode) {
                 $ippsParams['Device'] = $true
@@ -48,11 +57,13 @@ function Connect-SLCompliance {
 
             $now = [datetime]::UtcNow
 
-            $script:SLConnection['ComplianceConnected']     = $true
-            $script:SLConnection['UserPrincipalName']       = $UserPrincipalName
+            $script:SLConnection['ComplianceConnected']       = $true
+            if ($UserPrincipalName) {
+                $script:SLConnection['UserPrincipalName']     = $UserPrincipalName
+            }
             $script:SLConnection['ConnectedAt']['Compliance'] = $now
-            $script:SLConnection['ComplianceCommandCount']  = 0
-            $script:SLConnection['ComplianceSessionStart']  = $now
+            $script:SLConnection['ComplianceCommandCount']    = 0
+            $script:SLConnection['ComplianceSessionStart']    = $now
 
             $result = [PSCustomObject]@{
                 Status            = 'Connected'
