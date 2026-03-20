@@ -53,7 +53,7 @@ function Set-SLDocumentLabel {
     )
 
     begin {
-        Assert-SLConnected -Require Graph
+        # Graph connection is handled lazily by Invoke-SLGraphRequest
     }
 
     process {

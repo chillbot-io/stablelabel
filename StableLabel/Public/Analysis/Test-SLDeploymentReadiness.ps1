@@ -20,7 +20,6 @@ function Test-SLDeploymentReadiness {
     )
 
     begin {
-        Assert-SLConnected -Require Graph
         Assert-SLConnected -Require Compliance
     }
 
@@ -29,25 +28,7 @@ function Test-SLDeploymentReadiness {
             $checks = @()
             $overallReady = $true
 
-            # Check 1: Connection status (Graph + Compliance connected)
-            Write-Verbose 'Checking Graph connection.'
-            try {
-                $null = Invoke-SLGraphRequest -Method GET -Uri '/me'
-                $checks += [PSCustomObject]@{
-                    Name    = 'GraphConnection'
-                    Status  = 'Pass'
-                    Message = 'Microsoft Graph connection is active.'
-                }
-            }
-            catch {
-                $checks += [PSCustomObject]@{
-                    Name    = 'GraphConnection'
-                    Status  = 'Fail'
-                    Message = "Microsoft Graph connection failed: $($_.Exception.Message)"
-                }
-                $overallReady = $false
-            }
-
+            # Check 1: Connection status (Compliance connected)
             Write-Verbose 'Checking Compliance connection.'
             try {
                 $null = Invoke-SLComplianceCommand -OperationName 'Test-ComplianceConnection' -ScriptBlock {
@@ -71,9 +52,10 @@ function Test-SLDeploymentReadiness {
             # Check 2: Labels exist and are active
             Write-Verbose 'Checking sensitivity labels.'
             try {
-                $labels = Invoke-SLGraphRequest -Method GET `
-                    -Uri '/security/informationProtection/sensitivityLabels' `
-                    -ApiVersion beta -AutoPaginate
+                $rawLabels = Invoke-SLComplianceCommand -OperationName 'Get-Label (readiness)' -ScriptBlock {
+                    Get-Label -ErrorAction Stop
+                }
+                $labels = @($rawLabels | ForEach-Object { Convert-SLComplianceLabel -Label $_ })
 
                 $activeLabels = @($labels | Where-Object { $_.isActive -eq $true })
 

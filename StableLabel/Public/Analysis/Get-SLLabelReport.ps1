@@ -20,16 +20,16 @@ function Get-SLLabelReport {
     )
 
     begin {
-        Assert-SLConnected -Require Graph
         Assert-SLConnected -Require Compliance
     }
 
     process {
         try {
-            Write-Verbose 'Retrieving sensitivity labels from Graph.'
-            $labels = Invoke-SLGraphRequest -Method GET `
-                -Uri '/security/informationProtection/sensitivityLabels' `
-                -ApiVersion beta -AutoPaginate
+            Write-Verbose 'Retrieving sensitivity labels from Compliance.'
+            $rawLabels = Invoke-SLComplianceCommand -OperationName 'Get-Label (report)' -ScriptBlock {
+                Get-Label -ErrorAction Stop
+            }
+            $labels = @($rawLabels | ForEach-Object { Convert-SLComplianceLabel -Label $_ })
 
             Write-Verbose 'Retrieving label policies from Compliance.'
             $labelPolicies = Invoke-SLComplianceCommand -OperationName 'Get-LabelPolicy (all)' -ScriptBlock {

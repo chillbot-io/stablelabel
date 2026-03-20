@@ -6,7 +6,7 @@ function Test-SLPermission {
         Tests whether the authenticated user has the necessary access for
         StableLabel operations across Labels, DLP, Retention, and Protection
         scopes. For each scope, a lightweight read operation is attempted to
-        determine access.
+        determine access. Uses the Compliance Center as the primary backend.
     .PARAMETER Scope
         The permission scope to check. Defaults to All.
     .PARAMETER AsJson
@@ -27,17 +27,13 @@ function Test-SLPermission {
     )
 
     begin {
-        Assert-SLConnected -Require Graph
+        Assert-SLConnected -Require Compliance
     }
 
     process {
         try {
-            Write-Verbose 'Retrieving current user information from Graph.'
-            $userInfo = Invoke-SLGraphRequest -Method GET -Uri '/me'
-            $upn = $userInfo.userPrincipalName
-
-            Write-Verbose 'Retrieving group memberships.'
-            $memberOf = Invoke-SLGraphRequest -Method GET -Uri '/me/memberOf' -AutoPaginate
+            $upn = $script:SLConnection['UserPrincipalName']
+            if (-not $upn) { $upn = '(unknown)' }
 
             $scopesToCheck = if ($Scope -eq 'All') {
                 @('Labels', 'DLP', 'Retention', 'Protection')
@@ -53,11 +49,11 @@ function Test-SLPermission {
                 switch ($s) {
                     'Labels' {
                         try {
-                            $null = Invoke-SLGraphRequest -Method GET `
-                                -Uri '/security/informationProtection/sensitivityLabels' `
-                                -ApiVersion beta
+                            $null = Invoke-SLComplianceCommand -OperationName 'Test-LabelsAccess' -ScriptBlock {
+                                Get-Label -ErrorAction Stop | Select-Object -First 1
+                            }
                             $hasAccess = $true
-                            $details = 'Successfully read sensitivity labels via Graph.'
+                            $details = 'Successfully read sensitivity labels via Compliance.'
                         }
                         catch {
                             $details = "Cannot read sensitivity labels: $($_.Exception.Message)"
@@ -89,9 +85,9 @@ function Test-SLPermission {
                     }
                     'Protection' {
                         try {
-                            $null = Invoke-SLGraphRequest -Method GET `
-                                -Uri '/security/informationProtection/sensitivityLabels' `
-                                -ApiVersion beta
+                            $null = Invoke-SLComplianceCommand -OperationName 'Test-ProtectionAccess' -ScriptBlock {
+                                Get-Label -ErrorAction Stop | Select-Object -First 1
+                            }
                             $hasAccess = $true
                             $details = 'Successfully read information protection configuration.'
                         }
@@ -108,12 +104,9 @@ function Test-SLPermission {
                 }
             }
 
-            $groupNames = @($memberOf | Where-Object { $_.displayName } | ForEach-Object { $_.displayName })
-
             $result = [PSCustomObject]@{
                 UserPrincipalName = $upn
                 ScopesChecked     = $scopesToCheck
-                GroupMemberships  = $groupNames
                 Results           = @($results)
             }
 

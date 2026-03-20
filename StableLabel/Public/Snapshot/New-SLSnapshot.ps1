@@ -33,14 +33,7 @@ function New-SLSnapshot {
     )
 
     begin {
-        # Labels scope needs Graph + Compliance; DLP/Retention need Compliance; All needs both
-        if ($Scope -eq 'All' -or $Scope -eq 'Labels') {
-            Assert-SLConnected -Require Graph
-            Assert-SLConnected -Require Compliance
-        }
-        else {
-            Assert-SLConnected -Require Compliance
-        }
+        Assert-SLConnected -Require Compliance
     }
 
     process {
@@ -52,11 +45,12 @@ function New-SLSnapshot {
         $data = @{}
         $capturedItems = @{}
 
-        # Sensitivity Labels (Graph API)
+        # Sensitivity Labels (Compliance Center)
         if ($Scope -in 'All', 'Labels') {
             Write-Verbose 'Capturing sensitivity labels...'
             try {
-                $labels = Invoke-SLGraphRequest -Method GET -Uri '/security/informationProtection/sensitivityLabels' -ApiVersion beta -AutoPaginate
+                $rawLabels = Invoke-SLComplianceCommand -ScriptBlock { Get-Label -ErrorAction Stop } -OperationName 'Snapshot: Get-Label'
+                $labels = @($rawLabels | ForEach-Object { Convert-SLComplianceLabel -Label $_ })
                 $data['SensitivityLabels'] = @($labels)
                 $capturedItems['SensitivityLabels'] = $labels.Count
             }

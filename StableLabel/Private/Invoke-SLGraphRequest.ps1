@@ -1,7 +1,13 @@
 function Invoke-SLGraphRequest {
     <#
     .SYNOPSIS
-        Thin wrapper around Invoke-MgGraphRequest with retry, pagination, and version support.
+        Thin wrapper around Invoke-MgGraphRequest with retry, pagination, version support,
+        and lazy auto-connect.
+    .DESCRIPTION
+        If Graph is not yet connected, automatically connects using the stored
+        TenantId and UseDeviceCode preferences from the module connection state.
+        This enables a compliance-first connection flow where Graph is deferred
+        until a function actually needs it.
     #>
     [CmdletBinding()]
     param(
@@ -23,6 +29,34 @@ function Invoke-SLGraphRequest {
 
         [switch]$AsJson
     )
+
+    # Lazy auto-connect: if Graph is not connected, connect now
+    if (-not $script:SLConnection['GraphConnected']) {
+        Write-Verbose 'Graph not connected — initiating lazy auto-connect...'
+
+        # Ensure the Graph module is available
+        $graphMod = Get-Module -ListAvailable -Name 'Microsoft.Graph.Authentication' |
+            Where-Object { $_.Version -ge [version]'2.10.0' } |
+            Sort-Object Version -Descending |
+            Select-Object -First 1
+
+        if (-not $graphMod) {
+            Write-Verbose 'Installing Microsoft.Graph.Authentication for lazy Graph connection...'
+            Install-Module -Name 'Microsoft.Graph.Authentication' -MinimumVersion '2.10.0' `
+                -Scope CurrentUser -Force -AllowClobber -ErrorAction Stop
+        }
+
+        $graphParams = @{}
+        if ($script:SLConnection['TenantId']) {
+            $graphParams['TenantId'] = $script:SLConnection['TenantId']
+        }
+        if ($script:SLConnection['UseDeviceCode']) {
+            $graphParams['UseDeviceCode'] = $true
+        }
+
+        Connect-SLGraph @graphParams -ErrorAction Stop
+        Write-Verbose 'Lazy Graph auto-connect succeeded.'
+    }
 
     $fullUri = "$($script:SLConfig.GraphBaseUrl)/$ApiVersion/$($Uri.TrimStart('/'))"
 

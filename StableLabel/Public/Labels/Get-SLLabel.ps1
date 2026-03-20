@@ -1,10 +1,10 @@
 function Get-SLLabel {
     <#
     .SYNOPSIS
-        Gets sensitivity labels from Microsoft Graph API.
+        Gets sensitivity labels from the Security & Compliance Center.
     .DESCRIPTION
-        Retrieves sensitivity labels via the Graph beta endpoint
-        /security/informationProtection/sensitivityLabels. Supports
+        Retrieves sensitivity labels via the Compliance Center Get-Label cmdlet
+        instead of the Graph API, avoiding Graph connection overhead. Supports
         fetching all labels, a single label by ID, or searching by name.
         The -Tree switch displays labels in a parent/sublabel hierarchy.
     .PARAMETER Id
@@ -41,7 +41,7 @@ function Get-SLLabel {
     )
 
     begin {
-        Assert-SLConnected -Require Graph
+        Assert-SLConnected -Require Compliance
     }
 
     process {
@@ -49,15 +49,20 @@ function Get-SLLabel {
             switch ($PSCmdlet.ParameterSetName) {
                 'ById' {
                     Write-Verbose "Retrieving sensitivity label with ID: $Id"
-                    $result = Invoke-SLGraphRequest -Method GET `
-                        -Uri "/security/informationProtection/sensitivityLabels/$Id" `
-                        -ApiVersion beta
+                    $result = Invoke-SLComplianceCommand -OperationName "Get-Label -Identity $Id" -ScriptBlock {
+                        Get-Label -Identity $Id -ErrorAction Stop
+                    }
+
+                    if ($result) {
+                        $result = Convert-SLComplianceLabel -Label $result
+                    }
                 }
                 'ByName' {
                     Write-Verbose "Searching for sensitivity label with name: $Name"
-                    $allLabels = Invoke-SLGraphRequest -Method GET `
-                        -Uri '/security/informationProtection/sensitivityLabels' `
-                        -ApiVersion beta -AutoPaginate
+                    $allLabels = Invoke-SLComplianceCommand -OperationName 'Get-Label (all)' -ScriptBlock {
+                        Get-Label -ErrorAction Stop
+                    }
+                    $allLabels = @($allLabels | ForEach-Object { Convert-SLComplianceLabel -Label $_ })
 
                     $result = $allLabels | Where-Object {
                         $_.name -eq $Name -or $_.displayName -eq $Name
@@ -70,9 +75,10 @@ function Get-SLLabel {
                 }
                 'All' {
                     Write-Verbose 'Retrieving all sensitivity labels.'
-                    $allLabels = Invoke-SLGraphRequest -Method GET `
-                        -Uri '/security/informationProtection/sensitivityLabels' `
-                        -ApiVersion beta -AutoPaginate
+                    $allLabels = Invoke-SLComplianceCommand -OperationName 'Get-Label (all)' -ScriptBlock {
+                        Get-Label -ErrorAction Stop
+                    }
+                    $allLabels = @($allLabels | ForEach-Object { Convert-SLComplianceLabel -Label $_ })
 
                     if ($Tree) {
                         $result = Build-SLLabelTree -Labels $allLabels
@@ -92,6 +98,34 @@ function Get-SLLabel {
         catch {
             $PSCmdlet.ThrowTerminatingError($_)
         }
+    }
+}
+
+function Convert-SLComplianceLabel {
+    <#
+    .SYNOPSIS
+        Converts a Compliance Center label object to the normalized format
+        previously returned by the Graph API, ensuring downstream compatibility.
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [object]$Label
+    )
+
+    [PSCustomObject]@{
+        id            = $Label.Guid.ToString()
+        name          = $Label.Name
+        displayName   = $Label.DisplayName
+        tooltip       = $Label.Tooltip
+        isActive      = ($Label.Mode -eq 'Enforce')
+        parentLabelId = if ($Label.ParentId -and $Label.ParentId -ne [guid]::Empty) {
+                            $Label.ParentId.ToString()
+                        } else { $null }
+        parent        = $null
+        priority      = $Label.Priority
+        description   = $Label.Comment
+        contentType   = $Label.ContentType
     }
 }
 
