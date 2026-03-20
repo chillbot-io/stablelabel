@@ -41,8 +41,13 @@ function Invoke-SLComplianceCommand {
 
         try {
             $ippsParams = @{
-                UserPrincipalName = $script:SLConnection.UserPrincipalName
-                ErrorAction       = 'Stop'
+                ErrorAction = 'Stop'
+            }
+            # Only pass UPN if we have one — device-code connections may not
+            # have set it.  Connect-IPPSSession works without UPN; it just
+            # won't pre-populate the sign-in dialog.
+            if ($script:SLConnection.UserPrincipalName) {
+                $ippsParams['UserPrincipalName'] = $script:SLConnection.UserPrincipalName
             }
             # Do NOT use -Device for session recycles — the GUI only shows
             # device-code prompts during the initial ConnectionDialog flow.
@@ -78,8 +83,10 @@ function Invoke-SLComplianceCommand {
             try {
                 Disconnect-ExchangeOnline -Confirm:$false -ErrorAction SilentlyContinue
                 $ippsParams = @{
-                    UserPrincipalName = $script:SLConnection.UserPrincipalName
-                    ErrorAction       = 'Stop'
+                    ErrorAction = 'Stop'
+                }
+                if ($script:SLConnection.UserPrincipalName) {
+                    $ippsParams['UserPrincipalName'] = $script:SLConnection.UserPrincipalName
                 }
                 # Same as above: no -Device flag for auto-reconnect.
                 Connect-IPPSSession @ippsParams
