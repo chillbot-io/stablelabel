@@ -49,7 +49,7 @@ function Remove-SLAutoLabelPolicy {
 
             Invoke-SLComplianceCommand -OperationName "Remove-AutoSensitivityLabelPolicy '$Identity'" -ScriptBlock {
                 Remove-AutoSensitivityLabelPolicy -Identity $Identity -Confirm:$false
-            }
+            }.GetNewClosure()
 
             Write-SLAuditEntry -Action 'Remove-AutoSensitivityLabelPolicy' -Target $Identity -Result 'success'
 

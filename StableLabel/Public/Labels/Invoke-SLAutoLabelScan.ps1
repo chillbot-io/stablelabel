@@ -103,7 +103,7 @@ function Invoke-SLAutoLabelScan {
             throw 'Either -LabelId or -LabelName must be specified.'
         }
         if ($LabelName -and -not $LabelId) {
-            $LabelId = Resolve-SLLabelName -Name $LabelName
+            $LabelId = Resolve-SLLabelName -LabelName $LabelName
             if (-not $LabelId) {
                 throw "Could not resolve label name '$LabelName' to a GUID."
             }
@@ -318,7 +318,7 @@ function Invoke-SLAutoLabelScan {
 
             foreach ($file in $matchingFiles) {
                 try {
-                    $labelInfo = Invoke-SLGraphRequest -Uri "/drives/$DriveId/items/$($file.id)/extractSensitivityLabels" -Method POST
+                    $labelInfo = Invoke-SLGraphRequest -Uri "/drives/$DriveId/items/$($file.id)/extractSensitivityLabels" -Method POST -ApiVersion beta
                     $hasLabel = $labelInfo.labels -and $labelInfo.labels.Count -gt 0
 
                     if ($hasLabel) {
@@ -373,7 +373,7 @@ function Invoke-SLAutoLabelScan {
                     $body['justificationText'] = $Justification
                 }
 
-                Invoke-SLGraphRequest -Uri "/drives/$DriveId/items/$($file.id)/assignSensitivityLabel" -Method POST -Body $body
+                Invoke-SLGraphRequest -Uri "/drives/$DriveId/items/$($file.id)/assignSensitivityLabel" -Method POST -Body $body -ApiVersion beta
 
                 $results += [PSCustomObject]@{
                     Name    = $file.name

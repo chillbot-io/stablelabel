@@ -51,7 +51,7 @@ function Get-SLLabel {
                     Write-Verbose "Retrieving sensitivity label with ID: $Id"
                     $result = Invoke-SLComplianceCommand -OperationName "Get-Label -Identity $Id" -ScriptBlock {
                         Get-Label -Identity $Id -ErrorAction Stop
-                    }
+                    }.GetNewClosure()
 
                     if ($result) {
                         $result = Convert-SLComplianceLabel -Label $result

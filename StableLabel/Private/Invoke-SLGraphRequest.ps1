@@ -27,6 +27,8 @@ function Invoke-SLGraphRequest {
 
         [switch]$AutoPaginate,
 
+        [switch]$RawContent,
+
         [switch]$AsJson
     )
 
@@ -104,6 +106,20 @@ function Invoke-SLGraphRequest {
     }
 
     $fullUri = "$($script:SLConfig.GraphBaseUrl)/$ApiVersion/$($Uri.TrimStart('/'))"
+
+    # RawContent mode: download file content to temp file and return as string
+    if ($RawContent) {
+        $tempFile = [System.IO.Path]::GetTempFileName()
+        try {
+            $result = Invoke-SLWithRetry -MaxRetries $MaxRetries -OperationName "Graph $Method $Uri (raw)" -ScriptBlock {
+                Invoke-MgGraphRequest -Method $Method -Uri $fullUri -OutputFilePath $tempFile
+            }
+            return [System.IO.File]::ReadAllText($tempFile)
+        }
+        finally {
+            if (Test-Path $tempFile) { Remove-Item $tempFile -Force -ErrorAction SilentlyContinue }
+        }
+    }
 
     $result = Invoke-SLWithRetry -MaxRetries $MaxRetries -OperationName "Graph $Method $Uri" -ScriptBlock {
         $params = @{

@@ -32,7 +32,7 @@ function Get-SLAuditLog {
         [ValidateNotNullOrEmpty()]
         [string]$Action,
 
-        [ValidateSet('success', 'failed', 'dry-run')]
+        [ValidateSet('success', 'failed', 'dry-run', 'skipped', 'partial', 'start', 'complete', 'dry-run-start', 'dry-run-complete')]
         [string]$Result,
 
         [switch]$AsJson
@@ -63,16 +63,16 @@ function Get-SLAuditLog {
                 }
             }
 
-            # Sort newest first (assuming entries have a Timestamp property)
-            $entries = @($entries | Sort-Object { $_.Timestamp } -Descending)
+            # Sort newest first — property is lowercase 'timestamp' per Write-SLAuditEntry
+            $entries = @($entries | Sort-Object { $_.timestamp } -Descending)
 
-            # Apply filters
+            # Apply filters — properties are lowercase per Write-SLAuditEntry
             if ($Action) {
-                $entries = @($entries | Where-Object { $_.Action -eq $Action })
+                $entries = @($entries | Where-Object { $_.action -eq $Action })
             }
 
             if ($Result) {
-                $entries = @($entries | Where-Object { $_.Result -eq $Result })
+                $entries = @($entries | Where-Object { $_.result -eq $Result })
             }
 
             # Limit to last N entries

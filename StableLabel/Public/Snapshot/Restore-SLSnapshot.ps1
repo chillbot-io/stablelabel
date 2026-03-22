@@ -194,7 +194,14 @@ function Restore-SLSnapshot {
             try {
                 switch ($step.Phase) {
                     'Remove' {
-                        Invoke-SLComplianceCommand -ScriptBlock ([scriptblock]::Create("$($step.Command) -Identity '$($step.Identity)' -Confirm:`$false")) -OperationName "Restore: $($step.Command)"
+                        # Use closure to safely pass variables — avoid scriptblock::Create
+                        # with string interpolation which is vulnerable to injection via
+                        # crafted snapshot Identity values
+                        $cmd = $step.Command
+                        $id = $step.Identity
+                        Invoke-SLComplianceCommand -ScriptBlock {
+                            & $cmd -Identity $id -Confirm:$false
+                        }.GetNewClosure() -OperationName "Restore: $($step.Command)"
                     }
                     'Create' {
                         Write-Warning "Create operations require manual implementation per category. Skipping: $($step.Identity)"

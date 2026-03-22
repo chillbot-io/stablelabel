@@ -12,7 +12,7 @@ function Write-SLAuditEntry {
 
         [hashtable]$Detail = @{},
 
-        [ValidateSet('success', 'skipped', 'failed', 'dry-run')]
+        [ValidateSet('success', 'skipped', 'failed', 'dry-run', 'partial', 'start', 'complete', 'dry-run-start', 'dry-run-complete')]
         [string]$Result = 'success',
 
         [string]$ErrorMessage

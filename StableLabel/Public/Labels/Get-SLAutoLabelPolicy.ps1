@@ -33,7 +33,7 @@ function Get-SLAutoLabelPolicy {
                 Write-Verbose "Retrieving auto-labeling policy: $Identity"
                 $result = Invoke-SLComplianceCommand -OperationName "Get-AutoSensitivityLabelPolicy '$Identity'" -ScriptBlock {
                     Get-AutoSensitivityLabelPolicy -Identity $Identity
-                }
+                }.GetNewClosure()
             }
             else {
                 Write-Verbose 'Retrieving all auto-labeling policies.'

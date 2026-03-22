@@ -40,7 +40,7 @@ function Get-SLSensitiveInfoType {
                 Write-Verbose "Retrieving SIT: $Identity"
                 $result = Invoke-SLComplianceCommand -OperationName "Get-DlpSensitiveInformationType '$Identity'" -ScriptBlock {
                     Get-DlpSensitiveInformationType -Identity $Identity
-                }
+                }.GetNewClosure()
             }
             else {
                 Write-Verbose 'Retrieving all Sensitive Information Types.'

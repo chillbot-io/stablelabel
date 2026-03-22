@@ -49,7 +49,7 @@ function Remove-SLLabelPolicy {
 
             Invoke-SLComplianceCommand -OperationName "Remove-LabelPolicy '$Identity'" -ScriptBlock {
                 Remove-LabelPolicy -Identity $Identity -Confirm:$false
-            }
+            }.GetNewClosure()
 
             Write-SLAuditEntry -Action 'Remove-LabelPolicy' -Target $Identity -Result 'success'
 
