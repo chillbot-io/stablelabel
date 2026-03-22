@@ -4,8 +4,11 @@ from __future__ import annotations
 
 from functools import lru_cache
 
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.config import Settings
 from app.core.auth import TokenManager
+from app.db.base import get_session
 from app.services.document_service import DocumentService
 from app.services.graph_client import GraphClient
 from app.services.label_service import LabelService
@@ -44,3 +47,9 @@ def get_document_service() -> DocumentService:
         labels=get_label_service(),
         settings=get_settings(),
     )
+
+
+async def get_db() -> AsyncSession:
+    """Alias for get_session — used in route dependencies."""
+    async for session in get_session():
+        yield session
