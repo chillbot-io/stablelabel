@@ -21,6 +21,10 @@ function Remove-SLSnapshot {
         [switch]$AsJson
     )
 
+    begin {
+        Assert-SLSnapshotName -Name $Name
+    }
+
     process {
         $snapshotDir = if ($Path) { $Path } else { $script:SLConfig.SnapshotPath }
         $filePath = Join-Path $snapshotDir "$Name.json"

@@ -397,7 +397,7 @@ export const CMDLET_REGISTRY: Record<string, CmdletDef> = {
   'New-SLSnapshot': {
     confirm: true,
     params: {
-      Name: { type: 'string', required: true },
+      Name: { type: 'string', required: true, maxLength: 128 },
       Scope: { type: 'enum', allowedValues: ['All', 'Labels', 'AutoLabel'] },
     },
   },

@@ -32,6 +32,7 @@ function New-SLSnapshot {
     )
 
     begin {
+        Assert-SLSnapshotName -Name $Name
         Assert-SLConnected -Require Compliance
     }
 

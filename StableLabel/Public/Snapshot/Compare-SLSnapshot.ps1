@@ -35,6 +35,8 @@ function Compare-SLSnapshot {
     )
 
     begin {
+        Assert-SLSnapshotName -Name $Name
+        if ($CompareTo) { Assert-SLSnapshotName -Name $CompareTo }
         if (-not $Live -and -not $CompareTo) {
             throw "Specify either -Live to compare against current tenant state, or -CompareTo <snapshot-name> to compare two snapshots."
         }

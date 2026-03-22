@@ -12,7 +12,12 @@ export default function SnapshotCreate({ onCreated }: Props) {
   const [error, setError] = useState<string | null>(null);
 
   const handleCreate = async () => {
-    if (!name.trim()) { setError('Snapshot name is required.'); return; }
+    const trimmed = name.trim();
+    if (!trimmed) { setError('Snapshot name is required.'); return; }
+    if (/[/\\:*?"<>|]/.test(trimmed)) { setError('Snapshot name cannot contain / \\ : * ? " < > | characters.'); return; }
+    if (trimmed.startsWith('.') || trimmed === '.' || trimmed === '..') { setError('Snapshot name cannot start with a dot.'); return; }
+    if (/\.\./.test(trimmed)) { setError('Snapshot name cannot contain path traversal sequences.'); return; }
+    if (trimmed.length > 128) { setError('Snapshot name must be 128 characters or fewer.'); return; }
     setLoading(true); setError(null);
     try {
       const r = await invoke('New-SLSnapshot', { Name: name, Scope: scope });
