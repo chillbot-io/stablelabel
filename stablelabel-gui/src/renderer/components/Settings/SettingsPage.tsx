@@ -28,8 +28,8 @@ export default function SettingsPage() {
         const parsed = JSON.parse(stored);
         setSettings((prev) => ({ ...prev, ...parsed }));
       }
-    } catch {
-      // Ignore parse errors
+    } catch (err) {
+      console.error('Failed to parse stored settings:', err);
     }
   }, []);
 

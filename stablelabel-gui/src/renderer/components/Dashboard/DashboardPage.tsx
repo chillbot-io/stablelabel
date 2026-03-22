@@ -51,7 +51,7 @@ export default function DashboardPage({ onNavigate }: DashboardPageProps) {
       promises.push(
         invoke('Get-SLLabel').then((r) => {
           if (r.success && Array.isArray(r.data)) updates.labels = r.data.length;
-        }).catch(() => {}),
+        }).catch((err) => { console.error('Failed to fetch labels:', err); }),
       );
     }
 
@@ -59,17 +59,17 @@ export default function DashboardPage({ onNavigate }: DashboardPageProps) {
       promises.push(
         invoke('Get-SLLabelPolicy').then((r) => {
           if (r.success && Array.isArray(r.data)) updates.labelPolicies = r.data.length;
-        }).catch(() => {}),
+        }).catch((err) => { console.error('Failed to fetch label policies:', err); }),
         invoke('Get-SLAutoLabelPolicy').then((r) => {
           if (r.success && Array.isArray(r.data)) updates.autoLabelPolicies = r.data.length;
-        }).catch(() => {}),
+        }).catch((err) => { console.error('Failed to fetch auto-label policies:', err); }),
       );
     }
 
     promises.push(
       invoke('Get-SLSnapshot').then((r) => {
         if (r.success && Array.isArray(r.data)) updates.snapshots = r.data.length;
-      }).catch(() => {}),
+      }).catch((err) => { console.error('Failed to fetch snapshots:', err); }),
     );
 
     await Promise.all(promises);
@@ -80,8 +80,8 @@ export default function DashboardPage({ onNavigate }: DashboardPageProps) {
       if (auditResult.success && Array.isArray(auditResult.data)) {
         setRecentActivity(auditResult.data);
       }
-    } catch {
-      // Audit log may not exist yet
+    } catch (err) {
+      console.error('Failed to fetch audit log:', err);
     }
 
     setLoading(false);
@@ -310,7 +310,8 @@ function QuickActions({
       } else {
         setSnapshotResult(result.error ?? 'Failed');
       }
-    } catch {
+    } catch (err) {
+      console.error('Failed to take snapshot:', err);
       setSnapshotResult('Failed');
     }
     setSnapshotting(false);

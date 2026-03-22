@@ -24,14 +24,23 @@ def get_token_manager() -> TokenManager:
 
 @lru_cache
 def get_graph_client() -> GraphClient:
-    return GraphClient(token_manager=get_token_manager())
+    s = get_settings()
+    return GraphClient(
+        token_manager=get_token_manager(),
+        rate_limit=s.graph_rate_limit,
+        rate_burst=s.graph_rate_burst,
+    )
 
 
 @lru_cache
 def get_label_service() -> LabelService:
-    return LabelService(graph=get_graph_client())
+    return LabelService(graph=get_graph_client(), settings=get_settings())
 
 
 @lru_cache
 def get_document_service() -> DocumentService:
-    return DocumentService(graph=get_graph_client(), labels=get_label_service())
+    return DocumentService(
+        graph=get_graph_client(),
+        labels=get_label_service(),
+        settings=get_settings(),
+    )

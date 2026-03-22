@@ -59,8 +59,8 @@ function loadConfig(): ClassifierConfig {
         deny_lists: parsed.deny_lists ?? {},
       };
     }
-  } catch {
-    // Ignore
+  } catch (err) {
+    console.error('Failed to load classifier config from localStorage:', err);
   }
   return {
     entities: { ...DEFAULT_ENTITIES },

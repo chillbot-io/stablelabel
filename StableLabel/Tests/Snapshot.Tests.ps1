@@ -53,20 +53,12 @@ Describe 'New-SLSnapshot' {
         $script:SLConfig.SnapshotPath = Join-Path $TestDrive 'snapshots'
     }
 
-    It 'Requires Graph connection for All scope' {
-        $script:SLConnection.GraphConnected = $false
-        { New-SLSnapshot -Name 'test-snap' } | Should -Throw '*Not connected to Graph*'
-    }
-
     It 'Requires Compliance connection' {
         $script:SLConnection.ComplianceConnected = $false
-        { New-SLSnapshot -Name 'test-snap' -Scope Labels } | Should -Throw '*Not connected to Compliance*'
+        { New-SLSnapshot -Name 'test-snap' } | Should -Throw '*Not connected to Compliance*'
     }
 
     It 'Creates a snapshot file' {
-        Mock Invoke-SLGraphRequest {
-            @([PSCustomObject]@{ id = 'l1'; displayName = 'Public'; isActive = $true })
-        }
         Mock Invoke-SLComplianceCommand {
             @([PSCustomObject]@{ Name = 'Policy1'; Enabled = $true })
         }
@@ -77,7 +69,6 @@ Describe 'New-SLSnapshot' {
     }
 
     It 'Returns JSON with -AsJson' {
-        Mock Invoke-SLGraphRequest { @() }
         Mock Invoke-SLComplianceCommand { @() }
         $json = New-SLSnapshot -Name 'test-json' -Path $TestDrive -AsJson
         { $json | ConvertFrom-Json } | Should -Not -Throw

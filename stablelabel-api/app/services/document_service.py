@@ -17,6 +17,7 @@ import logging
 import uuid
 from typing import Any
 
+from app.config import Settings
 from app.core.exceptions import (
     GraphLockedError,
     SilentFailureError,
@@ -38,16 +39,15 @@ from app.services.label_service import LabelService
 
 logger = logging.getLogger(__name__)
 
-# Max concurrent label operations per tenant — above 20-30 triggers 429
-_MAX_CONCURRENT = 8
-
 
 class DocumentService:
     """Handles all file-level labeling operations."""
 
-    def __init__(self, graph: GraphClient, labels: LabelService) -> None:
+    def __init__(self, graph: GraphClient, labels: LabelService, settings: Settings) -> None:
         self._graph = graph
         self._labels = labels
+        self._max_concurrent = settings.bulk_max_concurrent
+        self._verify_delay = settings.bulk_verify_delay
 
     # ── Read operations ───────────────────────────────────────────
 
@@ -233,7 +233,7 @@ class DocumentService:
             return response
 
         # Real execution with concurrency control
-        sem = asyncio.Semaphore(_MAX_CONCURRENT)
+        sem = asyncio.Semaphore(self._max_concurrent)
 
         async def _apply_one(item: BulkItem) -> LabelJobResult:
             async with sem:
@@ -271,7 +271,7 @@ class DocumentService:
 
         Catches the silent-failure landmine: 202 Accepted but nothing happened.
         """
-        await asyncio.sleep(2.0)  # brief delay for propagation
+        await asyncio.sleep(self._verify_delay)  # brief delay for propagation
 
         try:
             doc_label = await self.extract_label(

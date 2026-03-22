@@ -41,18 +41,3 @@ class LabelCache(BaseModel):
 
     def is_stale(self, now: float) -> bool:
         return (now - self.fetched_at) > self.ttl_seconds
-
-    def by_id(self, label_id: str) -> SensitivityLabel | None:
-        for label in self.labels:
-            if label.id == label_id:
-                return label
-        return None
-
-    def appliable_file_labels(self) -> list[SensitivityLabel]:
-        """Labels that can actually be applied to files via Graph."""
-        return [
-            lb for lb in self.labels
-            if lb.is_active
-            and not lb.is_parent
-            and any(a in ("file",) for a in lb.applicable_to)
-        ]

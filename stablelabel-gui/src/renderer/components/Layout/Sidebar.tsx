@@ -202,6 +202,7 @@ export default function Sidebar({ currentPage, onNavigate }: SidebarProps) {
           {icons.settings}
           Settings
         </button>
+        {/* TODO: source version from electronAPI or build-time constant to keep in sync with package.json */}
         <p className="text-[10px] text-zinc-600 px-3 mt-1.5">v0.1.0</p>
       </div>
     </nav>

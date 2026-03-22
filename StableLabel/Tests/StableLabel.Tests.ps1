@@ -73,9 +73,9 @@ Describe 'Module Manifest' {
         { Test-ModuleManifest -Path $manifest } | Should -Not -Throw
     }
 
-    It 'Exports more than 50 functions' {
+    It 'Exports expected number of functions' {
         $manifest = Test-ModuleManifest -Path (Join-Path $PSScriptRoot '..' 'StableLabel.psd1')
-        $manifest.ExportedFunctions.Count | Should -BeGreaterThan 50
+        $manifest.ExportedFunctions.Count | Should -BeGreaterOrEqual 30
     }
 
     It 'Requires PowerShell 7.0' {
@@ -83,9 +83,9 @@ Describe 'Module Manifest' {
         $manifest.PowerShellVersion | Should -Be '7.0'
     }
 
-    It 'Version is 0.1.0' {
+    It 'Version is 0.2.0' {
         $manifest = Test-ModuleManifest -Path (Join-Path $PSScriptRoot '..' 'StableLabel.psd1')
-        $manifest.Version.ToString() | Should -Be '0.1.0'
+        $manifest.Version.ToString() | Should -Be '0.2.0'
     }
 }
 

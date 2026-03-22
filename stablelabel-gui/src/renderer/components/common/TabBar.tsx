@@ -19,8 +19,6 @@ const kindColors: Record<string, string> = {
   label: 'bg-blue-400',
   policy: 'bg-violet-400',
   autolabel: 'bg-teal-400',
-  retention: 'bg-amber-400',
-  dlp: 'bg-red-400',
   rule: 'bg-orange-400',
   sit: 'bg-yellow-400',
 };

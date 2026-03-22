@@ -20,8 +20,8 @@ async function fetchStatus() {
     if (result.success && result.data) {
       sharedStatus = result.data as ConnectionStatus;
     }
-  } catch {
-    // Connection status unavailable
+  } catch (err) {
+    console.error('Failed to fetch connection status:', err);
   } finally {
     sharedLoading = false;
   }

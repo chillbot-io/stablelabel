@@ -43,8 +43,8 @@ export default function LabelDetail({ labelId, onOpenPolicy }: LabelDetailProps)
             .map((p) => p.Name);
           setPolicies(matching);
         }
-      } catch {
-        // Non-critical
+      } catch (err) {
+        console.error('Failed to fetch label policies:', err);
       }
 
       setLoading(false);

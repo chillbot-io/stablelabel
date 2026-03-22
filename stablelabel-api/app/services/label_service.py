@@ -9,6 +9,7 @@ from __future__ import annotations
 import logging
 import time
 
+from app.config import Settings
 from app.core.exceptions import (
     EncryptionLabelGuardError,
     LabelDowngradeError,
@@ -23,9 +24,10 @@ logger = logging.getLogger(__name__)
 class LabelService:
     """Manages label inventory per tenant with caching."""
 
-    def __init__(self, graph: GraphClient) -> None:
+    def __init__(self, graph: GraphClient, settings: Settings) -> None:
         self._graph = graph
         self._caches: dict[str, LabelCache] = {}
+        self._label_cache_ttl = settings.label_cache_ttl
 
     async def get_labels(self, tenant_id: str, *, force: bool = False) -> list[SensitivityLabel]:
         """Get all sensitivity labels for a tenant, cached with 30-min TTL."""
@@ -47,6 +49,7 @@ class LabelService:
             tenant_id=tenant_id,
             labels=labels,
             fetched_at=now,
+            ttl_seconds=self._label_cache_ttl,
         )
         logger.info("Refreshed %d labels for tenant %s", len(labels), tenant_id)
         return labels

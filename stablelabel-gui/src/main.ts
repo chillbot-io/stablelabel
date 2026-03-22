@@ -103,7 +103,7 @@ function createWindow(): void {
 app.whenReady().then(() => {
   // ── Structured file logging ─────────────────────────────────────────
   initFileLogging(app.getPath('userData')).then(() => {
-    logger.info('APP', `StableLabel v0.1.0 starting (${process.platform}, Electron ${process.versions.electron})`);
+    logger.info('APP', `StableLabel v${app.getVersion()} starting (${process.platform}, Electron ${process.versions.electron})`);
   });
 
   // ── Permission handler — deny all (L3) ──────────────────────────────

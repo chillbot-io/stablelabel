@@ -45,9 +45,17 @@ _READ_RU_COST = 1.0
 class GraphClient:
     """Async Graph API client — one per app instance, handles all tenants."""
 
-    def __init__(self, token_manager: TokenManager) -> None:
+    def __init__(
+        self,
+        token_manager: TokenManager,
+        *,
+        rate_limit: float = 5.0,
+        rate_burst: float = 10.0,
+    ) -> None:
         self._tokens = token_manager
-        self._rate_limiters = TenantRateLimiters()
+        self._rate_limiters = TenantRateLimiters(
+            default_rate=rate_limit, default_capacity=rate_burst
+        )
         self._http = httpx.AsyncClient(
             timeout=httpx.Timeout(30.0, connect=10.0),
             headers={"Accept": "application/json"},
@@ -70,11 +78,6 @@ class GraphClient:
         Callers need status + headers for 202 Accepted async operations.
         """
         return await self._request_full("POST", tenant_id, path, json=json)
-
-    async def patch(
-        self, tenant_id: str, path: str, json: dict[str, Any] | None = None
-    ) -> dict[str, Any]:
-        return await self._request("PATCH", tenant_id, path, json=json)
 
     async def get_all_pages(
         self, tenant_id: str, path: str, **params: Any

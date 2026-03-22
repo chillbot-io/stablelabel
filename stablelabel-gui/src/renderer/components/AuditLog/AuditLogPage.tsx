@@ -22,8 +22,8 @@ export default function AuditLogPage() {
     try {
       const r = await invoke<AuditEntry[]>('Get-SLAuditLog', { Last: count });
       if (r.success && Array.isArray(r.data)) setEntries(r.data);
-    } catch {
-      // silent
+    } catch (err) {
+      console.error('Failed to fetch audit log:', err);
     }
     setLoading(false);
   }, [invoke, count]);

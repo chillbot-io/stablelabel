@@ -13,7 +13,7 @@ function Invoke-SLProtectionCommand {
     )
 
     if (-not $IsWindows) {
-        throw "AIPService requires Windows PowerShell 5.1 and is not available on $($PSVersionTable.OS). Protection functions (document tracking, revocation, super user, templates) are Windows-only."
+        throw "AIPService requires Windows PowerShell 5.1 and is not available on $($PSVersionTable.OS). Protection functions are Windows-only."
     }
 
     Assert-SLConnected -Require Protection

@@ -42,7 +42,8 @@ function loadLastConnection(): LastConnection | null {
     const raw = localStorage.getItem(LAST_CONNECTION_KEY);
     if (!raw) return null;
     return JSON.parse(raw) as LastConnection;
-  } catch {
+  } catch (err) {
+    console.error('Failed to parse last connection from localStorage:', err);
     return null;
   }
 }

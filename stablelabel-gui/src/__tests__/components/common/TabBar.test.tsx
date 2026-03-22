@@ -107,17 +107,13 @@ describe('TabBar', () => {
       { id: '1', label: 'Label', kind: 'label' },
       { id: '2', label: 'Policy', kind: 'policy' },
       { id: '3', label: 'AutoLabel', kind: 'autolabel' },
-      { id: '4', label: 'Retention', kind: 'retention' },
-      { id: '5', label: 'DLP', kind: 'dlp' },
-      { id: '6', label: 'Rule', kind: 'rule' },
-      { id: '7', label: 'SIT', kind: 'sit' },
+      { id: '4', label: 'Rule', kind: 'rule' },
+      { id: '5', label: 'SIT', kind: 'sit' },
     ];
     const { container } = render(<TabBar {...defaultProps} tabs={allKinds} />);
     expect(container.querySelectorAll('.bg-blue-400').length).toBe(1);
     expect(container.querySelectorAll('.bg-violet-400').length).toBe(1);
     expect(container.querySelectorAll('.bg-teal-400').length).toBe(1);
-    expect(container.querySelectorAll('.bg-amber-400').length).toBe(1);
-    expect(container.querySelectorAll('.bg-red-400').length).toBe(1);
     expect(container.querySelectorAll('.bg-orange-400').length).toBe(1);
     expect(container.querySelectorAll('.bg-yellow-400').length).toBe(1);
   });
