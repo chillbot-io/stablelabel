@@ -15,6 +15,9 @@ const config: ForgeConfig = {
     extraResource: [
       // Bundle the PowerShell module inside the app
       '../StableLabel',
+      // Bundle the Presidio classifier exe (built via PyInstaller)
+      // Only included if the exe exists — run: cd stablelabel-classifier && python build_exe.py
+      '../stablelabel-classifier/dist/stablelabel-classifier',
     ],
   },
   rebuildConfig: {},

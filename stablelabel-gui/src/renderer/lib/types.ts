@@ -207,4 +207,44 @@ export type Page =
   | 'explorer'
   | 'snapshots'
   | 'analysis'
+  | 'classification'
   | 'settings';
+
+/* ─── Data Classification (Presidio) ──────────────────────────────── */
+
+/** Per-entity configuration for the classifier */
+export interface EntityConfig {
+  enabled: boolean;
+  threshold: number;
+}
+
+/** Custom pattern recognizer definition */
+export interface CustomRecognizer {
+  name: string;
+  entity_type: string;
+  pattern: string;
+  score: number;
+  context_words: string[];
+}
+
+/** Full classifier configuration persisted in localStorage */
+export interface ClassifierConfig {
+  entities: Record<string, EntityConfig>;
+  custom_recognizers: CustomRecognizer[];
+  deny_lists: Record<string, string[]>;
+}
+
+/** A single PII detection result */
+export interface ClassifierEntity {
+  entity_type: string;
+  start: number;
+  end: number;
+  score: number;
+  text: string;
+}
+
+/** Response from the analyze action */
+export interface ClassifierAnalyzeResult {
+  results: ClassifierEntity[];
+  entity_counts: Record<string, number>;
+}

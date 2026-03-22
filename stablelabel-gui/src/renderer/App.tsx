@@ -10,6 +10,7 @@ import BulkOpsPage from './components/BulkOps/BulkOpsPage';
 import ExplorerPage from './components/Explorer/ExplorerPage';
 import SnapshotsPage from './components/Snapshots/SnapshotsPage';
 import AnalysisPage from './components/Analysis/AnalysisPage';
+import ClassificationPage from './components/Classification/ClassificationPage';
 import SettingsPage from './components/Settings/SettingsPage';
 import type { Page } from './lib/types';
 
@@ -34,6 +35,8 @@ export default function App() {
         return <SnapshotsPage />;
       case 'analysis':
         return <AnalysisPage />;
+      case 'classification':
+        return <ClassificationPage />;
       case 'settings':
         return <SettingsPage />;
       default:

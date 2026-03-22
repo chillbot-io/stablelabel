@@ -1,6 +1,7 @@
 import { app, BrowserWindow, ipcMain, dialog, session, shell } from 'electron';
 import path from 'node:path';
 import { PowerShellBridge } from './powershell-bridge';
+import { ClassifierBridge } from './classifier-bridge';
 import { CredentialStore } from './credential-store';
 import { CMDLET_REGISTRY } from './cmdlet-registry';
 import { TRUSTED_EXTERNAL_HOSTS } from './trusted-hosts';
@@ -15,6 +16,7 @@ declare const MAIN_WINDOW_VITE_NAME: string;
 
 let mainWindow: BrowserWindow | null = null;
 let psBridge: PowerShellBridge | null = null;
+let classifierBridge: ClassifierBridge | null = null;
 
 function getModulePath(): string {
   if (app.isPackaged) {
@@ -152,6 +154,24 @@ app.whenReady().then(() => {
     CredentialStore.clear();
   });
 
+  // ── Classifier (Presidio + spaCy) ──────────────────────────────────
+  classifierBridge = new ClassifierBridge();
+
+  ipcMain.handle('classifier:invoke', async (_event, action: string, params: Record<string, unknown>) => {
+    if (!classifierBridge) throw new Error('Classifier bridge not initialized');
+    return classifierBridge.invoke(action, params);
+  });
+
+  ipcMain.handle('classifier:check', async () => {
+    if (!classifierBridge) return { available: false, error: 'Not initialized' };
+    return classifierBridge.checkAvailable();
+  });
+
+  ipcMain.handle('classifier:get-status', async () => {
+    if (!classifierBridge) return { initialized: false };
+    return { initialized: classifierBridge.isInitialized() };
+  });
+
   createWindow();
 });
 
@@ -159,6 +179,10 @@ app.on('window-all-closed', () => {
   if (psBridge) {
     psBridge.dispose();
     psBridge = null;
+  }
+  if (classifierBridge) {
+    classifierBridge.dispose();
+    classifierBridge = null;
   }
   if (process.platform !== 'darwin') {
     app.quit();

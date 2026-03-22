@@ -89,6 +89,14 @@ const icons: Record<string, React.ReactNode> = {
       <path d="M18 17V3" strokeWidth="2.5" />
     </Icon>
   ),
+  /* Classification — magnifying glass with lock */
+  classification: (
+    <Icon>
+      <circle cx="9" cy="9" r="5" />
+      <path d="M16 16l-3.5-3.5" />
+      <path d="M8 7.5v1.5a1 1 0 001 1h0a1 1 0 001-1V7.5a1 1 0 00-1-1h0a1 1 0 00-1 1z" />
+    </Icon>
+  ),
   /* Settings — horizontal sliders */
   settings: (
     <Icon>
@@ -121,6 +129,7 @@ const navItems: NavItem[] = [
   { id: 'explorer', label: 'Explorer', group: 'Browse' },
   { id: 'snapshots', label: 'Snapshots', group: 'Safety' },
   { id: 'analysis', label: 'Analysis', group: 'Intelligence' },
+  { id: 'classification', label: 'Classification', group: 'Intelligence' },
 ];
 
 interface SidebarProps {
