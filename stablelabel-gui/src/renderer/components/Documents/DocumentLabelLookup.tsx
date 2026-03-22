@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { usePowerShell } from '../../hooks/usePowerShell';
 import { TextField } from '../common/FormFields';
+import RawJsonSection from '../common/RawJsonSection';
 import type { DocumentLabelResult } from '../../lib/types';
 
 export default function DocumentLabelLookup() {
@@ -61,19 +62,10 @@ export default function DocumentLabelLookup() {
           ) : (
             <p className="text-xs text-zinc-500">No sensitivity label applied to this document.</p>
           )}
-          <RawJson data={result} />
+          <RawJsonSection data={result} />
         </div>
       )}
     </div>
   );
 }
 
-function RawJson({ data }: { data: unknown }) {
-  const [o, setO] = useState(false);
-  return (
-    <div className="mt-3 pt-3 border-t border-white/[0.06]">
-      <button onClick={() => setO(!o)} className="text-xs text-zinc-500 hover:text-zinc-300">{o ? '▾ Hide' : '▸ Show'} raw JSON</button>
-      {o && <pre className="mt-2 p-3 bg-zinc-950 rounded-lg text-xs text-zinc-400 overflow-auto max-h-48">{JSON.stringify(data, null, 2)}</pre>}
-    </div>
-  );
-}

@@ -3,6 +3,7 @@ import { usePowerShell } from '../../hooks/usePowerShell';
 import { useElapsedTime } from '../../hooks/useElapsedTime';
 import { TextField, TextArea, ToggleField } from '../common/FormFields';
 import type { BulkLabelResult } from '../../lib/types';
+import BulkResultSummary from '../common/BulkResultSummary';
 
 export default function DocumentLabelBulk() {
   const { invoke } = usePowerShell();
@@ -86,54 +87,8 @@ export default function DocumentLabelBulk() {
         )}
       </div>
 
-      {result && <BulkResult result={result} />}
+      {result && <BulkResultSummary result={result} />}
     </div>
   );
 }
 
-function BulkResult({ result }: { result: BulkLabelResult }) {
-  const [showDetails, setShowDetails] = useState(false);
-
-  return (
-    <div className="bg-white/[0.03] rounded-xl p-4 space-y-3">
-      <h4 className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">
-        {result.DryRun ? 'Dry Run Results' : 'Results'}
-      </h4>
-
-      <div className="grid grid-cols-3 gap-3">
-        <div className="bg-white/[0.06] rounded-lg p-2.5">
-          <dt className="text-xs text-zinc-500">Total</dt>
-          <dd className="text-lg font-bold text-zinc-200">{result.TotalItems}</dd>
-        </div>
-        <div className="bg-white/[0.06] rounded-lg p-2.5">
-          <dt className="text-xs text-zinc-500">Succeeded</dt>
-          <dd className="text-lg font-bold text-emerald-400">{result.SuccessCount}</dd>
-        </div>
-        <div className="bg-white/[0.06] rounded-lg p-2.5">
-          <dt className="text-xs text-zinc-500">Failed</dt>
-          <dd className={`text-lg font-bold ${result.FailedCount > 0 ? 'text-red-400' : 'text-zinc-400'}`}>{result.FailedCount}</dd>
-        </div>
-      </div>
-
-      {result.Results && result.Results.length > 0 && (
-        <div>
-          <button onClick={() => setShowDetails(!showDetails)} className="text-xs text-zinc-500 hover:text-zinc-300">
-            {showDetails ? '▾ Hide' : '▸ Show'} item details
-          </button>
-          {showDetails && (
-            <div className="mt-2 space-y-1 max-h-48 overflow-auto">
-              {result.Results.map((item, i) => (
-                <div key={i} className="flex items-center justify-between px-2.5 py-1.5 bg-white/[0.06] rounded-lg text-xs">
-                  <span className="text-zinc-400 font-mono truncate">{item.DriveId}/{item.ItemId}</span>
-                  <span className={`px-1.5 py-0.5 rounded-lg ${item.Status === 'Failed' ? 'bg-red-500/10 text-red-400' : item.Status === 'DryRun' ? 'bg-yellow-500/10 text-yellow-400' : 'bg-emerald-400/10 text-emerald-400'}`}>
-                    {item.Status}
-                  </span>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}

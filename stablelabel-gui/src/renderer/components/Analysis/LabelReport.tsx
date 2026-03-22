@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { usePowerShell } from '../../hooks/usePowerShell';
 import ExportButton from '../common/ExportButton';
+import RawJsonSection from '../common/RawJsonSection';
 
 interface LabelReportResult {
   TotalLabels: number;
@@ -80,7 +81,7 @@ export default function LabelReport() {
             </div>
           )}
 
-          <RawJson data={report} />
+          <RawJsonSection data={report} />
         </div>
       )}
     </div>
@@ -97,12 +98,3 @@ function Stat({ label, value, color }: { label: string; value: number; color?: s
   );
 }
 
-function RawJson({ data }: { data: unknown }) {
-  const [o, setO] = useState(false);
-  return (
-    <div className="border-t border-white/[0.06] pt-3">
-      <button onClick={() => setO(!o)} className="text-xs text-zinc-500 hover:text-zinc-300">{o ? '▾ Hide' : '▸ Show'} raw JSON</button>
-      {o && <pre className="mt-2 p-3 bg-zinc-950 rounded-lg text-xs text-zinc-400 overflow-auto max-h-48">{JSON.stringify(data, null, 2)}</pre>}
-    </div>
-  );
-}

@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { usePowerShell } from '../../hooks/usePowerShell';
+import { formatSize, formatShortDate } from '../../lib/format';
 import type { DriveLocation, FileItem } from './ExplorerPage';
 
 interface FileListPanelProps {
@@ -268,7 +269,7 @@ export default function FileListPanel({ location, onNavigate, onViewFile }: File
               {item.Size !== null ? formatSize(item.Size) : ''}
             </div>
             <div className="text-zinc-500 truncate">
-              {item.LastModified ? formatDate(item.LastModified) : ''}
+              {item.LastModified ? formatShortDate(item.LastModified) : ''}
             </div>
             <div>
               {!item.IsFolder && (
@@ -301,18 +302,3 @@ export default function FileListPanel({ location, onNavigate, onViewFile }: File
   );
 }
 
-function formatSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1048576) return `${(bytes / 1024).toFixed(1)} KB`;
-  if (bytes < 1073741824) return `${(bytes / 1048576).toFixed(1)} MB`;
-  return `${(bytes / 1073741824).toFixed(1)} GB`;
-}
-
-function formatDate(iso: string): string {
-  try {
-    const d = new Date(iso);
-    return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
-  } catch {
-    return '';
-  }
-}

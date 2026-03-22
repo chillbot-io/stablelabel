@@ -1,6 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import { usePowerShell } from '../../hooks/usePowerShell';
 import type { AutoLabelPolicy } from '../../lib/types';
+import PropertyCard from '../common/PropertyCard';
+import RawJsonSection from '../common/RawJsonSection';
+import LocationRow from '../common/LocationRow';
+import { formatDate } from '../../lib/format';
 
 interface AutoLabelDetailProps {
   policyName: string;
@@ -160,66 +164,3 @@ function getModeInfo(mode: string | null) {
   }
 }
 
-function PropertyCard({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
-  return (
-    <div className="bg-white/[0.03] rounded-lg p-3">
-      <dt className="text-xs text-zinc-500 mb-1">{label}</dt>
-      <dd className={`text-sm text-zinc-200 truncate ${mono ? 'font-mono text-xs' : ''}`} title={value}>
-        {value}
-      </dd>
-    </div>
-  );
-}
-
-function LocationRow({ label, locations }: { label: string; locations: string[] | null }) {
-  const items = locations?.filter(Boolean) ?? [];
-  const isAll = items.length === 1 && items[0]?.toLowerCase() === 'all';
-
-  return (
-    <div className="flex items-start gap-3">
-      <span className="text-xs text-zinc-400 w-20 flex-shrink-0 pt-0.5">{label}</span>
-      {items.length === 0 ? (
-        <span className="text-xs text-zinc-600">Not configured</span>
-      ) : isAll ? (
-        <span className="text-xs text-emerald-400">All locations</span>
-      ) : (
-        <div className="flex flex-wrap gap-1">
-          {items.map((loc) => (
-            <span key={loc} className="text-xs px-1.5 py-0.5 bg-white/[0.06] text-zinc-300 rounded-lg">
-              {loc}
-            </span>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function RawJsonSection({ data }: { data: unknown }) {
-  const [expanded, setExpanded] = useState(false);
-
-  return (
-    <div className="border-t border-white/[0.06] pt-4">
-      <button
-        onClick={() => setExpanded(!expanded)}
-        className="text-xs text-zinc-500 hover:text-zinc-300 transition-colors"
-      >
-        {expanded ? '▾ Hide' : '▸ Show'} raw JSON
-      </button>
-      {expanded && (
-        <pre className="mt-2 p-3 bg-zinc-950 rounded-lg text-xs text-zinc-400 overflow-x-auto max-h-64 overflow-y-auto">
-          {JSON.stringify(data, null, 2)}
-        </pre>
-      )}
-    </div>
-  );
-}
-
-function formatDate(dateStr: string | null | undefined): string {
-  if (!dateStr) return 'N/A';
-  try {
-    return new Date(dateStr).toLocaleString();
-  } catch {
-    return dateStr;
-  }
-}
