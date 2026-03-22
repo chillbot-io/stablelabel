@@ -13,7 +13,9 @@ from app.core.auth import TokenManager
 from app.db.base import get_session
 from app.services.document_service import DocumentService
 from app.services.graph_client import GraphClient
+from app.services.label_management import LabelManagementService
 from app.services.label_service import LabelService
+from app.services.powershell_runner import PowerShellRunner
 from app.services.reporting import ReportingService
 
 # Module-level arq pool — set during app lifespan startup
@@ -52,6 +54,20 @@ def get_document_service() -> DocumentService:
         graph=get_graph_client(),
         labels=get_label_service(),
         settings=get_settings(),
+    )
+
+
+@lru_cache
+def get_powershell_runner() -> PowerShellRunner:
+    s = get_settings()
+    return PowerShellRunner(client_id=s.azure_client_id, client_secret=s.azure_client_secret)
+
+
+@lru_cache
+def get_label_management_service() -> LabelManagementService:
+    return LabelManagementService(
+        graph=get_graph_client(),
+        powershell=get_powershell_runner(),
     )
 
 

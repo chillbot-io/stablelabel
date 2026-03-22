@@ -66,3 +66,10 @@ class TenantNotEnabledError(StableLabelError):
 
     All label operations will fail with unhelpful errors until this is on.
     """
+
+
+class GraphApiNotSupportedError(StableLabelError):
+    """Graph API does not support this operation (e.g., label/policy creation).
+
+    Triggers fallback to PowerShell Compliance Center cmdlets.
+    """
