@@ -137,10 +137,34 @@ Requires: Azure subscription (Pay-As-You-Go or EA), Application Owner/Admin on a
 
 ## C. Multi-tenant / MSP architecture
 
-- [ ] **C9. Tenant onboarding** — How does an MSP add a new customer tenant? Multi-tenant app registration with admin consent in each tenant? Or per-tenant app registrations?
-- [ ] **C10. Credential storage** — Client secrets / certificates per tenant. Where? Vault? Database with encryption? Env vars won't scale past 3 tenants.
-- [ ] **C11. GDAP vs app registration** — For pure file labeling, multi-tenant app reg works. For site container labels (delegated-only), you need GDAP. Do you support both? Or skip site container labels for now?
-- [ ] **C12. Tenant isolation** — One API instance serving all tenants? Or per-tenant deployments? Matters for rate limiting, data isolation, compliance.
+- [x] **C9. Tenant onboarding** — **Tenant Management pane/blade** in the UI. MSP operators can add new tenants or manage existing ones from this dedicated view. **Per-tenant app registration only** — each customer tenant gets its own app registration. No multi-tenant app reg.
+
+- [x] **C10. Credential storage** — **Encrypted vault, SOC 2 compliant.** Client secrets and certificates stored in an encrypted secrets vault (Azure Key Vault in production). Must pass SOC 2 audit requirements — encryption at rest, access logging, key rotation support, RBAC on secret access.
+
+- [x] **C11. GDAP vs app registration** — **File labeling only for now.** Per-tenant app registrations with application permissions (`Files.ReadWrite.All`, `Sites.ReadWrite.All`) are sufficient for file-level sensitivity labels via `assignSensitivityLabel`. Site container labels are out of scope for v1. See GDAP explainer below.
+
+  > **GDAP Explainer — Granular Delegated Admin Privileges:**
+  >
+  > GDAP is Microsoft's model for MSPs/partners to manage customer tenants *on behalf of* users in those tenants. It replaced DAP (Delegated Admin Privileges) which gave partners blanket Global Admin — a security nightmare.
+  >
+  > **How it works:**
+  > - The MSP establishes a GDAP relationship with a customer tenant (customer admin approves it)
+  > - The MSP requests specific Entra ID roles (e.g., SharePoint Admin, Compliance Admin) — not blanket Global Admin
+  > - MSP technicians are assigned to security groups that map to those roles
+  > - When an MSP tech calls Graph API, they use **delegated permissions** — acting *as* a user in the customer tenant with only the GDAP-granted roles
+  >
+  > **Why it matters for labeling:**
+  > - `assignSensitivityLabel` on files → works with **application permissions** (app reg) — no GDAP needed
+  > - `assignSensitivityLabel` on **site containers** (applying a label to an entire SharePoint site) → requires **delegated permissions** only, meaning GDAP is required for an MSP to do this cross-tenant
+  > - Some compliance operations (label creation via Graph beta, DLP policies) also require delegated context
+  >
+  > **Why we skip it for v1:**
+  > - Per-tenant app registrations with app-only permissions cover file labeling, site/drive enumeration, delta queries, and webhooks
+  > - GDAP adds complexity: relationship lifecycle management, role mapping, token acquisition via `on-behalf-of` flow
+  > - Site container labels are a nice-to-have, not core to the MVP
+  > - Can add GDAP support later as a "delegated mode" option per tenant
+
+- [x] **C12. Tenant isolation** — **One API instance per tenant.** Each tenant gets its own isolated API session. The UI has a **tenant selector dropdown** on the main page — user picks which tenant to work with, signs in, and operates within that single-tenant context for the session. This gives clean isolation for rate limiting, data, and compliance. Deployment-wise, this means either per-tenant containers or a single deployment that spawns isolated sessions per tenant selection.
 
 ## D. Persistence
 
