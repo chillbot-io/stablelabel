@@ -35,7 +35,7 @@ def is_cron_due(expression: str, now: datetime) -> bool:
         and _matches(hour, now.hour, 0, 23)
         and _matches(day, now.day, 1, 31)
         and _matches(month, now.month, 1, 12)
-        and _matches(dow, now.weekday(), 0, 6)  # 0=Monday in Python
+        and _matches(dow, (now.weekday() + 1) % 7, 0, 6)  # convert to cron: 0=Sun
     )
 
 

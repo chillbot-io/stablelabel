@@ -51,15 +51,22 @@ class TestRanges:
         assert not is_cron_due("5-10 * * * *", _t(minute=11))
 
     def test_weekday_range(self) -> None:
-        # 2026-01-05 is Monday (weekday=0)
+        # Cron convention: 0=Sun, 1=Mon, ..., 6=Sat
+        # 2026-01-05 is Monday (Python weekday=0, cron=1)
         monday = _t(day=5)
         assert monday.weekday() == 0
-        assert is_cron_due("* * * * 0-4", monday)  # Mon-Fri
+        assert is_cron_due("* * * * 1-5", monday)  # Mon-Fri in cron
 
-        # 2026-01-03 is Saturday (weekday=5)
+        # 2026-01-03 is Saturday (Python weekday=5, cron=6)
         saturday = _t(day=3)
         assert saturday.weekday() == 5
-        assert not is_cron_due("* * * * 0-4", saturday)
+        assert not is_cron_due("* * * * 1-5", saturday)  # Sat excluded
+
+        # 2026-01-04 is Sunday (Python weekday=6, cron=0)
+        sunday = _t(day=4)
+        assert sunday.weekday() == 6
+        assert is_cron_due("* * * * 0", sunday)  # Sunday = 0 in cron
+        assert not is_cron_due("* * * * 1-5", sunday)  # Not Mon-Fri
 
 
 class TestLists:
@@ -97,9 +104,9 @@ class TestCommonPatterns:
         assert not is_cron_due("0 2 * * *", _t(minute=0, hour=3))
 
     def test_weekdays_at_9am(self) -> None:
-        # 2026-01-05 is Monday
+        # 2026-01-05 is Monday (cron=1)
         monday_9am = _t(minute=0, hour=9, day=5)
-        assert is_cron_due("0 9 * * 0-4", monday_9am)
+        assert is_cron_due("0 9 * * 1-5", monday_9am)  # Mon-Fri in cron
 
     def test_first_of_month_midnight(self) -> None:
         assert is_cron_due("0 0 1 * *", _t(day=1))

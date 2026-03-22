@@ -307,6 +307,7 @@ class JobExecutor:
                 return
 
             batch_applied: list[dict[str, str]] = []
+            batch_failed = 0
 
             for file_info in batch:
                 drive_id = file_info["drive_id"]
@@ -363,6 +364,7 @@ class JobExecutor:
                         files_skipped += 1
                     else:
                         files_failed += 1
+                        batch_failed += 1
                         logger.warning(
                             "Job %s: failed to label %s/%s: %s",
                             job.id, drive_id, item_id, result.error,
@@ -384,6 +386,7 @@ class JobExecutor:
                             ))
                 elif result.status == JobStatus.SILENT_FAILURE:
                     files_failed += 1
+                    batch_failed += 1
                     if msp_tenant_id:
                         self._db.add(AuditEvent(
                             msp_tenant_id=msp_tenant_id,
@@ -416,10 +419,7 @@ class JobExecutor:
                 },
                 batch_number=batch_number,
                 items_processed=len(batch),
-                items_failed=sum(
-                    1 for f in batch
-                    if f not in [a for a in batch_applied]
-                ),
+                items_failed=batch_failed,
                 status="completed",
             )
             self._db.add(cp)
@@ -492,6 +492,8 @@ class JobExecutor:
                 }, batch_number)
                 return
 
+            batch_rollback_failed = 0
+
             for entry in batch:
                 drive_id = entry.get("drive_id", "")
                 item_id = entry.get("item_id", "")
@@ -531,6 +533,7 @@ class JobExecutor:
                         ))
                 except Exception:
                     rollback_failed += 1
+                    batch_rollback_failed += 1
                     logger.warning(
                         "Job %s: rollback failed for %s/%s",
                         job.id, drive_id, item_id,
@@ -548,7 +551,7 @@ class JobExecutor:
                 },
                 batch_number=batch_number,
                 items_processed=len(batch),
-                items_failed=rollback_failed,
+                items_failed=batch_rollback_failed,
                 status="completed",
             )
             self._db.add(cp)
