@@ -35,10 +35,17 @@ Status key: `[ ]` = open, `[x]` = decided
 
 ## B. How does classification drive labeling?
 
-- [ ] **B5. Rules engine** — "If file contains SSN → Confidential", "If file contains credit cards → Highly Confidential." Where do these rules live? Hardcoded? Config file? Database? UI-configurable?
-- [ ] **B6. Content extraction** — To classify, you need file content. Graph can download files. But downloading 100K files to run Presidio on them is expensive. How selective are you?
-- [ ] **B7. Classification → label mapping** — The classifier returns entity types (PERSON, SSN, CREDIT_CARD) with confidence scores. Something needs to map those to sensitivity label IDs. That mapping is tenant-specific (every org has different label names).
-- [ ] **B8. Classification caching** — Do you re-classify files that haven't changed? Or store classification results and only re-scan on modification?
+- [x] **B5. Rules engine** — Rules are defined **in the job** via a "Policies" system. When creating a job, user enables classification-based labeling (checkbox), then selects which **policies** to apply. Policies live in a dedicated **Policies pane** (see below).
+
+- [x] **B6. Content extraction** — Graph API does not support server-side classification; files must be downloaded. Architecture: **stream-and-discard pipeline** — stream file bytes from Graph `/content` endpoint → extract text in memory (tika/python-docx/pdfplumber) → run Presidio → discard content immediately. No files stored on disk. Parallelized workers for throughput (similar to how Varonis and BigID handle cloud scanning — both pull content via API connectors with distributed workers, classify in memory, discard).
+
+- [x] **B7. Classification → label mapping — Policies pane** — Two-tier system:
+  - **Out-of-the-box policies:** Pre-built rules shipped with StableLabel (e.g., "Any PCI detected → Highly Confidential", "PHI detected → Highly Confidential").
+  - **Custom policies:** User-defined rules with full flexibility (e.g., "If >5 instances of PII → Confidential", "If SSN + credit card in same file → Highly Confidential with access control").
+  - Policies map detected entity types + thresholds → tenant-specific label IDs. The label mapping is configured per-tenant since every org names their labels differently.
+  - **Label Configuration pane:** Users can also create/manage sensitivity labels and label policies directly from StableLabel, which get pushed to the tenant. **Note:** Graph API is read-only for label creation. Label/policy creation requires Security & Compliance PowerShell (`New-Label`, `New-LabelPolicy`) under the hood. We wrap these via our existing PS module.
+
+- [x] **B8. Classification caching** — Only classify new files and deltas. Store classification results in the database. Files that haven't changed since last scan are skipped entirely.
 
 ## C. Multi-tenant / MSP architecture
 
