@@ -17,13 +17,12 @@ interface OpenTab extends Tab {
   itemId: string;
 }
 
-let formCounter = 0;
-
 export default function LabelsPage() {
   const [browserSection, setBrowserSection] = useState<BrowserSection>('labels');
   const [tabs, setTabs] = useState<OpenTab[]>([]);
   const [activeTabId, setActiveTabId] = useState<string | null>(null);
   const activeTabIdRef = useRef(activeTabId);
+  const formCounterRef = useRef(0);
   activeTabIdRef.current = activeTabId;
 
   const openTab = useCallback(
@@ -78,13 +77,13 @@ export default function LabelsPage() {
 
   // Form handlers — new
   const handleNewPolicy = useCallback(() => {
-    formCounter++;
-    openTab('policy-form-new', `new-${formCounter}`, '+ New Policy', 'policy');
+    formCounterRef.current++;
+    openTab('policy-form-new', `new-${formCounterRef.current}`, '+ New Policy', 'policy');
   }, [openTab]);
 
   const handleNewAutoLabel = useCallback(() => {
-    formCounter++;
-    openTab('autolabel-form-new', `new-${formCounter}`, '+ New Auto-Label', 'autolabel');
+    formCounterRef.current++;
+    openTab('autolabel-form-new', `new-${formCounterRef.current}`, '+ New Auto-Label', 'autolabel');
   }, [openTab]);
 
   // Form handlers — edit (opens a form tab pre-populated with existing data)

@@ -36,7 +36,7 @@ export default function PolicyDetail({ policyName, onOpenLabel, onEdit, onDelete
       setLoading(false);
     };
     fetch();
-  }, [policyName]);
+  }, [policyName, invoke]);
 
   if (loading) {
     return (
@@ -73,7 +73,7 @@ export default function PolicyDetail({ policyName, onOpenLabel, onEdit, onDelete
             className={`px-2 py-1 text-xs rounded-lg ${
               policy.Enabled
                 ? 'bg-emerald-400/10 text-emerald-400 border border-green-500/20'
-                : 'bg-white/[0.08]/50 text-zinc-400 border border-gray-600'
+                : 'bg-white/[0.08] text-zinc-400 border border-gray-600'
             }`}
           >
             {policy.Enabled ? 'Enabled' : 'Disabled'}

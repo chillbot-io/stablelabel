@@ -36,7 +36,7 @@ export default function AutoLabelDetail({ policyName, onOpenLabel, onEdit, onDel
       setLoading(false);
     };
     fetch();
-  }, [policyName]);
+  }, [policyName, invoke]);
 
   if (loading) {
     return (
@@ -157,7 +157,7 @@ function getModeInfo(mode: string | null) {
     default:
       return {
         text: mode ?? 'Unknown',
-        color: 'bg-white/[0.08]/50 text-zinc-400 border border-gray-600',
+        color: 'bg-white/[0.08] text-zinc-400 border border-gray-600',
         bgBorder: 'bg-white/[0.04] border-white/[0.08]',
         description: 'Policy mode is not recognized.',
       };

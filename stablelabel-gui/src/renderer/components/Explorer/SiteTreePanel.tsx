@@ -72,6 +72,7 @@ export default function SiteTreePanel({ onNavigate, currentLocation }: SiteTreeP
             value={search}
             onChange={e => setSearch(e.target.value)}
             onKeyDown={e => e.key === 'Enter' && handleSearch()}
+            aria-label="Search sites"
             placeholder="Search sites..."
             className="flex-1 px-2 py-1.5 text-xs bg-white/[0.05] border border-white/[0.08] rounded-lg text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-blue-500"
           />

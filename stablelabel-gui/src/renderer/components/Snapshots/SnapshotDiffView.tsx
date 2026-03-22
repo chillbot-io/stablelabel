@@ -45,7 +45,7 @@ function CategoryDiff({ category, data }: { category: string; data: { Added: Arr
 
   return (
     <div className={`border rounded-lg overflow-hidden ${hasChanges ? 'border-yellow-500/20' : 'border-white/[0.06]'}`}>
-      <button onClick={() => setExpanded(!expanded)} className="w-full flex items-center justify-between px-4 py-3 bg-white/[0.03] hover:bg-white/[0.06]/80 transition-colors">
+      <button onClick={() => setExpanded(!expanded)} className="w-full flex items-center justify-between px-4 py-3 bg-white/[0.03] hover:bg-white/[0.06] transition-colors">
         <div className="flex items-center gap-3">
           <span className="text-xs text-zinc-500">{expanded ? '▾' : '▸'}</span>
           <span className="text-sm font-medium text-zinc-200">{category}</span>
@@ -87,16 +87,18 @@ function ModifiedItem({ item }: { item: { Identity: string; PropertyChanges?: Ar
 
   return (
     <div className="rounded bg-yellow-500/5">
-      <div
-        className={`flex items-center gap-2 px-2.5 py-1.5 ${hasProps ? 'cursor-pointer' : ''}`}
+      <button
+        type="button"
+        className={`w-full flex items-center gap-2 px-2.5 py-1.5 text-left ${hasProps ? 'cursor-pointer' : 'cursor-default'}`}
         onClick={() => hasProps && setExpanded(!expanded)}
+        tabIndex={hasProps ? 0 : -1}
       >
         <span className="text-[10px] px-1 py-0.5 bg-yellow-500/20 text-yellow-400 rounded-lg">Modified</span>
         <span className="text-xs text-zinc-300 flex-1">{item.Identity}</span>
         {hasProps && (
           <span className="text-[10px] text-zinc-500">{expanded ? '▾' : '▸'} {item.PropertyChanges!.length} prop{item.PropertyChanges!.length !== 1 ? 's' : ''}</span>
         )}
-      </div>
+      </button>
       {expanded && hasProps && (
         <div className="px-3 pb-2 space-y-1">
           {item.PropertyChanges!.map((pc, j) => (

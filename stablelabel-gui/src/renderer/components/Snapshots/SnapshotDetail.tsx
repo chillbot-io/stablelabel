@@ -30,7 +30,7 @@ export default function SnapshotDetail({ snapshotName, onDeleted, onCompare }: P
       } else { setError(r.error ?? 'Failed'); }
       setLoading(false);
     });
-  }, [snapshotName]);
+  }, [snapshotName, invoke]);
 
   const handleDelete = async () => {
     setDeleting(true);

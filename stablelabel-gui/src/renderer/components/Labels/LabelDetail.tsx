@@ -51,7 +51,7 @@ export default function LabelDetail({ labelId, onOpenPolicy }: LabelDetailProps)
     };
 
     fetchLabel();
-  }, [labelId]);
+  }, [labelId, invoke]);
 
   if (loading) {
     return (
@@ -154,7 +154,7 @@ function StatusBadge({ active }: { active: boolean }) {
       className={`px-2 py-1 text-xs rounded-lg ${
         active
           ? 'bg-emerald-400/10 text-emerald-400 border border-green-500/20'
-          : 'bg-white/[0.08]/50 text-zinc-400 border border-gray-600'
+          : 'bg-white/[0.08] text-zinc-400 border border-gray-600'
       }`}
     >
       {active ? 'Active' : 'Inactive'}

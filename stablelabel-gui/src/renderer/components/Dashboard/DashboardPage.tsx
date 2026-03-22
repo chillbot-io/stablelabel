@@ -220,13 +220,11 @@ function StatCard({
   title,
   value,
   loading,
-  alert,
   onClick,
 }: {
   title: string;
   value: number | null;
   loading: boolean;
-  alert?: boolean;
   onClick?: () => void;
 }) {
   return (
@@ -235,7 +233,7 @@ function StatCard({
       className="bg-white/[0.03] hover:bg-white/[0.05] rounded-xl p-5 text-left transition-colors cursor-pointer"
     >
       <p className="text-[12px] text-zinc-500">{title}</p>
-      <p className={`text-3xl font-semibold mt-1.5 tracking-tight ${alert ? 'text-red-400' : 'text-white'}`}>
+      <p className="text-3xl font-semibold mt-1.5 tracking-tight text-white">
         {loading && value === null ? (
           <span className="inline-block w-8 h-8 bg-white/[0.06] rounded animate-pulse" />
         ) : (

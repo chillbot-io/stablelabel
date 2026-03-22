@@ -65,24 +65,23 @@ export default function FileListPanel({ location, onNavigate, onViewFile }: File
   }, [fetchChildren]);
 
   const handleFolderClick = (item: FileItem) => {
+    const currentItemIds = location.itemIds ?? [undefined];
     onNavigate({
       driveId: driveId || location.driveId,
       itemId: item.Id,
       path: [...location.path, item.Name],
+      itemIds: [...currentItemIds, item.Id],
     });
   };
 
   const handleBreadcrumb = (index: number) => {
-    if (index === 0) {
-      // Go back to site root
-      onNavigate({
-        driveId: location.driveId,
-        itemId: undefined,
-        path: [location.path[0]],
-      });
-    }
-    // For deeper breadcrumbs, we'd need to track itemIds per level
-    // For now, just navigate to root
+    const itemIds = location.itemIds ?? [undefined];
+    onNavigate({
+      driveId: location.driveId,
+      itemId: itemIds[index],
+      path: location.path.slice(0, index + 1),
+      itemIds: itemIds.slice(0, index + 1),
+    });
   };
 
   const toggleSelect = (id: string) => {

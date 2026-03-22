@@ -7,6 +7,8 @@ export interface DriveLocation {
   driveId: string;
   itemId?: string;
   path: string[];
+  /** itemId at each path level (index 0 = root = undefined) for breadcrumb nav */
+  itemIds?: Array<string | undefined>;
 }
 
 export interface FileItem {
