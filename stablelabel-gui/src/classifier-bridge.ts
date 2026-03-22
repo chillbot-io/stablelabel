@@ -54,7 +54,8 @@ export class ClassifierBridge {
       const exeName = platform() === 'win32'
         ? 'stablelabel-classifier.exe'
         : 'stablelabel-classifier';
-      const exePath = path.join(process.resourcesPath, exeName);
+      // PyInstaller --onedir output: resources/stablelabel-classifier/<exeName>
+      const exePath = path.join(process.resourcesPath, 'stablelabel-classifier', exeName);
       if (existsSync(exePath)) {
         return { command: exePath, args: [] };
       }

@@ -191,6 +191,21 @@ export const CMDLET_REGISTRY: Record<string, CmdletDef> = {
       UseDeviceCode: { type: 'switch' },
     },
   },
+  'Connect-SLGraph': {
+    params: {
+      TenantId: { type: 'string' },
+      UseDeviceCode: { type: 'switch' },
+    },
+  },
+  'Connect-SLCompliance': {
+    params: {
+      UseDeviceCode: { type: 'switch' },
+    },
+  },
+  'Connect-SLProtection': {},
+  'Disconnect-SLGraph': {},
+  'Disconnect-SLCompliance': {},
+  'Disconnect-SLProtection': {},
   'Get-SLConnectionStatus': {},
 
   // ── Labels ────────────────────────────────────────────────────────────
@@ -260,6 +275,42 @@ export const CMDLET_REGISTRY: Record<string, CmdletDef> = {
     guiConfirm: true,
     params: {
       Identity: { type: 'string', required: true },
+    },
+  },
+  'Get-SLSensitiveInfoType': {
+    params: {
+      Identity: { type: 'string' },
+      Search: { type: 'string' },
+    },
+  },
+  'Invoke-SLAutoLabelScan': {
+    confirm: true,
+    params: {
+      SiteId: { type: 'string' },
+      DriveId: { type: 'string' },
+      FolderId: { type: 'string' },
+      Recursive: { type: 'switch' },
+      LabelId: { type: 'guid' },
+      LabelName: { type: 'string' },
+      Extensions: { type: 'string[]' },
+      MinSizeBytes: { type: 'number' },
+      MaxSizeBytes: { type: 'number' },
+      FilenamePatterns: { type: 'string[]' },
+      ContentKeywords: { type: 'string[]' },
+      SkipAlreadyLabeled: { type: 'switch' },
+      Justification: { type: 'string' },
+      BatchSize: { type: 'number' },
+      DryRun: { type: 'switch' },
+    },
+  },
+  'Register-SLAutoLabelSchedule': {
+    confirm: true,
+    params: {
+      TaskName: { type: 'string' },
+      RuleFile: { type: 'path', required: true },
+      Schedule: { type: 'string', required: true },
+      RunAsUser: { type: 'string' },
+      DryRun: { type: 'switch' },
     },
   },
 
@@ -360,6 +411,15 @@ export const CMDLET_REGISTRY: Record<string, CmdletDef> = {
     params: {
       Name: { type: 'string', required: true },
       Live: { type: 'switch' },
+    },
+  },
+  'Restore-SLSnapshot': {
+    confirm: true,
+    guiConfirm: true,
+    params: {
+      Name: { type: 'string', required: true },
+      DryRun: { type: 'switch' },
+      Path: { type: 'path' },
     },
   },
 
