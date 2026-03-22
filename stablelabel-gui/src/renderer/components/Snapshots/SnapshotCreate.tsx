@@ -26,7 +26,7 @@ export default function SnapshotCreate({ onCreated }: Props) {
     <div className="p-6 max-w-xl space-y-5">
       <div>
         <h2 className="text-xl font-bold text-white">New Snapshot</h2>
-        <p className="text-sm text-zinc-500 mt-1">Capture current tenant configuration for comparison or restore.</p>
+        <p className="text-sm text-zinc-500 mt-1">Capture current label configuration for comparison or restore.</p>
       </div>
 
       <TextField label="Snapshot Name" value={name} onChange={setName} placeholder="e.g., pre-migration-2024" required />
@@ -34,10 +34,9 @@ export default function SnapshotCreate({ onCreated }: Props) {
       <div>
         <label className="block text-xs text-zinc-400 mb-1">Scope</label>
         <select value={scope} onChange={e => setScope(e.target.value)} className="w-full px-2.5 py-1.5 text-xs bg-white/[0.06] border border-white/[0.08] rounded-lg text-zinc-200 focus:outline-none focus:border-blue-500">
-          <option value="All">All (Labels + DLP + Retention)</option>
+          <option value="All">All (Labels + Auto-Label Policies)</option>
           <option value="Labels">Labels Only</option>
-          <option value="Dlp">DLP Only</option>
-          <option value="Retention">Retention Only</option>
+          <option value="AutoLabel">Auto-Label Policies Only</option>
         </select>
         <p className="text-[10px] text-zinc-500 mt-1">What to capture. &quot;All&quot; requires both Graph and Compliance connections.</p>
       </div>

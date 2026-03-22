@@ -16,13 +16,11 @@ BeforeAll {
     $script:SLConnection = @{
         GraphConnected      = $false
         ComplianceConnected = $false
-        ProtectionConnected = $false
         UserPrincipalName   = $null
         TenantId            = $null
         ConnectedAt         = @{
             Graph      = $null
             Compliance = $null
-            Protection = $null
         }
         ComplianceCommandCount = 0
         ComplianceSessionStart = $null
@@ -35,13 +33,10 @@ BeforeAll {
     }
 
     $script:SLActiveJob = $null
-    $script:SLFileShares = [System.Collections.Generic.List[hashtable]]::new()
-    $script:SLAipClientType = $null
 
     $script:SLConfig = @{
         SnapshotPath    = Join-Path $HOME '.stablelabel' 'snapshots'
         AuditLogPath    = Join-Path $HOME '.stablelabel' 'audit.jsonl'
-        ElevationState  = Join-Path $HOME '.stablelabel' 'elevation-state.json'
         GraphApiVersion = 'v1.0'
         GraphBetaVersion = 'beta'
         GraphBaseUrl    = 'https://graph.microsoft.com'
@@ -171,13 +166,11 @@ Describe 'Assert-SLConnected' {
         $script:SLConnection = @{
             GraphConnected      = $false
             ComplianceConnected = $false
-            ProtectionConnected = $false
             UserPrincipalName   = $null
             TenantId            = $null
             ConnectedAt         = @{
                 Graph      = $null
                 Compliance = $null
-                Protection = $null
             }
             ComplianceCommandCount = 0
             ComplianceSessionStart = $null
@@ -192,10 +185,6 @@ Describe 'Assert-SLConnected' {
         { Assert-SLConnected -Require Compliance } | Should -Throw '*Not connected to Compliance*'
     }
 
-    It 'Throws when Protection is not connected' {
-        { Assert-SLConnected -Require Protection } | Should -Throw '*Not connected to Protection*'
-    }
-
     It 'Does not throw when Graph is connected' {
         $script:SLConnection.GraphConnected = $true
         { Assert-SLConnected -Require Graph } | Should -Not -Throw
@@ -206,22 +195,9 @@ Describe 'Assert-SLConnected' {
         { Assert-SLConnected -Require Compliance } | Should -Not -Throw
     }
 
-    It 'Does not throw when Protection is connected' {
-        $script:SLConnection.ProtectionConnected = $true
-        { Assert-SLConnected -Require Protection } | Should -Not -Throw
-    }
-
-    It 'Throws for All when any backend is disconnected' {
-        $script:SLConnection.GraphConnected = $true
-        $script:SLConnection.ComplianceConnected = $true
-        # Protection still false
-        { Assert-SLConnected -Require All } | Should -Throw '*Not connected to Protection*'
-    }
-
     It 'Does not throw for All when everything is connected' {
         $script:SLConnection.GraphConnected = $true
         $script:SLConnection.ComplianceConnected = $true
-        $script:SLConnection.ProtectionConnected = $true
         { Assert-SLConnected -Require All } | Should -Not -Throw
     }
 
@@ -240,13 +216,11 @@ Describe 'Get-SLConnectionStatus' {
         $script:SLConnection = @{
             GraphConnected      = $true
             ComplianceConnected = $false
-            ProtectionConnected = $false
             UserPrincipalName   = 'testuser@contoso.com'
             TenantId            = 'tenant-123'
             ConnectedAt         = @{
                 Graph      = [datetime]::UtcNow.AddMinutes(-5)
                 Compliance = $null
-                Protection = $null
             }
             ComplianceCommandCount = 0
             ComplianceSessionStart = $null

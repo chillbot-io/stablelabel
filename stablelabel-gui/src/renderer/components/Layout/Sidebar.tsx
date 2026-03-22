@@ -40,44 +40,11 @@ const icons: Record<string, React.ReactNode> = {
       <circle cx="6.5" cy="6.5" r="1" fill="currentColor" stroke="none" />
     </Icon>
   ),
-  /* Retention — clock face */
-  retention: (
-    <Icon>
-      <circle cx="10" cy="10" r="8" />
-      <path d="M10 5v5l3.5 3.5" />
-    </Icon>
-  ),
-  /* DLP — shield */
-  dlp: (
-    <Icon>
-      <path d="M10 2l7 3v5c0 4.5-3 7.5-7 8.5-4-1-7-4-7-8.5V5l7-3z" />
-    </Icon>
-  ),
   /* Documents — page with folded corner */
   documents: (
     <Icon>
       <path d="M5 2h7l4 4v11a1 1 0 01-1 1H5a1 1 0 01-1-1V3a1 1 0 011-1z" />
       <path d="M12 2v4h4" />
-    </Icon>
-  ),
-  /* File Shares — folder */
-  fileshares: (
-    <Icon>
-      <path d="M2 6a1 1 0 011-1h4.5l2 2H17a1 1 0 011 1v8a1 1 0 01-1 1H3a1 1 0 01-1-1V6z" />
-    </Icon>
-  ),
-  /* Protection — locked padlock */
-  protection: (
-    <Icon>
-      <rect x="4" y="9" width="12" height="8" rx="1.5" />
-      <path d="M7 9V6a3 3 0 016 0v3" />
-    </Icon>
-  ),
-  /* Elevation — upward chevron in circle */
-  elevation: (
-    <Icon>
-      <circle cx="10" cy="10" r="8" />
-      <path d="M7 12l3-4 3 4" />
     </Icon>
   ),
   /* Snapshots — stacked layers */
@@ -95,14 +62,6 @@ const icons: Record<string, React.ReactNode> = {
       <path d="M8 17V7" strokeWidth="2.5" />
       <path d="M13 17V9" strokeWidth="2.5" />
       <path d="M18 17V3" strokeWidth="2.5" />
-    </Icon>
-  ),
-  /* Templates — layout grid */
-  templates: (
-    <Icon>
-      <rect x="2" y="2" width="16" height="16" rx="2" />
-      <path d="M2 7h16" />
-      <path d="M8 7v11" />
     </Icon>
   ),
   /* Settings — horizontal sliders */
@@ -130,16 +89,10 @@ interface NavItem {
 
 const navItems: NavItem[] = [
   { id: 'dashboard', label: 'Dashboard', group: 'Overview' },
-  { id: 'labels', label: 'Labels', group: 'Information Protection' },
-  { id: 'retention', label: 'Retention', group: 'Information Protection' },
-  { id: 'dlp', label: 'DLP', group: 'Information Protection' },
+  { id: 'labels', label: 'Labels', group: 'Sensitivity Labels' },
   { id: 'documents', label: 'Documents', group: 'Operations' },
-  { id: 'fileshares', label: 'File Shares', group: 'Operations' },
-  { id: 'protection', label: 'Protection', group: 'Operations' },
-  { id: 'elevation', label: 'Elevation', group: 'Operations' },
   { id: 'snapshots', label: 'Snapshots', group: 'Safety' },
   { id: 'analysis', label: 'Analysis', group: 'Intelligence' },
-  { id: 'templates', label: 'Templates', group: 'Intelligence' },
 ];
 
 interface SidebarProps {
@@ -155,7 +108,7 @@ export default function Sidebar({ currentPage, onNavigate }: SidebarProps) {
       {/* Brand */}
       <div className="px-5 pt-5 pb-4">
         <h1 className="text-[15px] font-semibold text-white tracking-tight">StableLabel</h1>
-        <p className="text-[11px] text-zinc-500 mt-0.5">Purview Compliance</p>
+        <p className="text-[11px] text-zinc-500 mt-0.5">Sensitivity Label Management</p>
       </div>
 
       {/* Nav */}

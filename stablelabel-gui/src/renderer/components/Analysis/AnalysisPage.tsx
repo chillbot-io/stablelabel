@@ -1,26 +1,16 @@
 import React, { useState } from 'react';
-import PermissionCheck from './PermissionCheck';
-import PolicyConflicts from './PolicyConflicts';
-import DeploymentReadiness from './DeploymentReadiness';
 import LabelReport from './LabelReport';
-import PolicyHealth from './PolicyHealth';
 import LabelMismatch from './LabelMismatch';
-import LabelDlpAlignment from './LabelDlpAlignment';
 
-type Section = 'readiness' | 'permissions' | 'health' | 'conflicts' | 'alignment' | 'mismatch' | 'report';
+type Section = 'mismatch' | 'report';
 
 const sections: Array<{ id: Section; label: string; description: string }> = [
-  { id: 'readiness', label: 'Readiness', description: 'Pre-deployment checklist' },
-  { id: 'permissions', label: 'Permissions', description: 'Verify user access' },
-  { id: 'health', label: 'Policy Health', description: 'Status of all policies' },
-  { id: 'conflicts', label: 'Conflicts', description: 'Overlapping policy rules' },
-  { id: 'alignment', label: 'DLP Alignment', description: 'Label-to-DLP coverage' },
   { id: 'mismatch', label: 'Mismatches', description: 'Graph vs policy labels' },
   { id: 'report', label: 'Label Report', description: 'Full label summary' },
 ];
 
 export default function AnalysisPage() {
-  const [active, setActive] = useState<Section>('readiness');
+  const [active, setActive] = useState<Section>('mismatch');
 
   return (
     <div className="flex h-full">
@@ -28,7 +18,7 @@ export default function AnalysisPage() {
       <div className="w-56 flex-shrink-0 border-r border-white/[0.06] bg-zinc-950 flex flex-col">
         <div className="p-3 border-b border-white/[0.06]">
           <h2 className="text-sm font-semibold text-zinc-300">Analysis</h2>
-          <p className="text-[10px] text-zinc-500 mt-0.5">Checks, reports, and diagnostics</p>
+          <p className="text-[10px] text-zinc-500 mt-0.5">Label reports and diagnostics</p>
         </div>
         <div className="flex-1 py-2">
           {sections.map((s) => (
@@ -52,11 +42,6 @@ export default function AnalysisPage() {
 
       {/* Main content */}
       <div className="flex-1 overflow-auto p-6 max-w-3xl">
-        {active === 'readiness' && <DeploymentReadiness />}
-        {active === 'permissions' && <PermissionCheck />}
-        {active === 'health' && <PolicyHealth />}
-        {active === 'conflicts' && <PolicyConflicts />}
-        {active === 'alignment' && <LabelDlpAlignment />}
         {active === 'mismatch' && <LabelMismatch />}
         {active === 'report' && <LabelReport />}
       </div>

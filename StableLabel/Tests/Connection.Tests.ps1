@@ -2,8 +2,7 @@
 
 <#
 .SYNOPSIS
-    Tests for StableLabel connection functions: Connect-SLProtection,
-    Disconnect-SLProtection, and additional Get-SLConnectionStatus scenarios.
+    Tests for StableLabel connection functions and additional Get-SLConnectionStatus scenarios.
 #>
 
 BeforeAll {
@@ -12,21 +11,17 @@ BeforeAll {
     $script:SLConnection = @{
         GraphConnected      = $false
         ComplianceConnected = $false
-        ProtectionConnected = $false
         UserPrincipalName   = $null
         TenantId            = $null
-        ConnectedAt         = @{ Graph = $null; Compliance = $null; Protection = $null }
+        ConnectedAt         = @{ Graph = $null; Compliance = $null }
         ComplianceCommandCount = 0
         ComplianceSessionStart = $null
     }
     $script:SLLabelCache = @{ Labels = @(); CachedAt = $null; TenantId = $null }
     $script:SLActiveJob = $null
-    $script:SLFileShares = [System.Collections.Generic.List[hashtable]]::new()
-    $script:SLAipClientType = $null
     $script:SLConfig = @{
         SnapshotPath     = Join-Path $HOME '.stablelabel' 'snapshots'
         AuditLogPath     = Join-Path $TestDrive 'audit.jsonl'
-        ElevationState   = Join-Path $TestDrive 'elevation-state.json'
         GraphApiVersion  = 'v1.0'
         GraphBetaVersion = 'beta'
         GraphBaseUrl     = 'https://graph.microsoft.com'

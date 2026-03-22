@@ -44,8 +44,8 @@ describe('buildCommand', () => {
   });
 
   it('builds a mutating command with auto -Confirm:$false', () => {
-    const cmd = buildCommand('Remove-SLDlpPolicy', { Identity: 'MyPolicy' });
-    expect(cmd).toBe("Remove-SLDlpPolicy -Identity 'MyPolicy' -Confirm:$false");
+    const cmd = buildCommand('Remove-SLLabelPolicy', { Identity: 'MyPolicy' });
+    expect(cmd).toBe("Remove-SLLabelPolicy -Identity 'MyPolicy' -Confirm:$false");
   });
 
   it('escapes single quotes in string params', () => {
@@ -57,11 +57,6 @@ describe('buildCommand', () => {
     expect(() =>
       buildCommand('Remove-SLSnapshot', { Name: "test\nInvoke-Expression 'malicious'" }),
     ).toThrow('forbidden characters');
-  });
-
-  it('builds boolean params', () => {
-    const cmd = buildCommand('New-SLDlpRule', { Name: 'Rule1', Policy: 'Pol1', BlockAccess: true });
-    expect(cmd).toContain('-BlockAccess $true');
   });
 
   it('builds switch params', () => {
@@ -84,60 +79,22 @@ describe('buildCommand', () => {
   });
 
   it('builds string array params', () => {
-    const cmd = buildCommand('New-SLDlpRule', {
+    const cmd = buildCommand('New-SLAutoLabelPolicy', {
       Name: 'Rule1',
-      Policy: 'Pol1',
-      NotifyUser: ['user1@test.com', 'user2@test.com'],
+      ExchangeLocation: ['user1@test.com', 'user2@test.com'],
     });
-    expect(cmd).toContain("-NotifyUser 'user1@test.com','user2@test.com'");
+    expect(cmd).toContain("-ExchangeLocation 'user1@test.com','user2@test.com'");
   });
 
   it('validates enum params', () => {
-    const cmd = buildCommand('New-SLDlpPolicy', { Name: 'P1', Mode: 'Enable' });
+    const cmd = buildCommand('New-SLAutoLabelPolicy', { Name: 'P1', Mode: 'Enable' });
     expect(cmd).toContain("-Mode 'Enable'");
   });
 
   it('rejects invalid enum values', () => {
     expect(() =>
-      buildCommand('New-SLDlpPolicy', { Name: 'P1', Mode: 'InvalidMode' }),
+      buildCommand('New-SLAutoLabelPolicy', { Name: 'P1', Mode: 'InvalidMode' }),
     ).toThrow('must be one of');
-  });
-
-  it('validates GUID params', () => {
-    const cmd = buildCommand('Remove-SLProtectionTemplate', {
-      TemplateId: '12345678-1234-1234-1234-123456789abc',
-    });
-    expect(cmd).toContain("-TemplateId '12345678-1234-1234-1234-123456789abc'");
-  });
-
-  it('rejects invalid GUID format', () => {
-    expect(() =>
-      buildCommand('Remove-SLProtectionTemplate', { TemplateId: 'not-a-guid' }),
-    ).toThrow('valid GUID');
-  });
-
-  it('rejects injection via GUID field', () => {
-    expect(() =>
-      buildCommand('Remove-SLProtectionTemplate', {
-        TemplateId: "'; Invoke-Expression 'evil'; '",
-      }),
-    ).toThrow('valid GUID');
-  });
-
-  it('validates path params and rejects traversal', () => {
-    expect(() =>
-      buildCommand('Export-SLProtectionTemplate', {
-        TemplateId: '12345678-1234-1234-1234-123456789abc',
-        Path: 'C:\\..\\Windows\\System32\\evil.xml',
-      }),
-    ).toThrow('traversal');
-  });
-
-  it('accepts valid paths', () => {
-    const cmd = buildCommand('Import-SLProtectionTemplate', {
-      Path: 'C:\\templates\\my-template.xml',
-    });
-    expect(cmd).toContain("-Path 'C:\\templates\\my-template.xml'");
   });
 
   it('rejects unknown params', () => {
@@ -147,16 +104,15 @@ describe('buildCommand', () => {
   });
 
   it('enforces required params', () => {
-    expect(() => buildCommand('New-SLDlpPolicy', {})).toThrow('Required parameter');
+    expect(() => buildCommand('New-SLLabelPolicy', {})).toThrow('Required parameter');
   });
 
   it('skips empty/null/undefined values', () => {
-    const cmd = buildCommand('New-SLDlpPolicy', {
+    const cmd = buildCommand('New-SLLabelPolicy', {
       Name: 'Test',
       Comment: '',
-      Mode: undefined,
     });
-    expect(cmd).toBe("New-SLDlpPolicy -Name 'Test' -Confirm:$false");
+    expect(cmd).toBe("New-SLLabelPolicy -Name 'Test' -Confirm:$false");
   });
 
   it('builds items param (hashtable array)', () => {
@@ -176,8 +132,16 @@ describe('CMDLET_REGISTRY', () => {
   it('contains expected cmdlets', () => {
     expect(CMDLET_REGISTRY['Get-SLLabel']).toBeDefined();
     expect(CMDLET_REGISTRY['Connect-SLAll']).toBeDefined();
-    expect(CMDLET_REGISTRY['Remove-SLDlpPolicy']).toBeDefined();
-    expect(CMDLET_REGISTRY['Deploy-SLTemplate']).toBeDefined();
+    expect(CMDLET_REGISTRY['Get-SLLabelReport']).toBeDefined();
+    expect(CMDLET_REGISTRY['Get-SLProtectionConfig']).toBeDefined();
+  });
+
+  it('does not contain removed cmdlets', () => {
+    expect(CMDLET_REGISTRY['Get-SLDlpPolicy']).toBeUndefined();
+    expect(CMDLET_REGISTRY['Get-SLRetentionLabel']).toBeUndefined();
+    expect(CMDLET_REGISTRY['Enable-SLSuperUser']).toBeUndefined();
+    expect(CMDLET_REGISTRY['Deploy-SLTemplate']).toBeUndefined();
+    expect(CMDLET_REGISTRY['Connect-SLFileShare']).toBeUndefined();
   });
 
   it('does not contain dangerous cmdlets', () => {
@@ -187,7 +151,7 @@ describe('CMDLET_REGISTRY', () => {
   });
 
   it('marks mutating commands with confirm', () => {
-    expect(CMDLET_REGISTRY['Remove-SLDlpPolicy']?.confirm).toBe(true);
+    expect(CMDLET_REGISTRY['Remove-SLLabelPolicy']?.confirm).toBe(true);
     expect(CMDLET_REGISTRY['New-SLSnapshot']?.confirm).toBe(true);
   });
 

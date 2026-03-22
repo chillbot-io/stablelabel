@@ -13,7 +13,7 @@ describe('Sidebar', () => {
 
   it('renders the subtitle', () => {
     render(<Sidebar currentPage="dashboard" onNavigate={onNavigate} />);
-    expect(screen.getByText('Purview Compliance')).toBeInTheDocument();
+    expect(screen.getByText('Sensitivity Label Management')).toBeInTheDocument();
   });
 
   it('renders the version', () => {
@@ -24,21 +24,16 @@ describe('Sidebar', () => {
   it('renders all navigation groups', () => {
     render(<Sidebar currentPage="dashboard" onNavigate={onNavigate} />);
     expect(screen.getByText('Overview')).toBeInTheDocument();
-    expect(screen.getByText('Information Protection')).toBeInTheDocument();
+    expect(screen.getByText('Sensitivity Labels')).toBeInTheDocument();
   });
 
   it('renders all page navigation items', () => {
     render(<Sidebar currentPage="dashboard" onNavigate={onNavigate} />);
     expect(screen.getByText('Dashboard')).toBeInTheDocument();
     expect(screen.getByText('Labels')).toBeInTheDocument();
-    expect(screen.getByText('DLP')).toBeInTheDocument();
-    expect(screen.getByText('Retention')).toBeInTheDocument();
     expect(screen.getByText('Documents')).toBeInTheDocument();
-    expect(screen.getByText('Protection')).toBeInTheDocument();
-    expect(screen.getByText('Elevation')).toBeInTheDocument();
     expect(screen.getByText('Snapshots')).toBeInTheDocument();
     expect(screen.getByText('Analysis')).toBeInTheDocument();
-    expect(screen.getByText('Templates')).toBeInTheDocument();
   });
 
   it('calls onNavigate when a nav item is clicked', async () => {
@@ -53,7 +48,6 @@ describe('Sidebar', () => {
     const { container } = render(
       <Sidebar currentPage="labels" onNavigate={onNavigate} />
     );
-    // The active item should have distinct styling (blue border/text)
     const labelsButton = screen.getByText('Labels').closest('button');
     expect(labelsButton?.className).toContain('bg-blue-500/[0.12]');
   });

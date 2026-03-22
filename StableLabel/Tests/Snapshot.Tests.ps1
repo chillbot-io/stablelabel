@@ -12,21 +12,17 @@ BeforeAll {
     $script:SLConnection = @{
         GraphConnected      = $false
         ComplianceConnected = $false
-        ProtectionConnected = $false
         UserPrincipalName   = 'admin@contoso.com'
         TenantId            = 'tenant-123'
-        ConnectedAt         = @{ Graph = $null; Compliance = $null; Protection = $null }
+        ConnectedAt         = @{ Graph = $null; Compliance = $null }
         ComplianceCommandCount = 0
         ComplianceSessionStart = $null
     }
     $script:SLLabelCache = @{ Labels = @(); CachedAt = $null; TenantId = $null }
     $script:SLActiveJob = $null
-    $script:SLFileShares = [System.Collections.Generic.List[hashtable]]::new()
-    $script:SLAipClientType = $null
     $script:SLConfig = @{
         SnapshotPath     = Join-Path $TestDrive 'snapshots'
         AuditLogPath     = Join-Path $TestDrive 'audit.jsonl'
-        ElevationState   = Join-Path $TestDrive 'elevation-state.json'
         GraphApiVersion  = 'v1.0'
         GraphBetaVersion = 'beta'
         GraphBaseUrl     = 'https://graph.microsoft.com'
@@ -64,7 +60,7 @@ Describe 'New-SLSnapshot' {
 
     It 'Requires Compliance connection' {
         $script:SLConnection.ComplianceConnected = $false
-        { New-SLSnapshot -Name 'test-snap' -Scope Dlp } | Should -Throw '*Not connected to Compliance*'
+        { New-SLSnapshot -Name 'test-snap' -Scope Labels } | Should -Throw '*Not connected to Compliance*'
     }
 
     It 'Creates a snapshot file' {
@@ -89,9 +85,9 @@ Describe 'New-SLSnapshot' {
 
     It 'Accepts Scope parameter' {
         Mock Invoke-SLComplianceCommand { @() }
-        $result = New-SLSnapshot -Name 'test-dlp-only' -Scope Dlp -Path $TestDrive
+        $result = New-SLSnapshot -Name 'test-labels-only' -Scope Labels -Path $TestDrive
         $result | Should -Not -BeNullOrEmpty
-        $result.Scope | Should -Be 'Dlp'
+        $result.Scope | Should -Be 'Labels'
     }
 }
 
@@ -295,11 +291,11 @@ Describe 'Restore-SLSnapshot' {
         New-Item -ItemType Directory -Path $snapshotDir -Force | Out-Null
 
         $snap = @{
-            SnapshotId = 'snap-restore'; Name = 'restore-me'; Scope = 'Dlp'
+            SnapshotId = 'snap-restore'; Name = 'restore-me'; Scope = 'Labels'
             CreatedAt  = (Get-Date).ToString('o')
             Data       = @{
-                DlpPolicies = @(@{ Name = 'DLP1'; Mode = 'Enable' })
-                DlpRules    = @(@{ Name = 'Rule1'; ParentPolicyName = 'DLP1' })
+                SensitivityLabels = @(@{ id = 'l1'; displayName = 'Public' })
+                LabelPolicies     = @(@{ Name = 'Policy1' })
             }
         }
         $snap | ConvertTo-Json -Depth 10 | Out-File -FilePath (Join-Path $snapshotDir 'restore-me.json') -Encoding utf8
@@ -327,16 +323,16 @@ Describe 'Restore-SLSnapshot' {
 
         # Snapshot has a policy that does NOT exist in live (triggers Create)
         $snap = @{
-            SnapshotId = 'snap-skip'; Name = 'skip-test'; Scope = 'Dlp'
+            SnapshotId = 'snap-skip'; Name = 'skip-test'; Scope = 'Labels'
             CreatedAt  = (Get-Date).ToString('o')
             Data       = @{
-                DlpPolicies = @(@{ Name = 'SnapshotOnlyPolicy'; Mode = 'Enable' })
-                DlpRules    = @()
+                SensitivityLabels = @(@{ id = 'l1'; displayName = 'SnapshotOnlyLabel' })
+                LabelPolicies     = @()
             }
         }
         $snap | ConvertTo-Json -Depth 10 | Out-File -FilePath (Join-Path $snapshotDir 'skip-test.json') -Encoding utf8
 
-        # Live has no policies -> diff will show Removed items needing Create
+        # Live has no labels -> diff will show Removed items needing Create
         Mock Invoke-SLComplianceCommand { @() }
         Mock Invoke-SLGraphRequest { @() }
 
@@ -353,18 +349,18 @@ Describe 'Restore-SLSnapshot' {
         New-Item -ItemType Directory -Path $snapshotDir -Force | Out-Null
 
         $snap = @{
-            SnapshotId = 'snap-bf'; Name = 'backup-fail'; Scope = 'Dlp'
+            SnapshotId = 'snap-bf'; Name = 'backup-fail'; Scope = 'Labels'
             CreatedAt  = (Get-Date).ToString('o')
             Data       = @{
-                DlpPolicies = @(@{ Name = 'LiveOnlyPolicy'; Mode = 'Enable' })
-                DlpRules    = @()
+                SensitivityLabels = @(@{ id = 'l1'; displayName = 'LiveOnlyLabel' })
+                LabelPolicies     = @()
             }
         }
         $snap | ConvertTo-Json -Depth 10 | Out-File -FilePath (Join-Path $snapshotDir 'backup-fail.json') -Encoding utf8
 
-        # Mock live state with a policy not in snapshot (triggers a removal plan)
+        # Mock live state with a label not in snapshot (triggers a removal plan)
         Mock Invoke-SLComplianceCommand {
-            @([PSCustomObject]@{ Name = 'LiveOnlyPolicy'; Mode = 'Enable' })
+            @([PSCustomObject]@{ Name = 'LiveOnlyPolicy'; Enabled = $true })
         }
         Mock Invoke-SLGraphRequest { @() }
         # Mock New-SLSnapshot to return $null (simulating backup failure)
@@ -378,11 +374,11 @@ Describe 'Restore-SLSnapshot' {
         New-Item -ItemType Directory -Path $snapshotDir -Force | Out-Null
 
         $snap = @{
-            SnapshotId = 'snap-rj'; Name = 'rj-snap'; Scope = 'Retention'
+            SnapshotId = 'snap-rj'; Name = 'rj-snap'; Scope = 'Labels'
             CreatedAt  = (Get-Date).ToString('o')
             Data       = @{
-                RetentionLabels   = @()
-                RetentionPolicies = @()
+                SensitivityLabels = @()
+                LabelPolicies     = @()
             }
         }
         $snap | ConvertTo-Json -Depth 10 | Out-File -FilePath (Join-Path $snapshotDir 'rj-snap.json') -Encoding utf8

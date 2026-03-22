@@ -74,9 +74,7 @@ function Compare-SLSnapshot {
 
         # Compare each data category
         $categories = @(
-            'SensitivityLabels', 'LabelPolicies', 'AutoLabelPolicies',
-            'DlpPolicies', 'DlpRules', 'SensitiveInfoTypes',
-            'RetentionLabels', 'RetentionPolicies'
+            'SensitivityLabels', 'LabelPolicies', 'AutoLabelPolicies'
         )
 
         $diffs = [ordered]@{}
@@ -97,11 +95,6 @@ function Compare-SLSnapshot {
                 'SensitivityLabels'  { 'id' }
                 'LabelPolicies'      { 'Name' }
                 'AutoLabelPolicies'  { 'Name' }
-                'DlpPolicies'        { 'Name' }
-                'DlpRules'           { 'Name' }
-                'SensitiveInfoTypes' { 'Name' }
-                'RetentionLabels'    { 'Name' }
-                'RetentionPolicies'  { 'Name' }
                 default              { 'Name' }
             }
 
