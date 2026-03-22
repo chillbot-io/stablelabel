@@ -119,18 +119,21 @@ class PowerShellRunner:
         script = self._build_script(cmdlet, params or {}, tenant_id)
 
         try:
+            # Pass script via stdin to avoid secrets appearing in process listing.
+            # Using "-Command -" reads the script from stdin.
             proc = await asyncio.create_subprocess_exec(
                 self._pwsh_path,
                 "-NoProfile",
                 "-NonInteractive",
                 "-Command",
-                script,
+                "-",
+                stdin=asyncio.subprocess.PIPE,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
             )
 
             stdout, stderr = await asyncio.wait_for(
-                proc.communicate(),
+                proc.communicate(input=script.encode("utf-8")),
                 timeout=_TIMEOUT_SECONDS,
             )
         except asyncio.TimeoutError:

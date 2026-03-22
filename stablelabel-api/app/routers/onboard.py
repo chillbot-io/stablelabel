@@ -10,7 +10,10 @@ Denied:  GET /onboard/callback?error=access_denied&error_description=...
 
 from __future__ import annotations
 
+import hashlib
+import hmac
 import logging
+import uuid
 from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, Query
@@ -20,6 +23,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.base import get_session
 from app.db.models import AuditEvent, CustomerTenant
+from app.dependencies import get_settings
 
 logger = logging.getLogger(__name__)
 
@@ -65,6 +69,7 @@ async def consent_callback(
     admin_consent: str | None = Query(None),
     error: str | None = Query(None),
     error_description: str | None = Query(None),
+    state: str | None = Query(None),
     db: AsyncSession = Depends(get_session),
 ) -> HTMLResponse:
     """Handle the redirect from Microsoft after admin consent.
@@ -103,20 +108,34 @@ async def consent_callback(
         logger.error("Consent callback missing tenant parameter")
         return HTMLResponse(_NOT_FOUND_HTML, status_code=400)
 
-    # Find the pending customer tenant row matching this Entra tenant ID.
-    # There may be multiple MSPs with a pending row for the same Entra tenant,
-    # so we look for the most recently created pending row.
-    stmt = (
-        select(CustomerTenant)
-        .where(
-            CustomerTenant.entra_tenant_id == tenant,
-            CustomerTenant.consent_status == "pending",
+    # Verify the HMAC-signed state token to prevent cross-MSP tenant claim.
+    # The state encodes "customer_tenant_id:signature" so we can look up the
+    # exact row instead of guessing which MSP's pending row to activate.
+    ct = None
+    if state and ":" in state:
+        ct_id_str, sig = state.rsplit(":", 1)
+        settings = get_settings()
+        expected_sig = hmac.new(
+            settings.session_secret.encode(), ct_id_str.encode(), hashlib.sha256
+        ).hexdigest()[:16]
+        if hmac.compare_digest(sig, expected_sig):
+            try:
+                stmt = select(CustomerTenant).where(
+                    CustomerTenant.id == uuid.UUID(ct_id_str),
+                    CustomerTenant.entra_tenant_id == tenant,
+                    CustomerTenant.consent_status == "pending",
+                )
+                result = await db.execute(stmt)
+                ct = result.scalar_one_or_none()
+            except ValueError:
+                pass  # invalid UUID in state
+
+    # Fallback: if no valid state, reject — prevents cross-MSP claims
+    if ct is None:
+        logger.warning(
+            "Consent callback: invalid or missing state token for tenant %s", tenant,
         )
-        .order_by(CustomerTenant.created_at.desc())
-        .limit(1)
-    )
-    result = await db.execute(stmt)
-    ct = result.scalar_one_or_none()
+        return HTMLResponse(_NOT_FOUND_HTML, status_code=400)
 
     if not ct:
         logger.warning("Consent callback: no pending tenant found for %s", tenant)

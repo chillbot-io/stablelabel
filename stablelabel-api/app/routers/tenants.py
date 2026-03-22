@@ -131,11 +131,20 @@ async def connect_tenant(
     await db.commit()
     await db.refresh(tenant)
 
-    # Build admin consent URL for the Data Connector app
+    # Build admin consent URL with HMAC-signed state to prevent cross-MSP claim
+    import hashlib
+    import hmac
+    state_payload = str(tenant.id)
+    state_sig = hmac.new(
+        settings.session_secret.encode(), state_payload.encode(), hashlib.sha256
+    ).hexdigest()[:16]
+    state = f"{state_payload}:{state_sig}"
+
     consent_url = (
         f"https://login.microsoftonline.com/{body.entra_tenant_id}/adminconsent"
         f"?client_id={settings.azure_client_id}"
         f"&redirect_uri={settings.consent_redirect_uri}"
+        f"&state={state}"
     )
 
     return ConsentUrlResponse(

@@ -501,7 +501,7 @@ class JobExecutor:
             logger.info(
                 "Job %s batch %d: labelled=%d, skipped=%d, failed=%d (total processed: %d/%d)",
                 job.id, batch_number - 1,
-                len(batch_applied), 0, 0,
+                len(batch_applied), batch_skipped, batch_failed,
                 job.processed_files, job.total_files,
             )
 

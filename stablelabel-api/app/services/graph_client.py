@@ -107,6 +107,13 @@ class GraphClient:
         The monitoring URL doesn't require auth — it's short-lived and unique.
         Returns the final status object.
         """
+        # Validate URL to prevent SSRF — must be a Microsoft Graph domain
+        from urllib.parse import urlparse
+
+        parsed = urlparse(location_url)
+        if parsed.scheme != "https" or not parsed.hostname or not parsed.hostname.endswith(".microsoft.com"):
+            raise StableLabelError(f"Refusing to poll non-Graph URL: {location_url}")
+
         elapsed = 0.0
         while elapsed < timeout:
             resp = await self._http.get(location_url)
@@ -165,7 +172,13 @@ class GraphClient:
 
             # Happy path
             if resp.status_code < 400:
-                body = resp.json() if resp.content else {}
+                if resp.content:
+                    try:
+                        body = resp.json()
+                    except ValueError:
+                        body = {}
+                else:
+                    body = {}
                 return body, resp.status_code, dict(resp.headers)
 
             # 423 Locked — file checked out, DKE, or mid-sync

@@ -47,13 +47,14 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# CORS for Vite SPA (dev: localhost:5173, prod: configured domain)
+# CORS — configured via SL_CORS_ORIGINS (comma-separated)
+_settings = get_settings()
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://localhost:3000"],
+    allow_origins=[o.strip() for o in _settings.cors_origins.split(",") if o.strip()],
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["Content-Type", "Authorization"],
 )
 
 app.include_router(health.router)

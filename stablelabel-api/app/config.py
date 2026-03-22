@@ -25,7 +25,7 @@ class Settings(BaseSettings):
     azure_client_secret: str = ""
 
     # ── Session ───────────────────────────────────────────────
-    session_secret: str = "change-me-in-production"  # for signing session cookies
+    session_secret: str  # required — no default, must be set via SL_SESSION_SECRET
     session_max_age: int = 28800  # 8 hours
 
     # ── Rate limiting defaults (per-tenant) ───────────────────
@@ -45,6 +45,9 @@ class Settings(BaseSettings):
 
     # ── Consent callback ───────────────────────────────────────
     consent_redirect_uri: str = "http://localhost:8000/onboard/callback"
+
+    # ── CORS ────────────────────────────────────────────────────
+    cors_origins: str = "http://localhost:5173,http://localhost:3000"
 
     # ── Classifier (optional) ─────────────────────────────────
     classifier_enabled: bool = False

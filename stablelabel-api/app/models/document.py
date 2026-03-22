@@ -45,8 +45,8 @@ class BulkLabelRequest(BaseModel):
     tenant_id: str
     sensitivity_label_id: str
     assignment_method: AssignmentMethod = AssignmentMethod.STANDARD
-    justification_text: str = ""
-    items: list[BulkItem] = Field(default_factory=list)
+    justification_text: str = Field(default="", max_length=1000)
+    items: list[BulkItem] = Field(default_factory=list, max_length=10000)
     confirm_encryption: bool = False  # Must be True if label has protection
     dry_run: bool = False
 
