@@ -28,6 +28,7 @@ export default function FileListPanel({ location, onNavigate, onViewFile }: File
   const [labelName, setLabelName] = useState('');
   const [actionLoading, setActionLoading] = useState(false);
   const [actionResult, setActionResult] = useState<string | null>(null);
+  const [dryRun, setDryRun] = useState(true);
 
   const fetchChildren = useCallback(async () => {
     setLoading(true);
@@ -114,10 +115,12 @@ export default function FileListPanel({ location, onNavigate, onViewFile }: File
       const r = await invoke('Set-SLDocumentLabelBulk', {
         Items: selectedItems,
         LabelName: labelName.trim(),
-        DryRun: true,
+        DryRun: dryRun || undefined,
       });
       if (r.success) {
-        setActionResult(`Dry run: ${selected.size} files would be labelled "${labelName}"`);
+        setActionResult(dryRun
+          ? `Dry run: ${selected.size} files would be labelled "${labelName}"`
+          : `Applied label "${labelName}" to ${selected.size} files`);
       } else {
         setActionResult(`Error: ${r.error}`);
       }
@@ -139,10 +142,12 @@ export default function FileListPanel({ location, onNavigate, onViewFile }: File
       const r = await invoke('Remove-SLDocumentLabelBulk', {
         Items: selectedItems,
         Mode: 'LabelOnly',
-        DryRun: true,
+        DryRun: dryRun || undefined,
       });
       if (r.success) {
-        setActionResult(`Dry run: ${selected.size} files would be unlabelled`);
+        setActionResult(dryRun
+          ? `Dry run: ${selected.size} files would be unlabelled`
+          : `Removed labels from ${selected.size} files`);
       } else {
         setActionResult(`Error: ${r.error}`);
       }
@@ -177,6 +182,15 @@ export default function FileListPanel({ location, onNavigate, onViewFile }: File
       {selected.size > 0 && (
         <div className="px-3 py-2 border-b border-white/[0.06] bg-blue-500/[0.04] flex items-center gap-2">
           <span className="text-xs text-blue-400">{selected.size} selected</span>
+          <label className="flex items-center gap-1.5 ml-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={dryRun}
+              onChange={(e) => setDryRun(e.target.checked)}
+              className="accent-blue-500"
+            />
+            <span className="text-xs text-zinc-400">Dry run</span>
+          </label>
           <div className="flex-1" />
           <input
             type="text"
@@ -188,16 +202,20 @@ export default function FileListPanel({ location, onNavigate, onViewFile }: File
           <button
             onClick={handleLabelSelected}
             disabled={actionLoading || !labelName.trim()}
-            className="px-2 py-1 text-xs text-white bg-blue-600 hover:bg-blue-500 disabled:opacity-50 rounded transition-colors"
+            className={`px-2 py-1 text-xs text-white disabled:opacity-50 rounded transition-colors ${
+              dryRun ? 'bg-blue-600 hover:bg-blue-500' : 'bg-emerald-600 hover:bg-emerald-500'
+            }`}
           >
-            Label
+            {dryRun ? 'Preview Label' : 'Apply Label'}
           </button>
           <button
             onClick={handleUnlabelSelected}
             disabled={actionLoading}
-            className="px-2 py-1 text-xs text-white bg-red-600 hover:bg-red-500 disabled:opacity-50 rounded transition-colors"
+            className={`px-2 py-1 text-xs text-white disabled:opacity-50 rounded transition-colors ${
+              dryRun ? 'bg-orange-600 hover:bg-orange-500' : 'bg-red-600 hover:bg-red-500'
+            }`}
           >
-            Unlabel
+            {dryRun ? 'Preview Unlabel' : 'Remove Labels'}
           </button>
         </div>
       )}
