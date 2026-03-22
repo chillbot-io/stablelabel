@@ -12,11 +12,12 @@ import uuid
 from datetime import UTC, datetime
 
 from arq import cron
-from arq.connections import ArqRedis, RedisSettings
+from arq.connections import ArqRedis
 from redis.asyncio import Redis
 from sqlalchemy import select
 
 from app.config import Settings
+from app.core.redis import parse_redis_settings
 from app.db.base import dispose_engine, get_session, init_engine
 from app.db.models import Job
 from app.dependencies import get_document_service, get_graph_client, get_label_service, get_settings
@@ -147,20 +148,9 @@ async def shutdown(ctx: dict) -> None:
 # ── Worker configuration ───────────────────────────────────────
 
 
-def _redis_settings() -> RedisSettings:
-    """Parse Redis URL into arq RedisSettings."""
-    settings = get_settings()
-    url = settings.redis_url
-    # arq expects RedisSettings, not a URL string
-    # Parse redis://host:port/db
-    from urllib.parse import urlparse
-    parsed = urlparse(url)
-    return RedisSettings(
-        host=parsed.hostname or "localhost",
-        port=parsed.port or 6379,
-        database=int(parsed.path.lstrip("/") or "0"),
-        password=parsed.password,
-    )
+def _redis_settings():
+    """Get arq RedisSettings from app config."""
+    return parse_redis_settings(get_settings().redis_url)
 
 
 class WorkerSettings:

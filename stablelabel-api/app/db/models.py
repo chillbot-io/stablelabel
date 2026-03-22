@@ -20,6 +20,7 @@ from datetime import datetime
 from sqlalchemy import (
     Boolean,
     DateTime,
+    Float,
     ForeignKey,
     Index,
     Integer,
@@ -335,4 +336,93 @@ class AuditEvent(Base):
         Index("ix_audit_tenant_time", "msp_tenant_id", "created_at"),
         Index("ix_audit_job", "job_id"),
         Index("ix_audit_event_type", "event_type"),
+    )
+
+
+# ---------------------------------------------------------------------------
+# Time-series tables (TimescaleDB hypertables in production)
+# ---------------------------------------------------------------------------
+
+
+class ScanResult(Base):
+    """Per-file scan outcome — converted to a TimescaleDB hypertable.
+
+    Records each file processed during a labelling job, with the
+    classification result and the label that was applied (if any).
+    """
+
+    __tablename__ = "scan_results"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    ts: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    customer_tenant_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("customer_tenants.id", ondelete="CASCADE"), nullable=False
+    )
+    job_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("jobs.id", ondelete="CASCADE"), nullable=False)
+    drive_id: Mapped[str] = mapped_column(String(255), nullable=False)
+    item_id: Mapped[str] = mapped_column(String(255), nullable=False)
+    file_name: Mapped[str] = mapped_column(String(500), nullable=False)
+    classification: Mapped[str | None] = mapped_column(String(100))  # top entity type or null
+    confidence: Mapped[float | None] = mapped_column(Float)
+    label_applied: Mapped[str | None] = mapped_column(String(36))
+    previous_label: Mapped[str | None] = mapped_column(String(36))
+    outcome: Mapped[str] = mapped_column(String(20), nullable=False)  # labelled | skipped | failed
+
+    __table_args__ = (
+        Index("ix_scan_tenant_ts", "customer_tenant_id", "ts"),
+        Index("ix_scan_job", "job_id"),
+    )
+
+
+class ClassificationEvent(Base):
+    """Aggregated classification detection — converted to a TimescaleDB hypertable.
+
+    One row per entity type detected per file (not per occurrence).
+    Used for dashboards like "PII detections over time".
+    """
+
+    __tablename__ = "classification_events"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    ts: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    customer_tenant_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("customer_tenants.id", ondelete="CASCADE"), nullable=False
+    )
+    job_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("jobs.id", ondelete="CASCADE"), nullable=False)
+    entity_type: Mapped[str] = mapped_column(String(100), nullable=False)
+    entity_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    max_confidence: Mapped[float] = mapped_column(Float, nullable=False)
+    file_name: Mapped[str] = mapped_column(String(500), nullable=False)
+
+    __table_args__ = (
+        Index("ix_class_tenant_ts", "customer_tenant_id", "ts"),
+        Index("ix_class_entity", "entity_type"),
+    )
+
+
+class JobMetric(Base):
+    """Per-batch throughput metrics — converted to a TimescaleDB hypertable.
+
+    Written once per labelling batch to track throughput, error rates,
+    and processing speed over time.
+    """
+
+    __tablename__ = "job_metrics"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    ts: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    customer_tenant_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("customer_tenants.id", ondelete="CASCADE"), nullable=False
+    )
+    job_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("jobs.id", ondelete="CASCADE"), nullable=False)
+    batch_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    files_processed: Mapped[int] = mapped_column(Integer, nullable=False)
+    files_failed: Mapped[int] = mapped_column(Integer, nullable=False)
+    files_skipped: Mapped[int] = mapped_column(Integer, nullable=False)
+    duration_ms: Mapped[int] = mapped_column(Integer, nullable=False)  # batch wall-clock time
+    files_per_second: Mapped[float] = mapped_column(Float, nullable=False)
+
+    __table_args__ = (
+        Index("ix_jm_tenant_ts", "customer_tenant_id", "ts"),
+        Index("ix_jm_job", "job_id"),
     )

@@ -18,6 +18,7 @@ Design principles:
 from __future__ import annotations
 
 import logging
+import time
 import uuid
 from datetime import UTC, datetime
 from typing import Any
@@ -27,7 +28,9 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.redis import JobSignal, ack_job_signal, check_job_signal
-from app.db.models import AuditEvent, Job, JobCheckpoint, Policy
+from app.db.models import (
+    AuditEvent, ClassificationEvent, Job, JobCheckpoint, JobMetric, Policy, ScanResult,
+)
 from app.models.document import LabelAssignment, JobStatus
 from app.services.classifier import classify_content
 from app.services.document_service import DocumentService
@@ -308,6 +311,8 @@ class JobExecutor:
 
             batch_applied: list[dict[str, str]] = []
             batch_failed = 0
+            batch_skipped = 0
+            batch_start = time.monotonic()
 
             for file_info in batch:
                 drive_id = file_info["drive_id"]
@@ -318,9 +323,20 @@ class JobExecutor:
                 if use_policies:
                     label_id = await self._resolve_label_via_policy(
                         tenant_id, drive_id, item_id, filename, policy_rules,
+                        job=job,
                     )
                     if not label_id:
                         files_skipped += 1
+                        batch_skipped += 1
+                        # Record scan result for skipped file
+                        self._db.add(ScanResult(
+                            customer_tenant_id=job.customer_tenant_id,
+                            job_id=job.id,
+                            drive_id=drive_id,
+                            item_id=item_id,
+                            file_name=filename,
+                            outcome="skipped",
+                        ))
                         continue  # no policy matched — skip file
                 else:
                     label_id = static_label_id
@@ -348,7 +364,15 @@ class JobExecutor:
                         "label_id": label_id,
                         "previous_label_id": "",
                     })
-                    # Audit: successful label application
+                    self._db.add(ScanResult(
+                        customer_tenant_id=job.customer_tenant_id,
+                        job_id=job.id,
+                        drive_id=drive_id,
+                        item_id=item_id,
+                        file_name=filename,
+                        label_applied=label_id,
+                        outcome="labelled",
+                    ))
                     if msp_tenant_id:
                         self._db.add(AuditEvent(
                             msp_tenant_id=msp_tenant_id,
@@ -362,14 +386,32 @@ class JobExecutor:
                 elif result.status == JobStatus.FAILED:
                     if result.error and "Unsupported" in result.error:
                         files_skipped += 1
+                        batch_skipped += 1
+                        self._db.add(ScanResult(
+                            customer_tenant_id=job.customer_tenant_id,
+                            job_id=job.id,
+                            drive_id=drive_id,
+                            item_id=item_id,
+                            file_name=filename,
+                            label_applied=label_id,
+                            outcome="skipped",
+                        ))
                     else:
                         files_failed += 1
                         batch_failed += 1
+                        self._db.add(ScanResult(
+                            customer_tenant_id=job.customer_tenant_id,
+                            job_id=job.id,
+                            drive_id=drive_id,
+                            item_id=item_id,
+                            file_name=filename,
+                            label_applied=label_id,
+                            outcome="failed",
+                        ))
                         logger.warning(
                             "Job %s: failed to label %s/%s: %s",
                             job.id, drive_id, item_id, result.error,
                         )
-                        # Audit: failed label application
                         if msp_tenant_id:
                             self._db.add(AuditEvent(
                                 msp_tenant_id=msp_tenant_id,
@@ -387,6 +429,15 @@ class JobExecutor:
                 elif result.status == JobStatus.SILENT_FAILURE:
                     files_failed += 1
                     batch_failed += 1
+                    self._db.add(ScanResult(
+                        customer_tenant_id=job.customer_tenant_id,
+                        job_id=job.id,
+                        drive_id=drive_id,
+                        item_id=item_id,
+                        file_name=filename,
+                        label_applied=label_id,
+                        outcome="failed",
+                    ))
                     if msp_tenant_id:
                         self._db.add(AuditEvent(
                             msp_tenant_id=msp_tenant_id,
@@ -404,6 +455,21 @@ class JobExecutor:
 
             applied_labels.extend(batch_applied)
             current_index = start_index + i + len(batch)
+
+            # Write batch metrics
+            batch_duration_ms = int((time.monotonic() - batch_start) * 1000)
+            batch_total = len(batch_applied) + batch_failed + batch_skipped
+            fps = batch_total / max(batch_duration_ms / 1000, 0.001)
+            self._db.add(JobMetric(
+                customer_tenant_id=job.customer_tenant_id,
+                job_id=job.id,
+                batch_number=batch_number,
+                files_processed=batch_total,
+                files_failed=batch_failed,
+                files_skipped=batch_skipped,
+                duration_ms=batch_duration_ms,
+                files_per_second=round(fps, 2),
+            ))
 
             # Write checkpoint
             cp = JobCheckpoint(
@@ -583,6 +649,8 @@ class JobExecutor:
         item_id: str,
         filename: str,
         policy_rules: list[PolicyRule],
+        *,
+        job: Job | None = None,
     ) -> str | None:
         """Classify a file's content and evaluate policies to pick a label.
 
@@ -590,6 +658,23 @@ class JobExecutor:
         """
         # Download file content as text for classification
         classification = await self._classify_file(tenant_id, drive_id, item_id, filename)
+
+        # Persist classification events for detected entities
+        if job and classification.entities:
+            # Group by entity type
+            entity_groups: dict[str, list] = {}
+            for entity in classification.entities:
+                entity_groups.setdefault(entity.entity_type, []).append(entity)
+
+            for entity_type, entities in entity_groups.items():
+                self._db.add(ClassificationEvent(
+                    customer_tenant_id=job.customer_tenant_id,
+                    job_id=job.id,
+                    entity_type=entity_type,
+                    entity_count=len(entities),
+                    max_confidence=max(e.confidence for e in entities),
+                    file_name=filename,
+                ))
 
         # Evaluate all policies against the classification result
         match = evaluate_policies(policy_rules, classification, filename)

@@ -1,4 +1,4 @@
-"""Redis connection and job pause/cancel signaling.
+"""Redis connection helpers and job pause/cancel signaling.
 
 Pause/cancel is cooperative: the API sets a flag, the worker checks it
 between batches and stops gracefully (writes a checkpoint first).
@@ -13,12 +13,25 @@ from __future__ import annotations
 
 import logging
 from enum import StrEnum
+from urllib.parse import urlparse
 
+from arq.connections import RedisSettings
 from redis.asyncio import Redis
 
 logger = logging.getLogger(__name__)
 
 _SIGNAL_TTL = 86400  # 24 hours — generous; worker clears on ack
+
+
+def parse_redis_settings(url: str) -> RedisSettings:
+    """Parse a redis:// URL into arq RedisSettings."""
+    parsed = urlparse(url)
+    return RedisSettings(
+        host=parsed.hostname or "localhost",
+        port=parsed.port or 6379,
+        database=int(parsed.path.lstrip("/") or "0"),
+        password=parsed.password,
+    )
 
 
 class JobSignal(StrEnum):

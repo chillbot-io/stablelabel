@@ -14,6 +14,7 @@ from app.db.base import get_session
 from app.services.document_service import DocumentService
 from app.services.graph_client import GraphClient
 from app.services.label_service import LabelService
+from app.services.reporting import ReportingService
 
 # Module-level arq pool — set during app lifespan startup
 _arq_pool: ArqRedis | None = None
@@ -52,6 +53,11 @@ def get_document_service() -> DocumentService:
         labels=get_label_service(),
         settings=get_settings(),
     )
+
+
+@lru_cache
+def get_reporting_service() -> ReportingService:
+    return ReportingService(database_url=get_settings().database_url)
 
 
 def set_arq_pool(pool: ArqRedis) -> None:
