@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 
 interface ConfirmDialogProps {
   title: string;
@@ -21,6 +21,18 @@ export default function ConfirmDialog({
   onConfirm,
   onCancel,
 }: ConfirmDialogProps) {
+  const dialogRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    dialogRef.current?.focus();
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !loading) onCancel();
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [onCancel, loading]);
+
   const confirmColors =
     variant === 'danger'
       ? 'bg-red-600 hover:bg-red-500 text-white'
@@ -30,8 +42,15 @@ export default function ConfirmDialog({
 
   return (
     <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50">
-      <div className="bg-zinc-900 border border-white/[0.06] rounded-xl p-6 w-96">
-        <h3 className="text-lg font-semibold text-white mb-2">{title}</h3>
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="confirm-dialog-title"
+        tabIndex={-1}
+        className="bg-zinc-900 border border-white/[0.06] rounded-xl p-6 w-96 outline-none"
+      >
+        <h3 id="confirm-dialog-title" className="text-lg font-semibold text-white mb-2">{title}</h3>
         <p className="text-[13px] text-zinc-400 mb-6 leading-relaxed">{message}</p>
         <div className="flex gap-3 justify-end">
           <button

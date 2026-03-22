@@ -125,11 +125,29 @@ export default function ConnectionDialog({ onClose, onConnected }: ConnectionDia
   };
 
   const isConnecting = stage === 'connecting';
+  const dialogRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    dialogRef.current?.focus();
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !isConnecting) onClose();
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [onClose, isConnecting]);
 
   return (
     <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50">
-      <div className="bg-zinc-900 rounded-xl p-6 w-[440px] border border-white/[0.06]">
-        <h2 className="text-lg font-semibold text-white mb-1">Connect to StableLabel</h2>
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="connection-dialog-title"
+        tabIndex={-1}
+        className="bg-zinc-900 rounded-xl p-6 w-[440px] border border-white/[0.06] outline-none"
+      >
+        <h2 id="connection-dialog-title" className="text-lg font-semibold text-white mb-1">Connect to StableLabel</h2>
         <p className="text-[13px] text-zinc-500 mb-5 leading-relaxed">
           Sign in with your Microsoft account. PowerShell modules are installed
           automatically and all services connect in the background.

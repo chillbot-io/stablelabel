@@ -29,7 +29,7 @@ export default function TabBar({ tabs, activeTabId, onSelect, onClose }: TabBarP
   if (tabs.length === 0) return null;
 
   return (
-    <div className="flex items-center gap-0.5 bg-zinc-950 border-b border-white/[0.04] px-1 pt-1 overflow-x-auto min-h-[36px]">
+    <div role="tablist" className="flex items-center gap-0.5 bg-zinc-950 border-b border-white/[0.04] px-1 pt-1 overflow-x-auto min-h-[36px]">
       {tabs.map((tab) => {
         const isActive = tab.id === activeTabId;
         const dotColor = kindColors[tab.kind] ?? 'bg-zinc-500';
@@ -37,12 +37,16 @@ export default function TabBar({ tabs, activeTabId, onSelect, onClose }: TabBarP
         return (
           <div
             key={tab.id}
+            role="tab"
+            aria-selected={isActive}
+            tabIndex={isActive ? 0 : -1}
             className={`group flex items-center gap-1.5 px-3 py-1.5 text-[12px] rounded-t cursor-pointer transition-colors max-w-[200px] ${
               isActive
                 ? 'bg-white/[0.04] text-zinc-200'
                 : 'text-zinc-500 hover:text-zinc-300 hover:bg-white/[0.02]'
             }`}
             onClick={() => onSelect(tab.id)}
+            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onSelect(tab.id); } }}
           >
             <div className={`w-1.5 h-1.5 rounded-full ${dotColor} flex-shrink-0`} />
             <span className="truncate">{tab.label}</span>
