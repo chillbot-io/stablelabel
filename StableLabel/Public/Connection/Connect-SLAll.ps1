@@ -26,7 +26,7 @@ function Connect-SLAll {
     .PARAMETER IncludeGraph
         Also connect to Microsoft Graph during initial connection. By default
         Graph is not connected upfront — it is connected lazily on first use
-        by any function that needs it (Documents, Elevation, etc.).
+        by any function that needs it (Documents, Explorer, etc.).
     .PARAMETER AsJson
         Return the result as a JSON string instead of a PSCustomObject.
     .EXAMPLE
