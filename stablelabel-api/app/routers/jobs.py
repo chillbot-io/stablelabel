@@ -41,6 +41,7 @@ class JobResponse(BaseModel):
     name: str
     status: str
     config: dict
+    source_job_id: str | None = None
     total_files: int
     processed_files: int
     failed_files: int
@@ -64,9 +65,12 @@ class JobListPage(BaseModel):
 
 class CheckpointResponse(BaseModel):
     id: str
+    checkpoint_type: str
     batch_number: int
     status: str
-    file_count: int
+    items_processed: int
+    items_failed: int
+    scope_cursor: dict
     created_at: str
 
 
@@ -79,6 +83,7 @@ def _job_to_response(job: Job) -> JobResponse:
         name=job.name,
         status=job.status,
         config=job.config,
+        source_job_id=str(job.source_job_id) if job.source_job_id else None,
         total_files=job.total_files,
         processed_files=job.processed_files,
         failed_files=job.failed_files,
@@ -232,14 +237,38 @@ async def update_job(
 
 
 # ── Job control actions ─────────────────────────────────────
+#
+# State machine with transitions, guards, and who triggers each:
+#
+#   PENDING  ──start──►  ENUMERATING  ──(worker)──►  RUNNING
+#      │                     │                          │
+#      │cancel         pause │                    pause │
+#      ▼                     ▼                          ▼
+#   FAILED ◄── cancel ── PAUSED ── resume ──►  ENUMERATING or RUNNING
+#      │                     │                  (depends on checkpoint phase)
+#      │                     │rollback
+#      │rollback             ▼
+#      └──────────────►  ROLLING_BACK  ──(worker)──►  ROLLED_BACK
+#                            │
+#                        (failure)──►  FAILED
+#
+#   COMPLETED  ──rollback──►  ROLLING_BACK
+#
+# User-triggered actions: start, pause, resume, cancel, rollback, copy
+# Worker-triggered transitions: enumeration_complete, all_files_done,
+#     unrecoverable_error, rollback_complete, rollback_failed
+# These internal transitions are NOT API endpoints — workers update DB directly.
 
-VALID_TRANSITIONS = {
-    "start": {"from": ("pending", "paused"), "to": "enumerating"},
-    "pause": {"from": ("enumerating", "running"), "to": "paused"},
-    "resume": {"from": ("paused",), "to": "running"},
-    "cancel": {"from": ("pending", "enumerating", "running", "paused"), "to": "failed"},
-    "rollback": {"from": ("completed", "failed", "paused"), "to": "rolled_back"},
+VALID_TRANSITIONS: dict[str, dict[str, tuple[str, ...] | str]] = {
+    "start":    {"from": ("pending",),                                    "to": "enumerating"},
+    "pause":    {"from": ("enumerating", "running"),                      "to": "paused"},
+    "resume":   {"from": ("paused",),                                     "to": "_from_checkpoint"},
+    "cancel":   {"from": ("pending", "enumerating", "running", "paused"), "to": "failed"},
+    "rollback": {"from": ("completed", "failed", "paused"),               "to": "rolling_back"},
 }
+
+# Actions that should not be a state transition (handled specially)
+SPECIAL_ACTIONS = {"copy"}
 
 
 @router.post("/{job_id}/{action}", response_model=JobResponse)
@@ -250,13 +279,51 @@ async def job_action(
     user: CurrentUser = Depends(require_role("Operator")),
     db: AsyncSession = Depends(get_session),
 ) -> JobResponse:
-    """Control a job: start, pause, resume, cancel, rollback."""
+    """Control a job: start, pause, resume, cancel, rollback, copy.
+
+    - copy: creates a new PENDING job with the same config (for retrying
+      failed or re-running completed jobs). Returns the new job.
+    """
     await check_tenant_access(user, customer_tenant_id, db)
 
-    if action not in VALID_TRANSITIONS:
+    if action not in VALID_TRANSITIONS and action not in SPECIAL_ACTIONS:
         raise HTTPException(400, f"Unknown action: {action}")
 
     job = await _get_job(job_id, customer_tenant_id, db)
+
+    # ── Special action: copy (retry-as-new-job) ────────────
+    if action == "copy":
+        if job.status not in ("completed", "failed", "rolled_back"):
+            raise HTTPException(
+                409,
+                f"Cannot copy job in '{job.status}' state "
+                f"(requires: completed, failed, or rolled_back)",
+            )
+
+        new_job = Job(
+            customer_tenant_id=job.customer_tenant_id,
+            created_by=uuid.UUID(user.id),
+            name=f"{job.name} (copy)",
+            config=job.config,
+            source_job_id=job.id,
+            schedule_cron=job.schedule_cron,
+        )
+        db.add(new_job)
+
+        db.add(AuditEvent(
+            msp_tenant_id=uuid.UUID(user.msp_tenant_id),
+            customer_tenant_id=job.customer_tenant_id,
+            job_id=new_job.id,
+            actor_id=uuid.UUID(user.id),
+            event_type="job.copied",
+            extra={"source_job_id": str(job.id)},
+        ))
+
+        await db.commit()
+        await db.refresh(new_job)
+        return _job_to_response(new_job)
+
+    # ── Standard state transitions ─────────────────────────
     transition = VALID_TRANSITIONS[action]
 
     if job.status not in transition["from"]:
@@ -266,7 +333,24 @@ async def job_action(
             f"(requires: {', '.join(transition['from'])})",
         )
 
-    job.status = transition["to"]
+    # Resume goes back to the phase the job was in when paused.
+    # The latest checkpoint tells us whether we were enumerating or labelling.
+    if action == "resume":
+        latest_cp = (
+            await db.execute(
+                select(JobCheckpoint)
+                .where(JobCheckpoint.job_id == job.id)
+                .order_by(JobCheckpoint.batch_number.desc())
+                .limit(1)
+            )
+        ).scalar_one_or_none()
+
+        if latest_cp and latest_cp.checkpoint_type == "enumeration":
+            job.status = "enumerating"
+        else:
+            job.status = "running"
+    else:
+        job.status = transition["to"]
 
     db.add(AuditEvent(
         msp_tenant_id=uuid.UUID(user.msp_tenant_id),
@@ -280,6 +364,8 @@ async def job_action(
     await db.refresh(job)
 
     # TODO: dispatch to arq worker queue for start/resume/rollback
+    # For pause/cancel: set Redis flag job:{id}:pause_requested = true
+    # Worker checks this between batches and stops gracefully.
 
     return _job_to_response(job)
 
@@ -306,9 +392,12 @@ async def list_checkpoints(
     return [
         CheckpointResponse(
             id=str(cp.id),
+            checkpoint_type=cp.checkpoint_type,
             batch_number=cp.batch_number,
             status=cp.status,
-            file_count=len(cp.file_ids) if isinstance(cp.file_ids, list) else 0,
+            items_processed=cp.items_processed,
+            items_failed=cp.items_failed,
+            scope_cursor=cp.scope_cursor,
             created_at=cp.created_at.isoformat(),
         )
         for cp in checkpoints

@@ -73,7 +73,8 @@ class CustomerTenant(Base):
     display_name: Mapped[str] = mapped_column(String(255), nullable=False, default="")
     consent_status: Mapped[str] = mapped_column(
         String(20), nullable=False, default="pending"
-    )  # pending | active | revoked
+    )  # pending | active | consent_denied | revoked
+    consent_requested_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     consented_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
@@ -163,8 +164,11 @@ class Job(Base):
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     status: Mapped[str] = mapped_column(
         String(20), nullable=False, default="pending"
-    )  # pending | enumerating | running | paused | completed | failed | rolled_back
+    )  # pending | enumerating | running | paused | completed | failed | rolling_back | rolled_back
     config: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    source_job_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("jobs.id"), nullable=True
+    )  # set when job is a retry-copy of a failed/completed job
     total_files: Mapped[int] = mapped_column(Integer, default=0)
     processed_files: Mapped[int] = mapped_column(Integer, default=0)
     failed_files: Mapped[int] = mapped_column(Integer, default=0)
@@ -190,7 +194,22 @@ class Job(Base):
 
 
 class JobCheckpoint(Base):
-    """Durable progress marker — jobs resume from last committed checkpoint."""
+    """Durable progress marker — jobs resume from last committed checkpoint.
+
+    checkpoint_type: enumeration | labelling | rollback
+    scope_cursor: JSONB dict that captures position in the scan/label tree.
+        Enumeration example:
+            {"phase": "enumeration", "sites_completed": [...],
+             "current_site": "...", "current_library": "...",
+             "next_page_token": "...", "total_files_found": 12450}
+        Labelling example:
+            {"phase": "labelling", "current_site": "...",
+             "current_library": "...", "last_processed_item": "...",
+             "files_labelled": 8200, "files_skipped": 3100,
+             "files_failed": 150,
+             "applied_labels": [{"item_id":"...", "drive_id":"...",
+                                 "label_id":"...", "previous_label_id":"..."}]}
+    """
 
     __tablename__ = "job_checkpoints"
 
@@ -198,8 +217,13 @@ class JobCheckpoint(Base):
     job_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("jobs.id", ondelete="CASCADE"), nullable=False
     )
+    checkpoint_type: Mapped[str] = mapped_column(
+        String(20), nullable=False
+    )  # enumeration | labelling | rollback
+    scope_cursor: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
     batch_number: Mapped[int] = mapped_column(Integer, nullable=False)
-    file_ids: Mapped[dict] = mapped_column(JSONB, nullable=False, default=list)
+    items_processed: Mapped[int] = mapped_column(Integer, default=0)
+    items_failed: Mapped[int] = mapped_column(Integer, default=0)
     status: Mapped[str] = mapped_column(String(20), nullable=False)  # completed | failed
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 

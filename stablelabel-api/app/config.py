@@ -36,6 +36,13 @@ class Settings(BaseSettings):
     # ── Label cache ───────────────────────────────────────────
     label_cache_ttl: float = 1800.0  # 30 min
 
+    # ── Label sync polling (Option B) ──────────────────────────
+    label_sync_enabled: bool = True
+    label_sync_interval_seconds: int = 900  # 15 min — refresh labels for all active tenants
+
+    # ── Consent callback ───────────────────────────────────────
+    consent_redirect_uri: str = "http://localhost:8000/onboard/callback"
+
     # ── Classifier (optional) ─────────────────────────────────
     classifier_enabled: bool = False
 

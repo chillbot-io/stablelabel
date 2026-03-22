@@ -13,10 +13,12 @@ from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import Settings
 from app.core.entra_auth import CurrentUser
 from app.core.rbac import require_role
 from app.db.base import get_session
 from app.db.models import AuditEvent, CustomerTenant, UserTenantAccess
+from app.dependencies import get_settings
 
 router = APIRouter(prefix="/security/tenants", tags=["security"])
 
@@ -33,8 +35,9 @@ class TenantResponse(BaseModel):
     id: str
     entra_tenant_id: str
     display_name: str
-    consent_status: str
-    consented_at: datetime | None
+    consent_status: str  # pending | active | consent_denied | revoked
+    consent_requested_at: datetime | None = None
+    consented_at: datetime | None = None
     created_at: datetime
     user_count: int = 0
 
@@ -78,6 +81,7 @@ async def list_tenants(
             entra_tenant_id=tenant.entra_tenant_id,
             display_name=tenant.display_name,
             consent_status=tenant.consent_status,
+            consent_requested_at=tenant.consent_requested_at,
             consented_at=tenant.consented_at,
             created_at=tenant.created_at,
             user_count=user_count,
@@ -91,6 +95,7 @@ async def connect_tenant(
     body: ConnectTenantRequest,
     user: CurrentUser = Depends(require_role("Admin")),
     db: AsyncSession = Depends(get_session),
+    settings: Settings = Depends(get_settings),
 ) -> ConsentUrlResponse:
     """Register a new customer tenant and return the admin consent URL."""
     msp_id = uuid.UUID(user.msp_tenant_id)
@@ -104,11 +109,13 @@ async def connect_tenant(
     if result.scalar_one_or_none():
         raise HTTPException(409, "Tenant already connected")
 
+    now = datetime.now(UTC)
     tenant = CustomerTenant(
         msp_tenant_id=msp_id,
         entra_tenant_id=body.entra_tenant_id,
         display_name=body.display_name or body.entra_tenant_id,
         consent_status="pending",
+        consent_requested_at=now,
     )
     db.add(tenant)
 
@@ -125,11 +132,10 @@ async def connect_tenant(
     await db.refresh(tenant)
 
     # Build admin consent URL for the Data Connector app
-    # The actual client_id should come from settings, but for now we return a template
     consent_url = (
         f"https://login.microsoftonline.com/{body.entra_tenant_id}/adminconsent"
-        f"?client_id={{DATA_CONNECTOR_CLIENT_ID}}"
-        f"&redirect_uri={{REDIRECT_URI}}"
+        f"?client_id={settings.azure_client_id}"
+        f"&redirect_uri={settings.consent_redirect_uri}"
     )
 
     return ConsentUrlResponse(
@@ -172,6 +178,7 @@ async def confirm_consent(
         entra_tenant_id=tenant.entra_tenant_id,
         display_name=tenant.display_name,
         consent_status=tenant.consent_status,
+        consent_requested_at=tenant.consent_requested_at,
         consented_at=tenant.consented_at,
         created_at=tenant.created_at,
     )

@@ -10,7 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.db.base import dispose_engine, init_engine
 from app.dependencies import get_graph_client, get_settings
-from app.routers import audit, documents, health, jobs, labels, policies, tenants, users
+from app.routers import audit, documents, health, jobs, labels, onboard, policies, tenants, users
 
 
 @asynccontextmanager
@@ -45,6 +45,7 @@ app.include_router(health.router)
 app.include_router(labels.router)
 app.include_router(documents.router)
 app.include_router(tenants.router)
+app.include_router(onboard.router)
 app.include_router(users.router)
 app.include_router(audit.router)
 app.include_router(jobs.router)
