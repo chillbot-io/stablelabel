@@ -6,12 +6,15 @@ they have access to. Viewers can see job status and history.
 
 from __future__ import annotations
 
+import asyncio
+import json
 import logging
 import uuid
 from datetime import UTC, datetime
 
 from arq import ArqRedis
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -425,3 +428,89 @@ async def list_checkpoints(
         )
         for cp in checkpoints
     ]
+
+
+# ── SSE progress stream ────────────────────────────────────────
+
+_TERMINAL_STATUSES = frozenset({"completed", "failed", "rolled_back", "paused"})
+_SSE_POLL_INTERVAL = 2.0  # seconds between DB polls
+
+
+@router.get("/{job_id}/progress")
+async def job_progress_stream(
+    customer_tenant_id: str,
+    job_id: str,
+    request: Request,
+    user: CurrentUser = Depends(require_role("Viewer")),
+    db: AsyncSession = Depends(get_session),
+) -> StreamingResponse:
+    """Stream job progress as Server-Sent Events (SSE).
+
+    Events:
+      - data: {"status": "running", "total_files": 500, "processed_files": 120, ...}
+      - data: {"status": "completed", ...}   ← stream closes after terminal state
+
+    The client connects with EventSource and receives updates every 2s
+    until the job reaches a terminal state.
+    """
+    await check_tenant_access(user, customer_tenant_id, db)
+    await _get_job(job_id, customer_tenant_id, db)  # 404 if not found
+
+    async def event_generator():
+        last_progress = None
+
+        while True:
+            # Check if client disconnected
+            if await request.is_disconnected():
+                break
+
+            # Reload job state from DB
+            stmt = select(Job).where(
+                Job.id == uuid.UUID(job_id),
+                Job.customer_tenant_id == uuid.UUID(customer_tenant_id),
+            )
+            result = await db.execute(stmt)
+            job = result.scalar_one_or_none()
+
+            if not job:
+                yield _sse_event({"error": "Job not found"}, event="error")
+                break
+
+            progress = {
+                "status": job.status,
+                "total_files": job.total_files,
+                "processed_files": job.processed_files,
+                "failed_files": job.failed_files,
+                "skipped_files": job.skipped_files,
+                "started_at": job.started_at.isoformat() if job.started_at else None,
+                "completed_at": job.completed_at.isoformat() if job.completed_at else None,
+            }
+
+            # Only send if changed
+            if progress != last_progress:
+                yield _sse_event(progress)
+                last_progress = progress
+
+            # Stop streaming on terminal states
+            if job.status in _TERMINAL_STATUSES:
+                break
+
+            # Expire SQLAlchemy's identity map so next query gets fresh data
+            db.expire_all()
+            await asyncio.sleep(_SSE_POLL_INTERVAL)
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",  # disable nginx buffering
+        },
+    )
+
+
+def _sse_event(data: dict, event: str = "progress") -> str:
+    """Format a dict as an SSE event string."""
+    payload = json.dumps(data, default=str)
+    return f"event: {event}\ndata: {payload}\n\n"

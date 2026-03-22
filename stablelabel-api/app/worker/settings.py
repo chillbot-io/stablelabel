@@ -8,13 +8,17 @@ and to PostgreSQL for job state.
 from __future__ import annotations
 
 import logging
+import uuid
+from datetime import UTC, datetime
 
 from arq import cron
-from arq.connections import RedisSettings
+from arq.connections import ArqRedis, RedisSettings
 from redis.asyncio import Redis
+from sqlalchemy import select
 
 from app.config import Settings
 from app.db.base import dispose_engine, get_session, init_engine
+from app.db.models import Job
 from app.dependencies import get_document_service, get_graph_client, get_label_service, get_settings
 from app.worker.executor import JobExecutor
 
@@ -60,6 +64,61 @@ async def sync_labels(ctx: dict) -> None:
     label_service = get_label_service()
     async for db in get_session():
         await sync_labels_for_all_tenants(db, label_service)
+
+
+async def trigger_scheduled_jobs(ctx: dict) -> None:
+    """arq cron task: find jobs with schedule_cron that are due and enqueue them.
+
+    For each completed/pending job with a schedule_cron, create a copy
+    with status='enumerating' and dispatch it. The original stays as-is
+    to preserve history.
+
+    Runs every minute; the cron expression is evaluated against the current time.
+    """
+    from app.worker.cron_eval import is_cron_due
+
+    arq_pool: ArqRedis = ctx["redis"]
+    now = datetime.now(UTC)
+
+    async for db in get_session():
+        # Find jobs with a schedule that have completed (or never ran)
+        stmt = (
+            select(Job)
+            .where(
+                Job.schedule_cron.isnot(None),
+                Job.status.in_(("completed", "pending")),
+            )
+        )
+        result = await db.execute(stmt)
+        scheduled_jobs = result.scalars().all()
+
+        for job in scheduled_jobs:
+            if not job.schedule_cron:
+                continue
+
+            if not is_cron_due(job.schedule_cron, now):
+                continue
+
+            # Create a new job instance for this scheduled run
+            new_job = Job(
+                customer_tenant_id=job.customer_tenant_id,
+                created_by=job.created_by,
+                name=f"{job.name} (scheduled {now.strftime('%Y-%m-%d %H:%M')})",
+                config=job.config,
+                source_job_id=job.id,
+                status="enumerating",
+                started_at=now,
+            )
+            db.add(new_job)
+            await db.commit()
+            await db.refresh(new_job)
+
+            # Dispatch to worker
+            await arq_pool.enqueue_job("run_job", str(new_job.id))
+            logger.info(
+                "Triggered scheduled job %s → new job %s",
+                job.id, new_job.id,
+            )
 
 
 # ── Lifecycle hooks ────────────────────────────────────────────
@@ -113,6 +172,11 @@ class WorkerSettings:
         cron(
             sync_labels,
             minute={0, 15, 30, 45},  # every 15 minutes
+            unique=True,
+        ),
+        cron(
+            trigger_scheduled_jobs,
+            minute=set(range(60)),  # every minute
             unique=True,
         ),
     ]

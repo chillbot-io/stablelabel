@@ -67,10 +67,11 @@ class JobExecutor:
             logger.error("Job %s not found", job_id)
             return
 
-        tenant_id = await self._get_tenant_entra_id(job)
-        if not tenant_id:
+        tenant_info = await self._get_tenant_info(job)
+        if not tenant_info:
             await self._fail_job(job, "Tenant not found or inactive")
             return
+        tenant_id, msp_tenant_id = tenant_info
 
         try:
             if job.status == "enumerating":
@@ -82,13 +83,25 @@ class JobExecutor:
                     await self._db.commit()
 
             if job.status == "running":
-                await self._label(job, tenant_id)
+                await self._label(job, tenant_id, msp_tenant_id)
 
             # Check final status
             await self._db.refresh(job)
             if job.status == "running":
                 job.status = "completed"
                 job.completed_at = datetime.now(UTC)
+                self._db.add(AuditEvent(
+                    msp_tenant_id=msp_tenant_id,
+                    customer_tenant_id=job.customer_tenant_id,
+                    job_id=job.id,
+                    event_type="job.completed",
+                    extra={
+                        "total_files": job.total_files,
+                        "processed_files": job.processed_files,
+                        "failed_files": job.failed_files,
+                        "skipped_files": job.skipped_files,
+                    },
+                ))
                 await self._db.commit()
                 logger.info("Job %s completed", job_id)
 
@@ -104,13 +117,14 @@ class JobExecutor:
             logger.error("Job %s not found for rollback", job_id)
             return
 
-        tenant_id = await self._get_tenant_entra_id(job)
-        if not tenant_id:
+        tenant_info = await self._get_tenant_info(job)
+        if not tenant_info:
             await self._fail_job(job, "Tenant not found for rollback")
             return
+        tenant_id, msp_tenant_id = tenant_info
 
         try:
-            await self._rollback(job, tenant_id)
+            await self._rollback(job, tenant_id, msp_tenant_id)
             await self._db.refresh(job)
             if job.status == "rolling_back":
                 job.status = "rolled_back"
@@ -226,7 +240,7 @@ class JobExecutor:
 
     # ── Labelling phase ────────────────────────────────────────
 
-    async def _label(self, job: Job, tenant_id: str) -> None:
+    async def _label(self, job: Job, tenant_id: str, msp_tenant_id: uuid.UUID | None = None) -> None:
         """Apply labels to enumerated files.
 
         Two modes:
@@ -333,6 +347,17 @@ class JobExecutor:
                         "label_id": label_id,
                         "previous_label_id": "",
                     })
+                    # Audit: successful label application
+                    if msp_tenant_id:
+                        self._db.add(AuditEvent(
+                            msp_tenant_id=msp_tenant_id,
+                            customer_tenant_id=job.customer_tenant_id,
+                            job_id=job.id,
+                            event_type="file.labelled",
+                            target_file=filename,
+                            label_applied=label_id,
+                            extra={"drive_id": drive_id, "item_id": item_id},
+                        ))
                 elif result.status == JobStatus.FAILED:
                     if result.error and "Unsupported" in result.error:
                         files_skipped += 1
@@ -342,8 +367,37 @@ class JobExecutor:
                             "Job %s: failed to label %s/%s: %s",
                             job.id, drive_id, item_id, result.error,
                         )
+                        # Audit: failed label application
+                        if msp_tenant_id:
+                            self._db.add(AuditEvent(
+                                msp_tenant_id=msp_tenant_id,
+                                customer_tenant_id=job.customer_tenant_id,
+                                job_id=job.id,
+                                event_type="file.label_failed",
+                                target_file=filename,
+                                label_applied=label_id,
+                                extra={
+                                    "drive_id": drive_id,
+                                    "item_id": item_id,
+                                    "error": result.error,
+                                },
+                            ))
                 elif result.status == JobStatus.SILENT_FAILURE:
                     files_failed += 1
+                    if msp_tenant_id:
+                        self._db.add(AuditEvent(
+                            msp_tenant_id=msp_tenant_id,
+                            customer_tenant_id=job.customer_tenant_id,
+                            job_id=job.id,
+                            event_type="file.silent_failure",
+                            target_file=filename,
+                            label_applied=label_id,
+                            extra={
+                                "drive_id": drive_id,
+                                "item_id": item_id,
+                                "error": result.error,
+                            },
+                        ))
 
             applied_labels.extend(batch_applied)
             current_index = start_index + i + len(batch)
@@ -387,7 +441,7 @@ class JobExecutor:
 
     # ── Rollback phase ─────────────────────────────────────────
 
-    async def _rollback(self, job: Job, tenant_id: str) -> None:
+    async def _rollback(self, job: Job, tenant_id: str, msp_tenant_id: uuid.UUID | None = None) -> None:
         """Reverse applied labels using data from labelling checkpoints.
 
         For each applied label record, either restore the previous label
@@ -462,6 +516,19 @@ class JobExecutor:
                             f"/drives/{drive_id}/items/{item_id}/deleteSensitivityLabel",
                         )
                     rolled_back += 1
+                    # Audit: successful rollback
+                    if msp_tenant_id:
+                        self._db.add(AuditEvent(
+                            msp_tenant_id=msp_tenant_id,
+                            customer_tenant_id=job.customer_tenant_id,
+                            job_id=job.id,
+                            event_type="file.rolled_back",
+                            extra={
+                                "drive_id": drive_id,
+                                "item_id": item_id,
+                                "restored_label_id": previous_label_id or None,
+                            },
+                        ))
                 except Exception:
                     rollback_failed += 1
                     logger.warning(
@@ -594,8 +661,11 @@ class JobExecutor:
         result = await self._db.execute(stmt)
         return result.scalar_one_or_none()
 
-    async def _get_tenant_entra_id(self, job: Job) -> str | None:
-        """Get the Entra tenant ID for the job's customer tenant."""
+    async def _get_tenant_info(self, job: Job) -> tuple[str, uuid.UUID] | None:
+        """Get (entra_tenant_id, msp_tenant_id) for the job's customer tenant.
+
+        Returns None if tenant not found or consent not active.
+        """
         from app.db.models import CustomerTenant
 
         stmt = select(CustomerTenant).where(
@@ -604,7 +674,9 @@ class JobExecutor:
         )
         result = await self._db.execute(stmt)
         ct = result.scalar_one_or_none()
-        return ct.entra_tenant_id if ct else None
+        if ct is None:
+            return None
+        return ct.entra_tenant_id, ct.msp_tenant_id
 
     async def _get_latest_checkpoint(
         self, job_id: uuid.UUID, checkpoint_type: str
