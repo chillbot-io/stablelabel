@@ -10,6 +10,17 @@ export default function DenyListPanel({ denyLists, entityTypes, onChange }: Deny
   const [selectedEntity, setSelectedEntity] = useState(entityTypes[0] ?? '');
   const [input, setInput] = useState('');
 
+  if (entityTypes.length === 0) {
+    return (
+      <div className="bg-white/[0.03] rounded-xl p-8 text-center">
+        <p className="text-[13px] text-zinc-500">No entity types configured.</p>
+        <p className="text-[11px] text-zinc-600 mt-1">
+          Enable entity types in the Entities tab first, then configure deny lists here.
+        </p>
+      </div>
+    );
+  }
+
   const currentList = denyLists[selectedEntity] ?? [];
 
   const addValue = () => {

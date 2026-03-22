@@ -8,6 +8,7 @@ import { logger } from './logger';
 
 const STARTUP_TIMEOUT_MS = 30_000;
 const COMMAND_TIMEOUT_MS = 120_000;
+const AVAILABILITY_CHECK_TIMEOUT_MS = 15_000;
 const PROCESS_CLEANUP_DELAY_MS = 2_000;
 
 export interface ClassifierResult {
@@ -22,9 +23,17 @@ interface PendingRequest {
   timeout: ReturnType<typeof setTimeout>;
 }
 
+interface QueueEntry {
+  id: string;
+  payload: string;
+  resolve: (value: ClassifierResult) => void;
+  reject: (reason: Error) => void;
+}
+
 /**
  * Manages a persistent Python classifier process (Presidio + spaCy).
  * Commands are sent as JSON over stdin, responses read from stdout.
+ * Uses a command queue to prevent concurrent stdin writes.
  */
 export class ClassifierBridge {
   private process: ChildProcess | null = null;
@@ -32,6 +41,8 @@ export class ClassifierBridge {
   private _initializing: Promise<void> | null = null;
   private outputBuffer = '';
   private pendingRequests = new Map<string, PendingRequest>();
+  private commandQueue: QueueEntry[] = [];
+  private writing = false;
 
   /**
    * Resolve the path to the classifier executable or script.
@@ -47,6 +58,9 @@ export class ClassifierBridge {
       if (existsSync(exePath)) {
         return { command: exePath, args: [] };
       }
+      // Bundled exe not found — do NOT fall back to dev mode in production
+      logger.error('CLASSIFIER', `Bundled classifier not found at ${exePath}`);
+      return { command: exePath, args: [] };
     }
 
     // Dev mode: use Python directly
@@ -70,26 +84,34 @@ export class ClassifierBridge {
 
     // Dev mode: check if python and presidio are available
     return new Promise((resolve) => {
+      let resolved = false;
+      const done = (result: { available: boolean; mode?: string; error?: string }) => {
+        if (!resolved) {
+          resolved = true;
+          resolve(result);
+        }
+      };
+
       const proc = spawn(command, ['-c', 'import presidio_analyzer; print("ok")']);
       let output = '';
       proc.stdout?.on('data', (d: Buffer) => { output += d.toString(); });
       proc.on('close', (code) => {
         if (code === 0 && output.includes('ok')) {
-          resolve({ available: true, mode: 'python' });
+          done({ available: true, mode: 'python' });
         } else {
-          resolve({
+          done({
             available: false,
             error: 'Python 3 with presidio-analyzer not found. Run: pip install presidio-analyzer spacy && python -m spacy download en_core_web_lg',
           });
         }
       });
       proc.on('error', () => {
-        resolve({ available: false, error: `${command} not found on PATH.` });
+        done({ available: false, error: `${command} not found on PATH.` });
       });
       setTimeout(() => {
         proc.kill();
-        resolve({ available: false, error: 'Python check timed out.' });
-      }, 10_000);
+        done({ available: false, error: 'Python check timed out.' });
+      }, AVAILABILITY_CHECK_TIMEOUT_MS);
     });
   }
 
@@ -121,11 +143,12 @@ export class ClassifierBridge {
       logger.info('CLASSIFIER', `Classifier process exited with code ${code}`);
       this._initialized = false;
       this.process = null;
-      // Reject all pending requests
-      for (const [id, req] of this.pendingRequests) {
+      // Reject all pending requests safely (snapshot then clear)
+      const pending = Array.from(this.pendingRequests.values());
+      this.pendingRequests.clear();
+      for (const req of pending) {
         clearTimeout(req.timeout);
         req.reject(new Error('Classifier process exited unexpectedly'));
-        this.pendingRequests.delete(id);
       }
     });
 
@@ -137,27 +160,22 @@ export class ClassifierBridge {
     // Wait for the startup "ready" message
     await new Promise<void>((resolve, reject) => {
       const timeout = setTimeout(() => {
+        this.pendingRequests.delete('__startup__');
         reject(new Error('Classifier startup timed out'));
       }, STARTUP_TIMEOUT_MS);
 
-      const checkReady = () => {
-        // The ready message has id "__startup__"
-        // It will be processed by _processBuffer and we'll see it resolve
-        // via a synthetic pending request
-        this.pendingRequests.set('__startup__', {
-          resolve: () => {
-            clearTimeout(timeout);
-            this._initialized = true;
-            resolve();
-          },
-          reject: (err) => {
-            clearTimeout(timeout);
-            reject(err);
-          },
-          timeout,
-        });
-      };
-      checkReady();
+      this.pendingRequests.set('__startup__', {
+        resolve: () => {
+          clearTimeout(timeout);
+          this._initialized = true;
+          resolve();
+        },
+        reject: (err) => {
+          clearTimeout(timeout);
+          reject(err);
+        },
+        timeout,
+      });
     });
   }
 
@@ -178,6 +196,7 @@ export class ClassifierBridge {
           clearTimeout(pending.timeout);
           this.pendingRequests.delete(id);
           if (id === '__startup__') {
+            // Startup handler: resolve signals readiness, result value is unused
             pending.resolve({ success: true, data: response.data });
           } else {
             pending.resolve({
@@ -194,6 +213,56 @@ export class ClassifierBridge {
   }
 
   /**
+   * Write the next queued command to stdin. Processes one at a time.
+   */
+  private processQueue(): void {
+    if (this.writing || this.commandQueue.length === 0) return;
+    this.writing = true;
+
+    const entry = this.commandQueue.shift()!;
+
+    if (!this.process?.stdin) {
+      this.writing = false;
+      entry.resolve({ success: false, data: null, error: 'Classifier process not available' });
+      this.processQueue();
+      return;
+    }
+
+    const timeout = setTimeout(() => {
+      this.pendingRequests.delete(entry.id);
+      entry.resolve({ success: false, data: null, error: 'Classifier request timed out' });
+      this.writing = false;
+      this.processQueue();
+    }, COMMAND_TIMEOUT_MS);
+
+    // Store the resolve/reject in pendingRequests so _processBuffer can route the response
+    this.pendingRequests.set(entry.id, {
+      resolve: (result) => {
+        entry.resolve(result);
+        this.writing = false;
+        this.processQueue();
+      },
+      reject: (err) => {
+        entry.reject(err);
+        this.writing = false;
+        this.processQueue();
+      },
+      timeout,
+    });
+
+    try {
+      this.process.stdin.write(entry.payload + '\n');
+    } catch (err) {
+      clearTimeout(timeout);
+      this.pendingRequests.delete(entry.id);
+      const message = err instanceof Error ? err.message : String(err);
+      entry.resolve({ success: false, data: null, error: message });
+      this.writing = false;
+      this.processQueue();
+    }
+  }
+
+  /**
    * Send a request to the classifier and wait for the response.
    */
   async invoke(action: string, params: Record<string, unknown> = {}): Promise<ClassifierResult> {
@@ -204,29 +273,12 @@ export class ClassifierBridge {
       return { success: false, data: null, error: message };
     }
 
-    if (!this.process?.stdin) {
-      return { success: false, data: null, error: 'Classifier process not available' };
-    }
-
     const id = randomUUID();
-    const request = { id, action, ...params };
+    const payload = JSON.stringify({ id, action, ...params });
 
     return new Promise<ClassifierResult>((resolve, reject) => {
-      const timeout = setTimeout(() => {
-        this.pendingRequests.delete(id);
-        resolve({ success: false, data: null, error: 'Classifier request timed out' });
-      }, COMMAND_TIMEOUT_MS);
-
-      this.pendingRequests.set(id, { resolve, reject, timeout });
-
-      try {
-        this.process!.stdin!.write(JSON.stringify(request) + '\n');
-      } catch (err) {
-        clearTimeout(timeout);
-        this.pendingRequests.delete(id);
-        const message = err instanceof Error ? err.message : String(err);
-        resolve({ success: false, data: null, error: message });
-      }
+      this.commandQueue.push({ id, payload, resolve, reject });
+      this.processQueue();
     });
   }
 
@@ -236,16 +288,26 @@ export class ClassifierBridge {
 
   dispose(): void {
     if (this.process) {
+      const proc = this.process;
+      this._initialized = false;
+      this.process = null;
+
+      // Reject pending requests
+      const pending = Array.from(this.pendingRequests.values());
+      this.pendingRequests.clear();
+      for (const req of pending) {
+        clearTimeout(req.timeout);
+        req.reject(new Error('Classifier bridge disposed'));
+      }
+
       try {
-        this.process.stdin?.end();
+        proc.stdin?.end();
       } catch {
         // Process may already be dead
       }
       setTimeout(() => {
-        this.process?.kill();
-        this.process = null;
+        proc.kill();
       }, PROCESS_CLEANUP_DELAY_MS);
-      this._initialized = false;
     }
   }
 }

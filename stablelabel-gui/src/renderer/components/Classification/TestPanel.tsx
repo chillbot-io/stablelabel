@@ -153,8 +153,8 @@ export default function TestPanel({ config }: TestPanelProps) {
                     </tr>
                   </thead>
                   <tbody>
-                    {results.map((r, i) => (
-                      <tr key={i} className="border-b border-white/[0.03]">
+                    {results.map((r) => (
+                      <tr key={`${r.entity_type}-${r.start}-${r.end}`} className="border-b border-white/[0.03]">
                         <td className="py-1.5 pr-3 font-mono text-blue-400">{r.entity_type}</td>
                         <td className="py-1.5 pr-3 font-mono text-zinc-200">{r.text}</td>
                         <td className="py-1.5 pr-3 text-zinc-500">
@@ -176,27 +176,45 @@ export default function TestPanel({ config }: TestPanelProps) {
   );
 }
 
-/** Render text with highlighted PII entities */
+/** Render text with highlighted PII entities, handling overlaps by skipping covered regions */
 function AnnotatedText({ text, entities }: { text: string; entities: ClassifierEntity[] }) {
   if (entities.length === 0) return <>{text}</>;
+
+  // Sort by start position, then by longest span first (so wider spans win on overlap)
+  const sorted = [...entities].sort((a, b) => a.start - b.start || b.end - a.end);
 
   const parts: React.ReactNode[] = [];
   let lastEnd = 0;
 
-  for (const entity of entities) {
+  for (const entity of sorted) {
+    // Skip entities fully contained within a previous span
+    if (entity.start < lastEnd) {
+      // Partial overlap: extend highlight to cover both if this entity extends further
+      // For simplicity, skip overlapping entities entirely (the first/highest-scored wins)
+      continue;
+    }
+
     // Add text before this entity
     if (entity.start > lastEnd) {
       parts.push(text.slice(lastEnd, entity.start));
     }
+
+    // Collect all entity types that cover this span (for tooltip)
+    const overlapping = sorted.filter(
+      (e) => e.start >= entity.start && e.start < entity.end,
+    );
+    const title = overlapping
+      .map((e) => `${e.entity_type} (${Math.round(e.score * 100)}%)`)
+      .join(', ');
 
     // Add highlighted entity
     parts.push(
       <span
         key={`${entity.start}-${entity.end}`}
         className="bg-red-500/20 text-red-300 border-b border-red-500/50 px-0.5"
-        title={`${entity.entity_type} (${Math.round(entity.score * 100)}%)`}
+        title={title}
       >
-        {entity.text}
+        {text.slice(entity.start, entity.end)}
       </span>,
     );
 

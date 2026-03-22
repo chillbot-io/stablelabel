@@ -28,16 +28,32 @@ from presidio_analyzer.nlp_engine import NlpEngineProvider
 # ---------------------------------------------------------------------------
 
 _engine: AnalyzerEngine | None = None
-_custom_recognizers: list[PatternRecognizer] = []
+_nlp_engine = None  # Cache the spaCy NLP engine (expensive to create)
+_engine_config_hash: str | None = None  # Track config to detect changes
+
+
+def _config_hash(config: dict | None) -> str:
+    """Deterministic hash of config for change detection."""
+    if config is None:
+        return ""
+    return json.dumps(config, sort_keys=True)
+
+
+def _get_nlp_engine():
+    """Get or create the cached spaCy NLP engine."""
+    global _nlp_engine
+    if _nlp_engine is None:
+        provider = NlpEngineProvider(nlp_configuration={
+            "nlp_engine_name": "spacy",
+            "models": [{"lang_code": "en", "model_name": "en_core_web_lg"}],
+        })
+        _nlp_engine = provider.create_engine()
+    return _nlp_engine
 
 
 def _build_engine(config: dict | None = None) -> AnalyzerEngine:
     """Create a fresh AnalyzerEngine with spaCy NER and optional custom recognizers."""
-    provider = NlpEngineProvider(nlp_configuration={
-        "nlp_engine_name": "spacy",
-        "models": [{"lang_code": "en", "model_name": "en_core_web_lg"}],
-    })
-    nlp_engine = provider.create_engine()
+    nlp_engine = _get_nlp_engine()
     engine = AnalyzerEngine(nlp_engine=nlp_engine, supported_languages=["en"])
 
     # Register custom recognizers from config
@@ -76,6 +92,9 @@ def _add_custom_recognizer(engine: AnalyzerEngine, rec_def: dict) -> None:
             score=rec_def.get("score", 0.6),
         ))
 
+    if not patterns:
+        return  # Skip recognizers with no valid patterns
+
     context_words = rec_def.get("context_words", [])
 
     recognizer = PatternRecognizer(
@@ -88,17 +107,20 @@ def _add_custom_recognizer(engine: AnalyzerEngine, rec_def: dict) -> None:
 
 
 def get_engine(config: dict | None = None) -> AnalyzerEngine:
-    """Get or create the analyzer engine."""
-    global _engine
-    if _engine is None:
+    """Get or create the analyzer engine. Rebuilds if config has changed."""
+    global _engine, _engine_config_hash
+    new_hash = _config_hash(config)
+    if _engine is None or (config is not None and new_hash != _engine_config_hash):
         _engine = _build_engine(config)
+        _engine_config_hash = new_hash
     return _engine
 
 
 def reload_engine(config: dict | None = None) -> AnalyzerEngine:
     """Force-rebuild the engine with new config."""
-    global _engine
+    global _engine, _engine_config_hash
     _engine = _build_engine(config)
+    _engine_config_hash = _config_hash(config)
     return _engine
 
 

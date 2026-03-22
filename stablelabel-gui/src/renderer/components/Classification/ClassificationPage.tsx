@@ -1,10 +1,8 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import type {
   ClassifierConfig,
   EntityConfig,
   CustomRecognizer,
-  ClassifierEntity,
-  ClassifierAnalyzeResult,
 } from '../../lib/types';
 import EntityTypePanel from './EntityTypePanel';
 import CustomRecognizerPanel from './CustomRecognizerPanel';
@@ -85,6 +83,10 @@ export default function ClassificationPage() {
     window.stablelabel.checkClassifier().then(setClassifierStatus);
   }, []);
 
+  // Use a ref to always have the latest config in callbacks without stale closures
+  const configRef = useRef(config);
+  configRef.current = config;
+
   const saveConfig = useCallback((newConfig: ClassifierConfig) => {
     setConfig(newConfig);
     localStorage.setItem(STORAGE_KEY, JSON.stringify(newConfig));
@@ -95,16 +97,16 @@ export default function ClassificationPage() {
   }, []);
 
   const updateEntities = useCallback((entities: Record<string, EntityConfig>) => {
-    saveConfig({ ...config, entities });
-  }, [config, saveConfig]);
+    saveConfig({ ...configRef.current, entities });
+  }, [saveConfig]);
 
   const updateRecognizers = useCallback((custom_recognizers: CustomRecognizer[]) => {
-    saveConfig({ ...config, custom_recognizers });
-  }, [config, saveConfig]);
+    saveConfig({ ...configRef.current, custom_recognizers });
+  }, [saveConfig]);
 
   const updateDenyLists = useCallback((deny_lists: Record<string, string[]>) => {
-    saveConfig({ ...config, deny_lists });
-  }, [config, saveConfig]);
+    saveConfig({ ...configRef.current, deny_lists });
+  }, [saveConfig]);
 
   return (
     <div className="p-6 max-w-4xl space-y-5">
