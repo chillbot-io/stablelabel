@@ -34,7 +34,7 @@ export class PowerShellBridge {
   private _initialized = false;
   private commandQueue: Array<{
     command: string;
-    resolve: (value: PsResult) => void;
+    resolve: (value: unknown) => void;
     reject: (reason: Error) => void;
   }> = [];
   private processing = false;
@@ -303,7 +303,8 @@ export class PowerShellBridge {
         reject(new Error('PowerShell process not available'));
         return;
       }
-      this.commandQueue.push({ command, resolve: resolve as (value: PsResult) => void, reject });
+      // sendRaw resolves with string; invokeStructured resolves with PsResult — both use the same queue
+      this.commandQueue.push({ command, resolve: resolve as (value: unknown) => void, reject });
       this.processQueue();
     }) as Promise<string>;
   }

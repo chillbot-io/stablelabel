@@ -58,6 +58,16 @@ function getStableSnapshot() {
   return cachedSnapshot;
 }
 
+/** Reset singleton state for testing. */
+export function _resetForTesting() {
+  sharedStatus = null;
+  sharedLoading = true;
+  if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+  subscriberCount = 0;
+  listeners = new Set();
+  cachedSnapshot = getSnapshot();
+}
+
 /**
  * Shared connection status hook. Multiple callers share one polling interval.
  */

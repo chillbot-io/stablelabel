@@ -1,4 +1,5 @@
 import React, { useState, useCallback, useRef } from 'react';
+import { usePowerShell } from '../../hooks/usePowerShell';
 import TabBar, { type Tab } from '../common/TabBar';
 import type { LabelPolicy, AutoLabelPolicy } from '../../lib/types';
 import LabelList from './LabelList';
