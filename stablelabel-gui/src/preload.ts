@@ -50,6 +50,10 @@ contextBridge.exposeInMainWorld('stablelabel', {
   clearCredentials: (): Promise<void> =>
     ipcRenderer.invoke('credentials:clear'),
 
+  /** Push settings updates to the main process */
+  updateSettings: (settings: { timeout?: number; logLevel?: string }): Promise<void> =>
+    ipcRenderer.invoke('settings:update', settings),
+
   /** Current platform (win32, darwin, linux) */
   platform: process.platform,
 

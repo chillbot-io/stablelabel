@@ -6,7 +6,7 @@ import { ALLOWED_DEVICE_CODE_HOSTS } from './trusted-hosts';
 import { logger } from './logger';
 
 const PS_READY_TIMEOUT_MS = 10_000;
-const COMMAND_TIMEOUT_MS = 600_000;
+let COMMAND_TIMEOUT_MS = 600_000;
 const PROCESS_CLEANUP_DELAY_MS = 2_000;
 
 interface PsResult {
@@ -55,6 +55,11 @@ export class PowerShellBridge {
 
   constructor(modulePath: string) {
     this.modulePath = modulePath;
+  }
+
+  /** Update the command timeout (in seconds). */
+  setCommandTimeout(seconds: number): void {
+    COMMAND_TIMEOUT_MS = Math.max(10_000, seconds * 1000);
   }
 
   /**

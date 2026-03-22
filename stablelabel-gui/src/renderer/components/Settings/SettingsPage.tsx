@@ -37,10 +37,15 @@ export default function SettingsPage() {
     if (bridgeStatus?.modulePath && !settings.modulePath) {
       setSettings((prev) => ({ ...prev, modulePath: bridgeStatus.modulePath! }));
     }
-  }, [bridgeStatus]);
+  }, [bridgeStatus, settings.modulePath]);
 
   const handleSave = () => {
     localStorage.setItem('stablelabel-settings', JSON.stringify(settings));
+    // Push to main process so bridge/logger pick up changes immediately
+    window.stablelabel.updateSettings({
+      timeout: settings.timeout,
+      logLevel: settings.logLevel,
+    });
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
   };

@@ -3,6 +3,7 @@ import path from 'node:path';
 import { PowerShellBridge } from './powershell-bridge';
 import { ClassifierBridge } from './classifier-bridge';
 import { CredentialStore } from './credential-store';
+import { logger } from './logger';
 import { CMDLET_REGISTRY } from './cmdlet-registry';
 import { TRUSTED_EXTERNAL_HOSTS } from './trusted-hosts';
 
@@ -163,6 +164,16 @@ app.whenReady().then(() => {
   // ── Credential vault ────────────────────────────────────────────────
   ipcMain.handle('credentials:clear', async () => {
     CredentialStore.clear();
+  });
+
+  // ── Settings (pushed from renderer) ────────────────────────────────
+  ipcMain.handle('settings:update', async (_event, settings: { timeout?: number; logLevel?: string }) => {
+    if (settings.timeout && psBridge) {
+      psBridge.setCommandTimeout(settings.timeout);
+    }
+    if (settings.logLevel) {
+      logger.setLevel(settings.logLevel);
+    }
   });
 
   // ── Classifier (Presidio + spaCy) ──────────────────────────────────
