@@ -20,6 +20,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.entra_auth import CurrentUser
+from app.core.job_states import COPY_ALLOWED_FROM, SPECIAL_ACTIONS, TERMINAL_STATUSES, VALID_TRANSITIONS
 from app.core.rbac import check_tenant_access, require_role
 from app.core.redis import JobSignal, send_job_signal
 from app.db.base import get_session
@@ -268,17 +269,7 @@ async def update_job(
 # Worker-triggered transitions: enumeration_complete, all_files_done,
 #     unrecoverable_error, rollback_complete, rollback_failed
 # These internal transitions are NOT API endpoints — workers update DB directly.
-
-VALID_TRANSITIONS: dict[str, dict[str, tuple[str, ...] | str]] = {
-    "start":    {"from": ("pending",),                                    "to": "enumerating"},
-    "pause":    {"from": ("enumerating", "running"),                      "to": "paused"},
-    "resume":   {"from": ("paused",),                                     "to": "_from_checkpoint"},
-    "cancel":   {"from": ("pending", "enumerating", "running", "paused"), "to": "failed"},
-    "rollback": {"from": ("completed", "failed", "paused"),               "to": "rolling_back"},
-}
-
-# Actions that should not be a state transition (handled specially)
-SPECIAL_ACTIONS = {"copy"}
+# Transition table is in app.core.job_states (importable without jose).
 
 
 @router.post("/{job_id}/{action}", response_model=JobResponse)
@@ -304,7 +295,7 @@ async def job_action(
 
     # ── Special action: copy (retry-as-new-job) ────────────
     if action == "copy":
-        if job.status not in ("completed", "failed", "rolled_back"):
+        if job.status not in COPY_ALLOWED_FROM:
             raise HTTPException(
                 409,
                 f"Cannot copy job in '{job.status}' state "
@@ -432,7 +423,7 @@ async def list_checkpoints(
 
 # ── SSE progress stream ────────────────────────────────────────
 
-_TERMINAL_STATUSES = frozenset({"completed", "failed", "rolled_back", "paused"})
+_TERMINAL_STATUSES = TERMINAL_STATUSES
 _SSE_POLL_INTERVAL = 2.0  # seconds between DB polls
 
 

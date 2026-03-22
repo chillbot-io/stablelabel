@@ -121,7 +121,7 @@ def classify_content(
             entities=entity_matches,
         )
 
-    except Exception as exc:
+    except (RuntimeError, ValueError, TypeError, OSError) as exc:
         logger.warning("Classification failed for %s: %s", filename, exc)
         return ClassificationResult(
             filename=filename,

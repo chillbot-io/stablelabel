@@ -100,13 +100,27 @@ def _validate_token(token: str, signing_key: dict[str, Any], settings: Settings)
             },
         )
     except JWTError as e:
-        raise HTTPException(401, f"Invalid token: {e}") from None
+        logger.warning("Token validation failed: %s", e)
+        raise HTTPException(401, "Invalid or expired token") from None
 
     # Require essential claims
     if not claims.get("oid"):
-        raise HTTPException(401, "Token missing oid claim")
+        raise HTTPException(401, "Invalid token claims")
     if not claims.get("tid"):
-        raise HTTPException(401, "Token missing tid claim")
+        raise HTTPException(401, "Invalid token claims")
+
+    # Validate issuer matches the token's tenant
+    # Multi-tenant apps accept tokens from any Entra tenant, but the issuer
+    # must follow Microsoft's pattern to prevent token confusion attacks.
+    tid = claims["tid"]
+    iss = claims.get("iss", "")
+    expected_issuers = [
+        f"https://login.microsoftonline.com/{tid}/v2.0",
+        f"https://sts.windows.net/{tid}/",
+    ]
+    if iss not in expected_issuers:
+        logger.warning("Unexpected issuer %s for tenant %s", iss, tid)
+        raise HTTPException(401, "Invalid token issuer")
 
     return claims
 

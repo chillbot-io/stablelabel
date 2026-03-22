@@ -17,10 +17,13 @@ import logging
 import uuid
 from typing import Any
 
+import httpx
+
 from app.config import Settings
 from app.core.exceptions import (
     GraphLockedError,
     SilentFailureError,
+    StableLabelError,
     UnsupportedFileTypeError,
 )
 from app.core.file_types import is_legacy_office, is_supported
@@ -185,7 +188,7 @@ class DocumentService:
         except UnsupportedFileTypeError as exc:
             result.status = JobStatus.FAILED
             result.error = str(exc)
-        except Exception as exc:
+        except (StableLabelError, httpx.HTTPError, ValueError) as exc:
             result.status = JobStatus.FAILED
             result.error = str(exc)
             logger.exception("Failed to label %s/%s", assignment.drive_id, assignment.item_id)
@@ -294,7 +297,7 @@ class DocumentService:
                     assignment.sensitivity_label_id,
                     actual,
                 )
-        except Exception as exc:
+        except (StableLabelError, httpx.HTTPError) as exc:
             logger.warning("Verification failed for %s/%s: %s",
                           assignment.drive_id, assignment.item_id, exc)
             result.verified = False

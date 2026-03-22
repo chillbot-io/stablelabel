@@ -19,9 +19,11 @@ from __future__ import annotations
 import logging
 from datetime import UTC, datetime
 
+import httpx
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.exceptions import StableLabelError
 from app.db.models import CustomerTenant, LabelDefinition
 from app.services.label_service import LabelService
 
@@ -57,9 +59,9 @@ async def sync_labels_for_all_tenants(
                 tenant.display_name,
                 tid,
             )
-        except Exception:
+        except (StableLabelError, httpx.HTTPError) as exc:
             summary["failed"] += 1
-            logger.exception("Failed to sync labels for tenant %s", tid)
+            logger.warning("Failed to sync labels for tenant %s: %s", tid, exc)
 
     logger.info(
         "Label sync complete: %d synced, %d failed, %d skipped",

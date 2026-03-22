@@ -23,10 +23,12 @@ import uuid
 from datetime import UTC, datetime
 from typing import Any
 
+import httpx
 from redis.asyncio import Redis
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.exceptions import StableLabelError
 from app.core.redis import JobSignal, ack_job_signal, check_job_signal
 from app.db.models import (
     AuditEvent, ClassificationEvent, Job, JobCheckpoint, JobMetric, Policy, ScanResult,
@@ -174,8 +176,8 @@ class JobExecutor:
                 drives = await self._graph.get_all_pages(
                     tenant_id, f"/sites/{site_id}/drives"
                 )
-            except Exception:
-                logger.warning("Failed to enumerate drives for site %s, skipping", site_id)
+            except (StableLabelError, httpx.HTTPError) as exc:
+                logger.warning("Failed to enumerate drives for site %s: %s, skipping", site_id, exc)
                 continue
 
             site_files: list[dict[str, str]] = []
@@ -191,7 +193,7 @@ class JobExecutor:
                         tenant_id,
                         f"/drives/{drive_id}/root/search(q='')",
                     )
-                except Exception:
+                except (StableLabelError, httpx.HTTPError):
                     logger.warning(
                         "Failed to enumerate drive %s in site %s, skipping",
                         drive_id, site_id,
@@ -597,7 +599,7 @@ class JobExecutor:
                                 "restored_label_id": previous_label_id or None,
                             },
                         ))
-                except Exception:
+                except (StableLabelError, httpx.HTTPError):
                     rollback_failed += 1
                     batch_rollback_failed += 1
                     logger.warning(
@@ -727,7 +729,7 @@ class JobExecutor:
             # Extract text (simple approach — works for plaintext-ish files)
             try:
                 text = resp.content.decode("utf-8", errors="replace")
-            except Exception:
+            except (UnicodeDecodeError, AttributeError):
                 text = ""
 
             if not text.strip():

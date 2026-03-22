@@ -289,7 +289,7 @@ class LabelDefinition(Base):
     color: Mapped[str] = mapped_column(String(20), default="")
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     has_protection: Mapped[bool] = mapped_column(Boolean, default=False)
-    applicable_to: Mapped[dict] = mapped_column(JSONB, default=list)
+    applicable_to: Mapped[list] = mapped_column(JSONB, default=list)
     parent_id: Mapped[str | None] = mapped_column(String(36))
     is_parent: Mapped[bool] = mapped_column(Boolean, default=False)
     fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

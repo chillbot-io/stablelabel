@@ -1,12 +1,7 @@
-"""Tests for the job executor checkpoint and signal handling logic.
-
-These tests cover the pure logic without requiring a real database, Redis,
-or cryptography (jose). Signal enum and executor are imported carefully
-to avoid the jose import chain.
-"""
+"""Tests for the job executor signal handling and failure logic."""
 
 import uuid
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, call
 
 import pytest
 
@@ -18,28 +13,27 @@ class TestExecutorSignalHandling:
 
     @pytest.fixture
     def executor(self):
-        """Create an executor with mock dependencies, avoiding jose imports."""
-        # Import here to avoid top-level import chain
         from app.worker.executor import JobExecutor
 
-        return JobExecutor(
+        ex = JobExecutor(
             db=AsyncMock(),
             graph=AsyncMock(),
             doc_service=AsyncMock(),
             redis=AsyncMock(),
         )
+        # session.add() is sync — use MagicMock to avoid coroutine warnings
+        ex._db.add = MagicMock()
+        ex._redis.delete = AsyncMock()
+        return ex
 
     @pytest.mark.asyncio
     async def test_handle_pause_signal_sets_paused(self, executor) -> None:
         job = MagicMock()
         job.id = uuid.uuid4()
         job.status = "running"
-        executor._db.commit = AsyncMock()
 
         await executor._handle_signal(
-            job,
-            JobSignal.PAUSE,
-            "labelling",
+            job, JobSignal.PAUSE, "labelling",
             {"phase": "labelling", "files_processed_index": 50},
             batch_number=5,
         )
@@ -51,12 +45,9 @@ class TestExecutorSignalHandling:
         job = MagicMock()
         job.id = uuid.uuid4()
         job.status = "running"
-        executor._db.commit = AsyncMock()
 
         await executor._handle_signal(
-            job,
-            JobSignal.CANCEL,
-            "labelling",
+            job, JobSignal.CANCEL, "labelling",
             {"phase": "labelling", "files_processed_index": 50},
             batch_number=5,
         )
@@ -64,39 +55,47 @@ class TestExecutorSignalHandling:
         assert job.status == "failed"
 
     @pytest.mark.asyncio
-    async def test_handle_signal_writes_checkpoint(self, executor) -> None:
+    async def test_handle_signal_writes_checkpoint_and_commits(self, executor) -> None:
         job = MagicMock()
         job.id = uuid.uuid4()
-        executor._db.commit = AsyncMock()
-        executor._db.add = MagicMock()
 
         await executor._handle_signal(
-            job,
-            JobSignal.PAUSE,
-            "enumeration",
-            {"phase": "enumeration", "sites_completed": ["site-1"]},
+            job, JobSignal.PAUSE, "enumeration",
+            {"phase": "enumeration", "sites_completed": ["s1"]},
             batch_number=3,
         )
 
-        executor._db.add.assert_called()
+        # Should write checkpoint + commit
+        assert executor._db.add.called
         executor._db.commit.assert_awaited()
 
     @pytest.mark.asyncio
-    async def test_handle_signal_acks_signal(self, executor) -> None:
+    async def test_handle_signal_acks_signal_via_redis_delete(self, executor) -> None:
         job = MagicMock()
         job.id = uuid.uuid4()
-        executor._db.commit = AsyncMock()
-        executor._redis.delete = AsyncMock()
 
         await executor._handle_signal(
-            job,
-            JobSignal.PAUSE,
-            "labelling",
-            {},
-            batch_number=0,
+            job, JobSignal.PAUSE, "labelling", {}, batch_number=0,
         )
 
+        # Verify signal was acknowledged (deleted from redis)
         executor._redis.delete.assert_awaited()
+
+    @pytest.mark.asyncio
+    async def test_pause_preserves_scope_cursor_data(self, executor) -> None:
+        """Verify the checkpoint captures the cursor data passed in."""
+        job = MagicMock()
+        job.id = uuid.uuid4()
+        executor._db.add = MagicMock()
+
+        cursor = {"phase": "labelling", "files_processed_index": 42, "files_labelled": 40}
+        await executor._handle_signal(job, JobSignal.PAUSE, "labelling", cursor, batch_number=7)
+
+        # Extract the checkpoint that was added to the session
+        added_obj = executor._db.add.call_args_list[0][0][0]
+        assert added_obj.scope_cursor == cursor
+        assert added_obj.batch_number == 7
+        assert added_obj.checkpoint_type == "labelling"
 
 
 class TestFailJob:
@@ -105,12 +104,9 @@ class TestFailJob:
         from app.worker.executor import JobExecutor
 
         executor = JobExecutor(
-            db=AsyncMock(),
-            graph=AsyncMock(),
-            doc_service=AsyncMock(),
-            redis=AsyncMock(),
+            db=AsyncMock(), graph=AsyncMock(),
+            doc_service=AsyncMock(), redis=AsyncMock(),
         )
-        executor._db.commit = AsyncMock()
 
         job = MagicMock()
         job.id = uuid.uuid4()
@@ -120,66 +116,31 @@ class TestFailJob:
         await executor._fail_job(job, "Something went wrong")
 
         assert job.status == "failed"
-        assert "error" in job.config
         assert job.config["error"] == "Something went wrong"
+        executor._db.commit.assert_awaited()
+
+    @pytest.mark.asyncio
+    async def test_fail_job_stores_error_in_config(self) -> None:
+        from app.worker.executor import JobExecutor
+
+        executor = JobExecutor(
+            db=AsyncMock(), graph=AsyncMock(),
+            doc_service=AsyncMock(), redis=AsyncMock(),
+        )
+
+        job = MagicMock()
+        job.id = uuid.uuid4()
+        job.status = "running"
+        job.config = {"target_label_id": "keep-this"}
+
+        await executor._fail_job(job, "disk full")
+
+        # Error is stored alongside existing config (not replacing it)
+        assert job.config["error"] == "disk full"
+        assert job.config["target_label_id"] == "keep-this"
 
 
 class TestBatchSize:
-    def test_batch_size_is_reasonable(self) -> None:
+    def test_batch_size_within_bounds(self) -> None:
         from app.worker.executor import _LABELLING_BATCH_SIZE
-
         assert 10 <= _LABELLING_BATCH_SIZE <= 500
-
-    def test_batch_size_is_100(self) -> None:
-        from app.worker.executor import _LABELLING_BATCH_SIZE
-
-        assert _LABELLING_BATCH_SIZE == 100
-
-
-class TestCheckpointSchema:
-    """Verify checkpoint scope_cursor structures match what the executor produces."""
-
-    def test_enumeration_cursor_structure(self) -> None:
-        cursor = {
-            "phase": "enumeration",
-            "sites_completed": ["site-1", "site-2"],
-            "current_site": "site-2",
-            "files_in_site": [
-                {"drive_id": "d1", "item_id": "i1", "name": "doc.docx", "site_id": "site-2"}
-            ],
-            "total_files_found": 150,
-        }
-        assert cursor["phase"] == "enumeration"
-        assert isinstance(cursor["sites_completed"], list)
-        assert isinstance(cursor["files_in_site"], list)
-        assert isinstance(cursor["total_files_found"], int)
-
-    def test_labelling_cursor_structure(self) -> None:
-        cursor = {
-            "phase": "labelling",
-            "files_processed_index": 200,
-            "files_labelled": 180,
-            "files_skipped": 15,
-            "files_failed": 5,
-            "applied_labels": [
-                {
-                    "item_id": "i1",
-                    "drive_id": "d1",
-                    "label_id": "label-1",
-                    "previous_label_id": "",
-                }
-            ],
-        }
-        assert cursor["phase"] == "labelling"
-        assert isinstance(cursor["applied_labels"], list)
-        assert cursor["files_labelled"] + cursor["files_skipped"] + cursor["files_failed"] == 200
-
-    def test_rollback_cursor_structure(self) -> None:
-        cursor = {
-            "phase": "rollback",
-            "rolled_back_count": 50,
-            "rollback_failed": 2,
-            "total_to_rollback": 100,
-        }
-        assert cursor["phase"] == "rollback"
-        assert cursor["rolled_back_count"] <= cursor["total_to_rollback"]

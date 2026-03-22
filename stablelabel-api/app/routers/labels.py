@@ -13,9 +13,12 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
+import uuid
+
 from app.core.entra_auth import CurrentUser
 from app.core.rbac import check_tenant_access, require_role
 from app.db.base import get_session
+from app.db.models import AuditEvent, CustomerTenant
 from app.dependencies import get_label_management_service, get_label_service
 from app.models.label import SensitivityLabel
 from app.services.label_management import LabelConfig, LabelManagementService
@@ -97,7 +100,18 @@ async def create_label_definition(
         color=body.color,
         parent_id=body.parent_id,
     )
-    return await mgmt.create_label(tenant_id, config)
+    result = await mgmt.create_label(tenant_id, config)
+    ct = await db.get(CustomerTenant, uuid.UUID(tenant_id))
+    if ct:
+        db.add(AuditEvent(
+            msp_tenant_id=ct.msp_tenant_id,
+            customer_tenant_id=ct.id,
+            actor_id=uuid.UUID(user.id),
+            event_type="label.created",
+            extra={"label_name": body.name},
+        ))
+        await db.commit()
+    return result
 
 
 @router.patch("/{label_id}")
@@ -117,7 +131,18 @@ async def update_label_definition(
     config = LabelConfig(name=updates.get("name", ""), **{
         k: v for k, v in updates.items() if k != "name"
     })
-    return await mgmt.update_label(tenant_id, label_id, config)
+    result = await mgmt.update_label(tenant_id, label_id, config)
+    ct = await db.get(CustomerTenant, uuid.UUID(tenant_id))
+    if ct:
+        db.add(AuditEvent(
+            msp_tenant_id=ct.msp_tenant_id,
+            customer_tenant_id=ct.id,
+            actor_id=uuid.UUID(user.id),
+            event_type="label.updated",
+            extra={"label_id": label_id, "updates": updates},
+        ))
+        await db.commit()
+    return result
 
 
 @router.delete("/{label_id}", status_code=204)
@@ -131,3 +156,13 @@ async def delete_label_definition(
     """Delete a sensitivity label (Graph API, with PowerShell fallback)."""
     await check_tenant_access(user, tenant_id, db)
     await mgmt.delete_label(tenant_id, label_id)
+    ct = await db.get(CustomerTenant, uuid.UUID(tenant_id))
+    if ct:
+        db.add(AuditEvent(
+            msp_tenant_id=ct.msp_tenant_id,
+            customer_tenant_id=ct.id,
+            actor_id=uuid.UUID(user.id),
+            event_type="label.deleted",
+            extra={"label_id": label_id},
+        ))
+        await db.commit()

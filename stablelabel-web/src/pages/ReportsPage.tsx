@@ -82,10 +82,10 @@ export default function ReportsPage() {
               </tr>
             </thead>
             <tbody>
-              {data.map((row, i) => (
-                <tr key={i} className="border-b border-zinc-800/50 hover:bg-zinc-800/30">
-                  {Object.values(row).map((val, j) => (
-                    <td key={j} className="py-2 px-3 text-zinc-300">
+              {data.map((row) => (
+                <tr key={JSON.stringify(row)} className="border-b border-zinc-800/50 hover:bg-zinc-800/30">
+                  {Object.entries(row).map(([key, val]) => (
+                    <td key={key} className="py-2 px-3 text-zinc-300">
                       {formatValue(val)}
                     </td>
                   ))}

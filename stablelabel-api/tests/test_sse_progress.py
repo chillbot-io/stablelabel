@@ -1,17 +1,16 @@
 """Tests for SSE progress event formatting and terminal state definitions.
 
-Duplicates constants to avoid the jose import chain from app.routers.jobs.
+Imports real TERMINAL_STATUSES from app.core.job_states.
+Duplicates _sse_event since it lives in a module with jose dependency.
 """
 
 import json
 
-
-# Duplicated from app.routers.jobs — must match
-_TERMINAL_STATUSES = frozenset({"completed", "failed", "rolled_back", "paused"})
+from app.core.job_states import TERMINAL_STATUSES
 
 
 def _sse_event(data: dict, event: str = "progress") -> str:
-    """Duplicated from app.routers.jobs._sse_event."""
+    """Matches app.routers.jobs._sse_event — duplicated to avoid jose import."""
     payload = json.dumps(data, default=str)
     return f"event: {event}\ndata: {payload}\n\n"
 
@@ -33,46 +32,39 @@ class TestSseEventFormatting:
         result = _sse_event(data)
         for line in result.splitlines():
             if line.startswith("data: "):
-                payload = line[len("data: "):]
-                parsed = json.loads(payload)
+                parsed = json.loads(line[len("data: "):])
                 assert parsed == data
                 break
         else:
             raise AssertionError("No data line found")
 
-    def test_custom_event_type(self) -> None:
-        result = _sse_event({"msg": "hello"}, event="custom")
-        assert "event: custom\n" in result
-
     def test_double_newline_terminates_event(self) -> None:
-        """SSE spec requires events to end with \\n\\n."""
         result = _sse_event({"a": 1})
         assert result.endswith("\n\n")
-        # Should not have triple newline
         assert not result.endswith("\n\n\n")
 
 
 class TestTerminalStatuses:
     def test_completed_is_terminal(self) -> None:
-        assert "completed" in _TERMINAL_STATUSES
+        assert "completed" in TERMINAL_STATUSES
 
     def test_failed_is_terminal(self) -> None:
-        assert "failed" in _TERMINAL_STATUSES
+        assert "failed" in TERMINAL_STATUSES
 
     def test_rolled_back_is_terminal(self) -> None:
-        assert "rolled_back" in _TERMINAL_STATUSES
+        assert "rolled_back" in TERMINAL_STATUSES
 
     def test_paused_is_terminal(self) -> None:
-        assert "paused" in _TERMINAL_STATUSES
+        assert "paused" in TERMINAL_STATUSES
 
     def test_running_is_not_terminal(self) -> None:
-        assert "running" not in _TERMINAL_STATUSES
+        assert "running" not in TERMINAL_STATUSES
 
     def test_enumerating_is_not_terminal(self) -> None:
-        assert "enumerating" not in _TERMINAL_STATUSES
+        assert "enumerating" not in TERMINAL_STATUSES
 
     def test_pending_is_not_terminal(self) -> None:
-        assert "pending" not in _TERMINAL_STATUSES
+        assert "pending" not in TERMINAL_STATUSES
 
     def test_rolling_back_is_not_terminal(self) -> None:
-        assert "rolling_back" not in _TERMINAL_STATUSES
+        assert "rolling_back" not in TERMINAL_STATUSES

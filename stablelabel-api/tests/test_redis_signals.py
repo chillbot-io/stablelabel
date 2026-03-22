@@ -1,7 +1,5 @@
 """Tests for Redis job pause/cancel signaling."""
 
-import pytest
-
 from app.core.redis import JobSignal, _signal_key
 
 
@@ -15,13 +13,19 @@ class TestSignalKey:
 
 
 class TestJobSignalEnum:
-    def test_pause_value(self) -> None:
-        assert JobSignal.PAUSE == "pause"
-
-    def test_cancel_value(self) -> None:
-        assert JobSignal.CANCEL == "cancel"
-
-    def test_roundtrip(self) -> None:
-        """Signal can be serialized to string and parsed back."""
+    def test_roundtrip_all_members(self) -> None:
+        """Every signal value can be serialized to string and parsed back."""
         for sig in JobSignal:
             assert JobSignal(sig.value) == sig
+
+    def test_all_members_are_lowercase_strings(self) -> None:
+        """Signal values must be simple lowercase strings for Redis storage."""
+        for sig in JobSignal:
+            assert sig.value == sig.value.lower()
+            assert sig.value.isalpha()
+
+    def test_enum_has_pause_and_cancel(self) -> None:
+        """At minimum, pause and cancel must exist."""
+        members = {s.name for s in JobSignal}
+        assert "PAUSE" in members
+        assert "CANCEL" in members

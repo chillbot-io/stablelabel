@@ -28,8 +28,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         arq_pool = await create_pool(parse_redis_settings(settings.redis_url))
         set_arq_pool(arq_pool)
         logger.info("Connected to Redis for arq task queue")
-    except Exception:
-        logger.warning("Redis not available — job dispatch will fail until Redis is running")
+    except (OSError, ConnectionError) as exc:
+        logger.warning("Redis not available — job dispatch will fail: %s", exc)
 
     yield
 

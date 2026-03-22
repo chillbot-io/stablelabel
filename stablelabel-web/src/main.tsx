@@ -8,15 +8,24 @@ import './index.css';
 
 const msalInstance = new PublicClientApplication(msalConfig);
 
-// Handle redirect promise on page load (MSAL redirect flow)
-msalInstance.initialize().then(() => {
-  msalInstance.handleRedirectPromise().then(() => {
-    ReactDOM.createRoot(document.getElementById('root')!).render(
+const root = document.getElementById('root');
+if (!root) throw new Error('Root element not found');
+
+msalInstance
+  .initialize()
+  .then(() => msalInstance.handleRedirectPromise())
+  .then(() => {
+    ReactDOM.createRoot(root).render(
       <React.StrictMode>
         <MsalProvider instance={msalInstance}>
           <App />
         </MsalProvider>
       </React.StrictMode>,
     );
+  })
+  .catch((err) => {
+    root.innerHTML = `<div style="padding:2rem;color:#ef4444;font-family:system-ui">
+      <h1>Authentication Error</h1>
+      <p>${err instanceof Error ? err.message : 'Failed to initialize authentication'}</p>
+    </div>`;
   });
-});

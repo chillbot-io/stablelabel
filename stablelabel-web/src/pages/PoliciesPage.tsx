@@ -6,6 +6,7 @@ import { useError } from '@/contexts/ErrorContext';
 import PageHeader from '@/components/PageHeader';
 import TenantSelector from '@/components/TenantSelector';
 import StatusBadge from '@/components/StatusBadge';
+import Modal from '@/components/Modal';
 import type { Policy } from '@/lib/types';
 
 export default function PoliciesPage() {
@@ -114,30 +115,27 @@ function CreatePolicyDialog({ onSubmit, onClose }: { onSubmit: (name: string, la
   const [priority, setPriority] = useState(0);
 
   return (
-    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50" onClick={onClose}>
-      <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-6 w-full max-w-md" onClick={(e) => e.stopPropagation()}>
-        <h2 className="text-lg font-semibold mb-4">Create Policy</h2>
-        <div className="space-y-3">
-          <div>
-            <label className="text-sm text-zinc-400 block mb-1">Policy Name</label>
-            <input value={name} onChange={(e) => setName(e.target.value)} className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500" />
-          </div>
-          <div>
-            <label className="text-sm text-zinc-400 block mb-1">Target Label ID</label>
-            <input value={labelId} onChange={(e) => setLabelId(e.target.value)} className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500" />
-          </div>
-          <div>
-            <label className="text-sm text-zinc-400 block mb-1">Priority</label>
-            <input type="number" value={priority} onChange={(e) => setPriority(parseInt(e.target.value) || 0)} className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500" />
-          </div>
+    <Modal title="Create Policy" onClose={onClose}>
+      <div className="space-y-3">
+        <div>
+          <label className="text-sm text-zinc-400 block mb-1">Policy Name</label>
+          <input value={name} onChange={(e) => setName(e.target.value)} className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500" />
         </div>
-        <div className="flex justify-end gap-2 mt-6">
-          <button onClick={onClose} className="px-3 py-1.5 text-sm rounded bg-zinc-800 hover:bg-zinc-700">Cancel</button>
-          <button onClick={() => name && labelId && onSubmit(name, labelId, priority)} disabled={!name || !labelId} className="px-3 py-1.5 text-sm rounded bg-blue-600 hover:bg-blue-500 disabled:opacity-50">
-            Create
-          </button>
+        <div>
+          <label className="text-sm text-zinc-400 block mb-1">Target Label ID</label>
+          <input value={labelId} onChange={(e) => setLabelId(e.target.value)} className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500" />
+        </div>
+        <div>
+          <label className="text-sm text-zinc-400 block mb-1">Priority</label>
+          <input type="number" value={priority} onChange={(e) => setPriority(parseInt(e.target.value) || 0)} className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500" />
         </div>
       </div>
-    </div>
+      <div className="flex justify-end gap-2 mt-6">
+        <button onClick={onClose} className="px-3 py-1.5 text-sm rounded bg-zinc-800 hover:bg-zinc-700">Cancel</button>
+        <button onClick={() => name && labelId && onSubmit(name, labelId, priority)} disabled={!name || !labelId} className="px-3 py-1.5 text-sm rounded bg-blue-600 hover:bg-blue-500 disabled:opacity-50">
+          Create
+        </button>
+      </div>
+    </Modal>
   );
 }

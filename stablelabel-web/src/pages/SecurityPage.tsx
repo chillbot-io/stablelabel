@@ -4,6 +4,7 @@ import { useError } from '@/contexts/ErrorContext';
 import DataTable from '@/components/DataTable';
 import StatusBadge from '@/components/StatusBadge';
 import type { Column } from '@/components/DataTable';
+import Modal from '@/components/Modal';
 import type { CustomerTenant, UserSummary, TenantAccess } from '@/lib/types';
 
 type Tab = 'tenants' | 'users';
@@ -205,26 +206,23 @@ function ConnectTenantDialog({ onSubmit, onClose }: { onSubmit: (entraId: string
   const [name, setName] = useState('');
 
   return (
-    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50" onClick={onClose}>
-      <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-6 w-full max-w-md" onClick={(e) => e.stopPropagation()}>
-        <h2 className="text-lg font-semibold mb-4">Connect Customer Tenant</h2>
-        <div className="space-y-3">
-          <div>
-            <label className="text-sm text-zinc-400 block mb-1">Entra Tenant ID</label>
-            <input value={entraId} onChange={(e) => setEntraId(e.target.value)} placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-sm font-mono focus:outline-none focus:ring-1 focus:ring-blue-500" />
-          </div>
-          <div>
-            <label className="text-sm text-zinc-400 block mb-1">Display Name</label>
-            <input value={name} onChange={(e) => setName(e.target.value)} className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500" />
-          </div>
+    <Modal title="Connect Customer Tenant" onClose={onClose}>
+      <div className="space-y-3">
+        <div>
+          <label className="text-sm text-zinc-400 block mb-1">Entra Tenant ID</label>
+          <input value={entraId} onChange={(e) => setEntraId(e.target.value)} placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-sm font-mono focus:outline-none focus:ring-1 focus:ring-blue-500" />
         </div>
-        <div className="flex justify-end gap-2 mt-6">
-          <button onClick={onClose} className="px-3 py-1.5 text-sm rounded bg-zinc-800 hover:bg-zinc-700">Cancel</button>
-          <button onClick={() => entraId && onSubmit(entraId, name)} disabled={!entraId} className="px-3 py-1.5 text-sm rounded bg-blue-600 hover:bg-blue-500 disabled:opacity-50">
-            Connect
-          </button>
+        <div>
+          <label className="text-sm text-zinc-400 block mb-1">Display Name</label>
+          <input value={name} onChange={(e) => setName(e.target.value)} className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500" />
         </div>
       </div>
-    </div>
+      <div className="flex justify-end gap-2 mt-6">
+        <button onClick={onClose} className="px-3 py-1.5 text-sm rounded bg-zinc-800 hover:bg-zinc-700">Cancel</button>
+        <button onClick={() => entraId && onSubmit(entraId, name)} disabled={!entraId} className="px-3 py-1.5 text-sm rounded bg-blue-600 hover:bg-blue-500 disabled:opacity-50">
+          Connect
+        </button>
+      </div>
+    </Modal>
   );
 }
