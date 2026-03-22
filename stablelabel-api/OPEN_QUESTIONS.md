@@ -137,9 +137,9 @@ Requires: Azure subscription (Pay-As-You-Go or EA), Application Owner/Admin on a
 
 ## C. Multi-tenant / MSP architecture
 
-- [x] **C9. Tenant onboarding** — **Tenant Management pane/blade** in the UI. MSP operators can add new tenants or manage existing ones from this dedicated view. **Per-tenant app registration only** — each customer tenant gets its own app registration. No multi-tenant app reg.
+- [x] **C9. Tenant onboarding** — **Tenant Management pane/blade** in the UI with a **guided wizard** for adding new tenants. The wizard walks the MSP operator through: (1) creating the app registration in the customer's Entra ID, (2) granting the required API permissions and admin consent, (3) copying the client ID and secret back into StableLabel. MSP operators can also manage existing tenants from this view. **Per-tenant app registration only** — each customer tenant gets its own app registration. No multi-tenant app reg.
 
-- [x] **C10. Credential storage** — **Encrypted vault, SOC 2 compliant.** Client secrets and certificates stored in an encrypted secrets vault (Azure Key Vault in production). Must pass SOC 2 audit requirements — encryption at rest, access logging, key rotation support, RBAC on secret access.
+- [x] **C10. Credential storage** — **Application-level encrypted vault, SOC 2 compliant.** Built-in encrypted secrets store within StableLabel itself (AES-256-GCM, envelope encryption). No external dependency on Azure Key Vault — the app owns its own vault. Master encryption key sourced from environment config at deployment. Must satisfy SOC 2 requirements: encryption at rest, access logging, key rotation support, RBAC on secret access. Interface is pluggable — can swap in Azure Key Vault or HashiCorp Vault as an optional backend later for customers who require HSM-backed key management.
 
 - [x] **C11. GDAP vs app registration** — **File labeling only for now.** Per-tenant app registrations with application permissions (`Files.ReadWrite.All`, `Sites.ReadWrite.All`) are sufficient for file-level sensitivity labels via `assignSensitivityLabel`. Site container labels are out of scope for v1. See GDAP explainer below.
 
@@ -164,7 +164,7 @@ Requires: Azure subscription (Pay-As-You-Go or EA), Application Owner/Admin on a
   > - Site container labels are a nice-to-have, not core to the MVP
   > - Can add GDAP support later as a "delegated mode" option per tenant
 
-- [x] **C12. Tenant isolation** — **One API instance per tenant.** Each tenant gets its own isolated API session. The UI has a **tenant selector dropdown** on the main page — user picks which tenant to work with, signs in, and operates within that single-tenant context for the session. This gives clean isolation for rate limiting, data, and compliance. Deployment-wise, this means either per-tenant containers or a single deployment that spawns isolated sessions per tenant selection.
+- [x] **C12. Tenant isolation** — **Single API deployment, tenant-scoped sessions.** One API process serves all tenants. The UI has a **tenant selector dropdown** on the main page — user picks which tenant to work with, the API loads that tenant's credentials from the encrypted vault, and all operations are scoped to that tenant for the session. Strict logical isolation per session — no cross-tenant data leakage. Simpler to deploy and operate than per-tenant containers while still providing clean isolation for rate limiting, data, and compliance.
 
 ## D. Persistence
 
