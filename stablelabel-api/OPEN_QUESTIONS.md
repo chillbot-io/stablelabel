@@ -171,11 +171,12 @@ Requires: Azure subscription (Pay-As-You-Go or EA), Application Owner/Admin on a
 
 ## D. Persistence
 
-- [x] **D13. Database choice** — **PostgreSQL (primary) + TimescaleDB extension for time-series metrics.**
-  - **PostgreSQL** for all relational data: tenant configs, label snapshots, job state, rule mappings, audit logs. Postgres is the right call — SQLite and SQL Server embedded backends are notorious bottlenecks at scale. Postgres handles millions of rows with proper indexing, has excellent JSON support for flexible metadata, and native table partitioning for large tables (e.g., partition audit logs by month).
-  - **TimescaleDB** (Postgres extension, not a separate DB) for high-resolution job metrics: files-per-second throughput, labelling rates by hour, error rates over time. This gives us hypertable compression, continuous aggregates, and time-bucketed queries out of the box — critical for the reporting module. One database engine, one connection pool, no operational complexity.
-  - **Schema highlights:** `jobs` table with JSONL-style progress checkpoints (resumable), `classification_results` partitioned by tenant + date, `job_metrics` as a TimescaleDB hypertable for streaming progress, `audit_events` partitioned by month with configurable retention.
-  - **Why not separate DBs:** Single Postgres instance with TimescaleDB avoids cross-database joins, simplifies backups, and keeps the ops surface small. The reporting module queries the same DB with zero ETL.
+- [x] **D13. Database choice** — **PostgreSQL (OLTP) + TimescaleDB (time-series) + DuckDB (OLAP/reporting).**
+  - **PostgreSQL** for all transactional data: tenant configs, label snapshots, job state, rule mappings, audit logs. Postgres handles millions of rows with proper indexing, excellent JSONB support, and native table partitioning for large tables (partition audit logs by month).
+  - **TimescaleDB** (Postgres extension, not a separate DB) for high-resolution job metrics: files-per-second throughput, labelling rates by hour, error rates over time. Hypertable compression, continuous aggregates, and `time_bucket()` queries power the live job dashboard.
+  - **DuckDB** (embedded, no server) for the reporting module and ad-hoc analytics. Columnar engine makes analytical scans over millions of rows 10-100x faster than row-oriented Postgres. Reads directly from Postgres via `postgres_scanner` — no ETL, no data duplication. Also reads Parquet natively, so archived audit data (old partitions exported to compressed Parquet) remains queryable at full speed with zero storage cost in Postgres.
+  - **The split:** Postgres owns the writes and real-time state. TimescaleDB powers the live streaming dashboard. DuckDB powers the reporting module — label distribution across sites, compliance coverage percentages, trend analysis, exportable report generation. Each engine does what it's best at.
+  - **Why this works operationally:** Postgres + TimescaleDB is one process. DuckDB is embedded in the API process (no separate server). Total infrastructure: one Postgres instance. DuckDB adds analytical superpowers with zero additional ops burden.
 
 - [x] **D14. Job tracking & running jobs pane** — **Real-time job dashboard with streaming progress, statistics, and rollback.**
   - **Running Jobs Pane** shows:
@@ -189,7 +190,8 @@ Requires: Azure subscription (Pay-As-You-Go or EA), Application Owner/Admin on a
 - [x] **D15. Audit log & reporting foundation** — **Same Postgres DB, partitioned audit table, built for the reporting module.**
   - `audit_events` table partitioned by month: (event_id, tenant_id, job_id, event_type, actor, target_file, target_site, label_applied, previous_label, metadata JSONB, created_at). Retention policy configurable per tenant (default 2 years, admin-adjustable).
   - **Indexes:** composite on (tenant_id, created_at), on (job_id), on (event_type) for fast reporting queries.
-  - **Reporting module** draws directly from `audit_events` + `job_metrics` (TimescaleDB hypertable). Continuous aggregates pre-compute hourly/daily rollups so dashboard queries are fast even over millions of rows. No separate data warehouse needed at v1 scale.
+  - **Reporting module** powered by DuckDB querying Postgres via `postgres_scanner` + archived Parquet files. Continuous aggregates in TimescaleDB pre-compute hourly/daily rollups for the live dashboard; DuckDB handles the heavy analytical queries (cross-tenant summaries, label distribution reports, compliance trend analysis, CSV/Excel exports over large date ranges). No separate data warehouse needed.
+  - **Archival strategy:** Old audit partitions (e.g., >6 months) can be exported to compressed Parquet files and detached from Postgres. DuckDB queries them seamlessly alongside live data — the reporting module doesn't know or care whether data is in Postgres or Parquet.
   - The PS module's JSONL audit files are still written as a secondary output for customers who want file-based exports, but the DB is the source of truth.
 
 ## E. The API's own auth
