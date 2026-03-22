@@ -171,9 +171,26 @@ Requires: Azure subscription (Pay-As-You-Go or EA), Application Owner/Admin on a
 
 ## D. Persistence
 
-- [ ] **D13. Database choice** — You need to store: tenant configs, label snapshots, job history, audit logs, classification results, rule mappings. Postgres? SQLite for single-MSP? Both?
-- [ ] **D14. Job tracking** — Bulk operations spanning hours/days need durable job state. What happens if the process restarts mid-batch? Resume or restart?
-- [ ] **D15. Audit log** — The PS module uses JSONL files. The API needs queryable audit. Same DB or separate? Retention policy?
+- [x] **D13. Database choice** — **PostgreSQL (primary) + TimescaleDB extension for time-series metrics.**
+  - **PostgreSQL** for all relational data: tenant configs, label snapshots, job state, rule mappings, audit logs. Postgres is the right call — SQLite and SQL Server embedded backends are notorious bottlenecks at scale. Postgres handles millions of rows with proper indexing, has excellent JSON support for flexible metadata, and native table partitioning for large tables (e.g., partition audit logs by month).
+  - **TimescaleDB** (Postgres extension, not a separate DB) for high-resolution job metrics: files-per-second throughput, labelling rates by hour, error rates over time. This gives us hypertable compression, continuous aggregates, and time-bucketed queries out of the box — critical for the reporting module. One database engine, one connection pool, no operational complexity.
+  - **Schema highlights:** `jobs` table with JSONL-style progress checkpoints (resumable), `classification_results` partitioned by tenant + date, `job_metrics` as a TimescaleDB hypertable for streaming progress, `audit_events` partitioned by month with configurable retention.
+  - **Why not separate DBs:** Single Postgres instance with TimescaleDB avoids cross-database joins, simplifies backups, and keeps the ops surface small. The reporting module queries the same DB with zero ETL.
+
+- [x] **D14. Job tracking & running jobs pane** — **Real-time job dashboard with streaming progress, statistics, and rollback.**
+  - **Running Jobs Pane** shows:
+    - **Realistic progress bars** — driven by actual file counts (files processed / total files enumerated), not fake timers. Pre-enumeration gives us the denominator upfront.
+    - **Labelling statistics by hour** — live-updating chart (files labelled, errors, skipped) pulled from TimescaleDB continuous aggregates. Refreshes every 5–10 seconds.
+    - **Current file(s) being labelled** — streaming view showing the active batch of files in flight, with file name, site, and label being applied. WebSocket or SSE push from the worker to the frontend.
+    - **Job controls** — Pause, Resume, Stop, and **Rollback**. Rollback replays the job's checkpoint log in reverse, removing labels that were applied (using the `removeSensitivityLabel` Graph call). Partial rollback supported (roll back to a specific checkpoint).
+  - **Durable job state:** Each job writes checkpoint rows to `job_checkpoints` (job_id, batch_number, file_ids, status, timestamp). On process restart, the job resumes from the last committed checkpoint — no re-processing of already-labelled files.
+  - **Job lifecycle:** `PENDING → ENUMERATING → RUNNING → PAUSED → COMPLETED | FAILED | ROLLED_BACK`
+
+- [x] **D15. Audit log & reporting foundation** — **Same Postgres DB, partitioned audit table, built for the reporting module.**
+  - `audit_events` table partitioned by month: (event_id, tenant_id, job_id, event_type, actor, target_file, target_site, label_applied, previous_label, metadata JSONB, created_at). Retention policy configurable per tenant (default 2 years, admin-adjustable).
+  - **Indexes:** composite on (tenant_id, created_at), on (job_id), on (event_type) for fast reporting queries.
+  - **Reporting module** draws directly from `audit_events` + `job_metrics` (TimescaleDB hypertable). Continuous aggregates pre-compute hourly/daily rollups so dashboard queries are fast even over millions of rows. No separate data warehouse needed at v1 scale.
+  - The PS module's JSONL audit files are still written as a secondary output for customers who want file-based exports, but the DB is the source of truth.
 
 ## E. The API's own auth
 
