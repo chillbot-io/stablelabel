@@ -25,6 +25,10 @@ declare global {
       }) => Promise<string | null>;
       clearCredentials: () => Promise<void>;
       platform: string;
+      /** Classifier (Presidio) methods */
+      classifierInvoke: (action: string, params?: Record<string, unknown>) => Promise<PsResult>;
+      checkClassifier: () => Promise<{ available: boolean; mode?: string; error?: string }>;
+      getClassifierStatus: () => Promise<{ initialized: boolean }>;
     };
   }
 }

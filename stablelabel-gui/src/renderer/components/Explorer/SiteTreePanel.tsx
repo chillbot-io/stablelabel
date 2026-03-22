@@ -49,13 +49,7 @@ export default function SiteTreePanel({ onNavigate, currentLocation }: SiteTreeP
   };
 
   const handleSiteClick = (site: Site) => {
-    onNavigate({
-      driveId: '', // Will be resolved by Get-SLDriveChildren using SiteId
-      itemId: undefined,
-      path: [site.DisplayName],
-    });
-    // We pass siteId through a custom attribute on the location
-    // The FileListPanel will handle the site → drive resolution
+    // Pass siteId encoded in driveId — FileListPanel resolves site → drive
     onNavigate({
       driveId: `site:${site.Id}`,
       itemId: undefined,

@@ -96,7 +96,7 @@ export default function CustomRecognizerPanel({ recognizers, onChange }: CustomR
 
       {recognizers.map((rec, i) => (
         <div
-          key={i}
+          key={`${rec.name}-${rec.entity_type}`}
           className="bg-white/[0.03] rounded-xl p-4 flex items-start justify-between gap-4"
         >
           <div className="flex-1 min-w-0">

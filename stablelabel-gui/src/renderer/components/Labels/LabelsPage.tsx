@@ -1,5 +1,4 @@
-import React, { useState, useCallback } from 'react';
-import { usePowerShell } from '../../hooks/usePowerShell';
+import React, { useState, useCallback, useRef } from 'react';
 import TabBar, { type Tab } from '../common/TabBar';
 import type { LabelPolicy, AutoLabelPolicy } from '../../lib/types';
 import LabelList from './LabelList';
@@ -24,18 +23,16 @@ export default function LabelsPage() {
   const [browserSection, setBrowserSection] = useState<BrowserSection>('labels');
   const [tabs, setTabs] = useState<OpenTab[]>([]);
   const [activeTabId, setActiveTabId] = useState<string | null>(null);
+  const activeTabIdRef = useRef(activeTabId);
+  activeTabIdRef.current = activeTabId;
 
   const openTab = useCallback(
     (type: string, itemId: string, label: string, kind: string) => {
       const tabId = `${type}:${itemId}`;
       setTabs((prev) => {
         const existing = prev.find((t) => t.id === tabId);
-        if (existing) {
-          setActiveTabId(tabId);
-          return prev;
-        }
+        if (existing) return prev;
         const newTab: OpenTab = { id: tabId, label, kind, type, itemId };
-        setActiveTabId(tabId);
         return [...prev, newTab];
       });
       setActiveTabId(tabId);
@@ -48,7 +45,8 @@ export default function LabelsPage() {
       setTabs((prev) => {
         const idx = prev.findIndex((t) => t.id === tabId);
         const next = prev.filter((t) => t.id !== tabId);
-        if (activeTabId === tabId) {
+        // Use ref to avoid stale closure on activeTabId
+        if (activeTabIdRef.current === tabId) {
           if (next.length === 0) {
             setActiveTabId(null);
           } else {
@@ -59,7 +57,7 @@ export default function LabelsPage() {
         return next;
       });
     },
-    [activeTabId],
+    [],
   );
 
   // View handlers
