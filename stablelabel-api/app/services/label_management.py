@@ -129,7 +129,7 @@ class LabelManagementService:
     ) -> dict[str, Any]:
         """Create a new sensitivity label."""
         try:
-            body, status, headers = await self._graph.post(
+            body, status, _ = await self._graph.post(
                 tenant_id,
                 "/security/informationProtection/sensitivityLabels",
                 json=config.to_graph_body(),
@@ -155,7 +155,7 @@ class LabelManagementService:
     ) -> dict[str, Any]:
         """Update an existing sensitivity label."""
         try:
-            body, status, headers = await self._graph.post(
+            body, status, _ = await self._graph.post(
                 tenant_id,
                 f"/security/informationProtection/sensitivityLabels/{label_id}",
                 json=config.to_graph_body(),
@@ -209,7 +209,7 @@ class LabelManagementService:
     ) -> dict[str, Any]:
         """Create a new label policy."""
         try:
-            body, status, headers = await self._graph.post(
+            body, status, _ = await self._graph.post(
                 tenant_id,
                 "/security/informationProtection/labelPolicies",
                 json=config.to_graph_body(),
@@ -240,7 +240,7 @@ class LabelManagementService:
     ) -> dict[str, Any]:
         """Update an existing label policy."""
         try:
-            body, status, headers = await self._graph.post(
+            body, status, _ = await self._graph.post(
                 tenant_id,
                 f"/security/informationProtection/labelPolicies/{policy_id}",
                 json=config.to_graph_body(),

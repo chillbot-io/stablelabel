@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { api } from '@/lib/api';
 import { useTenants } from '@/hooks/useTenants';
 import { useAuth } from '@/hooks/useAuth';
+import { useError } from '@/contexts/ErrorContext';
 import PageHeader from '@/components/PageHeader';
 import TenantSelector from '@/components/TenantSelector';
 import StatusBadge from '@/components/StatusBadge';
@@ -10,6 +11,7 @@ import type { Policy } from '@/lib/types';
 export default function PoliciesPage() {
   const { user } = useAuth();
   const { tenants, selected, setSelected } = useTenants();
+  const { showError } = useError();
   const [policies, setPolicies] = useState<Policy[]>([]);
   const [loading, setLoading] = useState(false);
   const [showCreate, setShowCreate] = useState(false);
@@ -20,31 +22,40 @@ export default function PoliciesPage() {
     try {
       const data = await api.get<Policy[]>(`/tenants/${selected.id}/policies`);
       setPolicies(data);
-    } catch { setPolicies([]); }
+    } catch (err) {
+      setPolicies([]);
+      showError(err instanceof Error ? err.message : 'Failed to load policies');
+    }
     setLoading(false);
-  }, [selected]);
+  }, [selected, showError]);
 
   useEffect(() => { loadPolicies(); }, [loadPolicies]);
 
   const togglePolicy = async (policy: Policy) => {
     if (!selected) return;
-    await api.patch(`/tenants/${selected.id}/policies/${policy.id}`, { is_enabled: !policy.is_enabled });
-    loadPolicies();
+    try {
+      await api.patch(`/tenants/${selected.id}/policies/${policy.id}`, { is_enabled: !policy.is_enabled });
+      await loadPolicies();
+    } catch (err) { showError(err instanceof Error ? err.message : 'Failed to update policy'); }
   };
 
   const deletePolicy = async (policy: Policy) => {
     if (!selected || policy.is_builtin) return;
-    await api.delete(`/tenants/${selected.id}/policies/${policy.id}`);
-    loadPolicies();
+    try {
+      await api.delete(`/tenants/${selected.id}/policies/${policy.id}`);
+      await loadPolicies();
+    } catch (err) { showError(err instanceof Error ? err.message : 'Failed to delete policy'); }
   };
 
   const createPolicy = async (name: string, targetLabelId: string, priority: number) => {
     if (!selected) return;
-    await api.post(`/tenants/${selected.id}/policies`, {
-      name, target_label_id: targetLabelId, priority, rules: { conditions: [], match_mode: 'any' },
-    });
-    setShowCreate(false);
-    loadPolicies();
+    try {
+      await api.post(`/tenants/${selected.id}/policies`, {
+        name, target_label_id: targetLabelId, priority, rules: { conditions: [], match_mode: 'any' },
+      });
+      setShowCreate(false);
+      await loadPolicies();
+    } catch (err) { showError(err instanceof Error ? err.message : 'Failed to create policy'); }
   };
 
   return (

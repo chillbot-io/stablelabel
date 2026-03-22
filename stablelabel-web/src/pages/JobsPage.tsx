@@ -2,12 +2,15 @@ import { useCallback, useEffect, useState } from 'react';
 import { api } from '@/lib/api';
 import { useTenants } from '@/hooks/useTenants';
 import { useAuth } from '@/hooks/useAuth';
+import { useError } from '@/contexts/ErrorContext';
 import PageHeader from '@/components/PageHeader';
 import TenantSelector from '@/components/TenantSelector';
 import StatusBadge from '@/components/StatusBadge';
 import DataTable from '@/components/DataTable';
 import type { Column } from '@/components/DataTable';
 import type { Job, JobListPage } from '@/lib/types';
+
+const PAGE_SIZE = 20;
 
 const JOB_ACTIONS: Record<string, string[]> = {
   pending: ['start'],
@@ -22,36 +25,50 @@ const JOB_ACTIONS: Record<string, string[]> = {
 export default function JobsPage() {
   const { user } = useAuth();
   const { tenants, selected, setSelected } = useTenants();
+  const { showError } = useError();
   const [jobs, setJobs] = useState<Job[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(false);
   const [showCreate, setShowCreate] = useState(false);
+  const [acting, setActing] = useState<string | null>(null);
 
   const loadJobs = useCallback(async () => {
     if (!selected) return;
     setLoading(true);
     try {
-      const data = await api.get<JobListPage>(`/tenants/${selected.id}/jobs?page=${page}&page_size=20`);
+      const data = await api.get<JobListPage>(`/tenants/${selected.id}/jobs?page=${page}&page_size=${PAGE_SIZE}`);
       setJobs(data.items);
       setTotal(data.total);
-    } catch { /* ignore */ }
+    } catch (err) {
+      showError(err instanceof Error ? err.message : 'Failed to load jobs');
+    }
     setLoading(false);
-  }, [selected, page]);
+  }, [selected, page, showError]);
 
   useEffect(() => { loadJobs(); }, [loadJobs]);
 
   const doAction = async (jobId: string, action: string) => {
     if (!selected) return;
-    await api.post(`/tenants/${selected.id}/jobs/${jobId}/${action}`);
-    loadJobs();
+    setActing(jobId);
+    try {
+      await api.post(`/tenants/${selected.id}/jobs/${jobId}/${action}`);
+      await loadJobs();
+    } catch (err) {
+      showError(err instanceof Error ? err.message : `Failed to ${action} job`);
+    }
+    setActing(null);
   };
 
   const createJob = async (name: string, config: Record<string, unknown>) => {
     if (!selected) return;
-    await api.post(`/tenants/${selected.id}/jobs`, { name, config });
-    setShowCreate(false);
-    loadJobs();
+    try {
+      await api.post(`/tenants/${selected.id}/jobs`, { name, config });
+      setShowCreate(false);
+      await loadJobs();
+    } catch (err) {
+      showError(err instanceof Error ? err.message : 'Failed to create job');
+    }
   };
 
   const columns: Column<Job>[] = [
@@ -88,7 +105,12 @@ export default function JobsPage() {
       key: 'actions', header: '', render: (j) => (
         <div className="flex gap-1">
           {(JOB_ACTIONS[j.status] ?? []).map((action) => (
-            <button key={action} onClick={() => doAction(j.id, action)} className="px-2 py-1 text-xs rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-300 transition-colors">
+            <button
+              key={action}
+              onClick={() => doAction(j.id, action)}
+              disabled={acting === j.id}
+              className="px-2 py-1 text-xs rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-300 transition-colors disabled:opacity-50"
+            >
               {action}
             </button>
           ))}
@@ -96,6 +118,8 @@ export default function JobsPage() {
       ),
     },
   ];
+
+  const totalPages = Math.ceil(total / PAGE_SIZE);
 
   return (
     <div className="p-6">
@@ -117,11 +141,11 @@ export default function JobsPage() {
           <div className="bg-zinc-900 border border-zinc-800 rounded-lg overflow-hidden">
             <DataTable columns={columns} data={jobs} keyFn={(j) => j.id} emptyMessage="No jobs found" />
           </div>
-          {total > 20 && (
+          {totalPages > 1 && (
             <div className="flex justify-center gap-2 mt-4">
               <button disabled={page <= 1} onClick={() => setPage(page - 1)} className="px-3 py-1 text-sm rounded bg-zinc-800 hover:bg-zinc-700 disabled:opacity-50">Prev</button>
-              <span className="text-sm text-zinc-400 py-1">Page {page} of {Math.ceil(total / 20)}</span>
-              <button disabled={page * 20 >= total} onClick={() => setPage(page + 1)} className="px-3 py-1 text-sm rounded bg-zinc-800 hover:bg-zinc-700 disabled:opacity-50">Next</button>
+              <span className="text-sm text-zinc-400 py-1">Page {page} of {totalPages}</span>
+              <button disabled={page >= totalPages} onClick={() => setPage(page + 1)} className="px-3 py-1 text-sm rounded bg-zinc-800 hover:bg-zinc-700 disabled:opacity-50">Next</button>
             </div>
           )}
         </>

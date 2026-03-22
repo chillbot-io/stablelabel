@@ -4,6 +4,7 @@ import {
 } from '@azure/msal-react';
 import { BrowserRouter, Route, Routes } from 'react-router-dom';
 import Layout from '@/components/Layout';
+import { ErrorProvider } from '@/contexts/ErrorContext';
 import AuditPage from '@/pages/AuditPage';
 import DashboardPage from '@/pages/DashboardPage';
 import ExplorerPage from '@/pages/ExplorerPage';
@@ -23,19 +24,21 @@ export default function App() {
       </UnauthenticatedTemplate>
 
       <AuthenticatedTemplate>
-        <Routes>
-          <Route element={<Layout />}>
-            <Route index element={<DashboardPage />} />
-            <Route path="jobs" element={<JobsPage />} />
-            <Route path="explorer" element={<ExplorerPage />} />
-            <Route path="labels" element={<LabelsPage />} />
-            <Route path="policies" element={<PoliciesPage />} />
-            <Route path="reports" element={<ReportsPage />} />
-            <Route path="audit" element={<AuditPage />} />
-            <Route path="security" element={<SecurityPage />} />
-            <Route path="settings" element={<SettingsPage />} />
-          </Route>
-        </Routes>
+        <ErrorProvider>
+          <Routes>
+            <Route element={<Layout />}>
+              <Route index element={<DashboardPage />} />
+              <Route path="jobs" element={<JobsPage />} />
+              <Route path="explorer" element={<ExplorerPage />} />
+              <Route path="labels" element={<LabelsPage />} />
+              <Route path="policies" element={<PoliciesPage />} />
+              <Route path="reports" element={<ReportsPage />} />
+              <Route path="audit" element={<AuditPage />} />
+              <Route path="security" element={<SecurityPage />} />
+              <Route path="settings" element={<SettingsPage />} />
+            </Route>
+          </Routes>
+        </ErrorProvider>
       </AuthenticatedTemplate>
     </BrowserRouter>
   );

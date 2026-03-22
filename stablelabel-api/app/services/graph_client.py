@@ -195,12 +195,12 @@ class GraphClient:
 
             # Retryable errors
             if resp.status_code in _RETRYABLE:
+                retry_after = float(resp.headers.get("Retry-After", "0"))
                 last_error = GraphThrottledError(
-                    retry_after=float(resp.headers.get("Retry-After", "0")),
+                    retry_after=retry_after,
                     message=self._extract_error(resp),
                 )
                 if attempt < _MAX_RETRIES:
-                    retry_after = float(resp.headers.get("Retry-After", "0"))
                     if retry_after > 0:
                         logger.warning(
                             "Throttled (attempt %d/%d), waiting %.1fs (Retry-After)",

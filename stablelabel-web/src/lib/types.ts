@@ -130,3 +130,26 @@ export interface SensitivityLabel {
   parent_id: string | null;
   is_parent: boolean;
 }
+
+// ── Reports ────────────────────────────────────────────────
+
+export interface OverviewStats {
+  total_jobs: number;
+  completed_jobs: number;
+  files_labelled: number;
+  files_failed: number;
+  entity_types_detected: number;
+  total_detections: number;
+}
+
+// ── Explorer ───────────────────────────────────────────────
+
+export interface DriveItem {
+  id: string;
+  name: string;
+  folder?: { childCount: number };
+  file?: { mimeType: string };
+  size?: number;
+  lastModifiedDateTime?: string;
+  sensitivityLabel?: { labelId: string; displayName: string } | null;
+}

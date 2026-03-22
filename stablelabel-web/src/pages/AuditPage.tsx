@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api } from '@/lib/api';
+import { useError } from '@/contexts/ErrorContext';
 import DataTable from '@/components/DataTable';
 import PageHeader from '@/components/PageHeader';
 import type { Column } from '@/components/DataTable';
@@ -21,6 +22,7 @@ export default function AuditPage() {
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(false);
   const [typeFilter, setTypeFilter] = useState('');
+  const { showError } = useError();
 
   const loadEvents = useCallback(async () => {
     setLoading(true);
@@ -30,9 +32,12 @@ export default function AuditPage() {
       const data = await api.get<AuditPageType>(`/security/audit?${params}`);
       setEvents(data.items);
       setTotal(data.total);
-    } catch { setEvents([]); }
+    } catch (err) {
+      setEvents([]);
+      showError(err instanceof Error ? err.message : 'Failed to load audit events');
+    }
     setLoading(false);
-  }, [page, typeFilter]);
+  }, [page, typeFilter, showError]);
 
   useEffect(() => { loadEvents(); }, [loadEvents]);
 

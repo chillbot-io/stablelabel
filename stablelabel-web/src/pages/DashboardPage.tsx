@@ -1,39 +1,38 @@
 import { useEffect, useState } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import { useTenants } from '@/hooks/useTenants';
+import { useError } from '@/contexts/ErrorContext';
 import { api } from '@/lib/api';
 import TenantSelector from '@/components/TenantSelector';
 import StatusBadge from '@/components/StatusBadge';
-import type { Job } from '@/lib/types';
-
-interface OverviewStats {
-  total_jobs: number;
-  completed_jobs: number;
-  files_labelled: number;
-  files_failed: number;
-  entity_types_detected: number;
-  total_detections: number;
-}
+import type { Job, OverviewStats } from '@/lib/types';
 
 export default function DashboardPage() {
   const { user } = useAuth();
   const { tenants, selected, setSelected, loading: tenantsLoading } = useTenants();
+  const { showError } = useError();
   const [stats, setStats] = useState<OverviewStats | null>(null);
   const [recentJobs, setRecentJobs] = useState<Job[]>([]);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     if (!selected) return;
+    const controller = new AbortController();
     setLoading(true);
     Promise.all([
       api.get<OverviewStats>(`/tenants/${selected.id}/reports/overview`).catch(() => null),
       api.get<{ items: Job[] }>(`/tenants/${selected.id}/jobs?page_size=5`).catch(() => ({ items: [] })),
     ]).then(([overview, jobs]) => {
+      if (controller.signal.aborted) return;
       setStats(overview);
       setRecentJobs(jobs?.items ?? []);
-      setLoading(false);
+    }).catch((err) => {
+      if (!controller.signal.aborted) showError(err.message);
+    }).finally(() => {
+      if (!controller.signal.aborted) setLoading(false);
     });
-  }, [selected]);
+    return () => controller.abort();
+  }, [selected, showError]);
 
   return (
     <div className="p-6">
@@ -49,7 +48,6 @@ export default function DashboardPage() {
         )}
       </div>
 
-      {/* Stat cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
         <StatCard label="Connected Tenants" value={tenants.length} />
         <StatCard label="Total Jobs" value={stats?.total_jobs} loading={loading} />
@@ -60,7 +58,6 @@ export default function DashboardPage() {
         <StatCard label="Total Detections" value={stats?.total_detections} loading={loading} />
       </div>
 
-      {/* Recent jobs */}
       <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-5">
         <h2 className="text-sm font-medium text-zinc-300 mb-4">Recent Jobs</h2>
         {recentJobs.length === 0 ? (

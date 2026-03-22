@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api } from '@/lib/api';
+import { useError } from '@/contexts/ErrorContext';
 import DataTable from '@/components/DataTable';
 import StatusBadge from '@/components/StatusBadge';
 import type { Column } from '@/components/DataTable';
@@ -43,31 +44,42 @@ function TenantsTab() {
   const [tenants, setTenants] = useState<CustomerTenant[]>([]);
   const [loading, setLoading] = useState(true);
   const [showConnect, setShowConnect] = useState(false);
+  const { showError } = useError();
 
   const loadTenants = useCallback(async () => {
     setLoading(true);
     try {
       const data = await api.get<CustomerTenant[]>('/security/tenants');
       setTenants(data);
-    } catch { /* ignore */ }
+    } catch (err) {
+      showError(err instanceof Error ? err.message : 'Failed to load tenants');
+    }
     setLoading(false);
-  }, []);
+  }, [showError]);
 
   useEffect(() => { loadTenants(); }, [loadTenants]);
 
   const connectTenant = async (entraId: string, displayName: string) => {
-    const result = await api.post<{ consent_url: string }>('/security/tenants', {
-      entra_tenant_id: entraId,
-      display_name: displayName,
-    });
-    setShowConnect(false);
-    window.open(result.consent_url, '_blank');
-    loadTenants();
+    try {
+      const result = await api.post<{ consent_url: string }>('/security/tenants', {
+        entra_tenant_id: entraId,
+        display_name: displayName,
+      });
+      setShowConnect(false);
+      if (result.consent_url) window.open(result.consent_url, '_blank');
+      await loadTenants();
+    } catch (err) {
+      showError(err instanceof Error ? err.message : 'Failed to connect tenant');
+    }
   };
 
   const disconnectTenant = async (id: string) => {
-    await api.delete(`/security/tenants/${id}`);
-    loadTenants();
+    try {
+      await api.delete(`/security/tenants/${id}`);
+      await loadTenants();
+    } catch (err) {
+      showError(err instanceof Error ? err.message : 'Failed to disconnect tenant');
+    }
   };
 
   const columns: Column<CustomerTenant>[] = [
@@ -115,14 +127,15 @@ function UsersTab() {
   const [loading, setLoading] = useState(true);
   const [expandedUser, setExpandedUser] = useState<string | null>(null);
   const [userTenants, setUserTenants] = useState<TenantAccess[]>([]);
+  const { showError } = useError();
 
   useEffect(() => {
     setLoading(true);
     api.get<UserSummary[]>('/security/users')
       .then(setUsers)
-      .catch(() => {})
+      .catch((err) => showError(err instanceof Error ? err.message : 'Failed to load users'))
       .finally(() => setLoading(false));
-  }, []);
+  }, [showError]);
 
   const toggleExpand = async (userId: string) => {
     if (expandedUser === userId) {
@@ -133,7 +146,10 @@ function UsersTab() {
     try {
       const access = await api.get<TenantAccess[]>(`/security/users/${userId}/tenants`);
       setUserTenants(access);
-    } catch { setUserTenants([]); }
+    } catch (err) {
+      setUserTenants([]);
+      showError(err instanceof Error ? err.message : 'Failed to load tenant access');
+    }
   };
 
   const columns: Column<UserSummary>[] = [

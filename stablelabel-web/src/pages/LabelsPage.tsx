@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api } from '@/lib/api';
 import { useTenants } from '@/hooks/useTenants';
-
+import { useError } from '@/contexts/ErrorContext';
 import PageHeader from '@/components/PageHeader';
 import TenantSelector from '@/components/TenantSelector';
 import DataTable from '@/components/DataTable';
@@ -11,26 +11,29 @@ import { Shield, ShieldAlert } from 'lucide-react';
 
 export default function LabelsPage() {
   const { tenants, selected, setSelected } = useTenants();
+  const { showError } = useError();
   const [labels, setLabels] = useState<SensitivityLabel[]>([]);
   const [loading, setLoading] = useState(false);
   const [filter, setFilter] = useState<'all' | 'appliable'>('all');
 
   useEffect(() => {
     if (!selected) return;
+    const controller = new AbortController();
     setLoading(true);
     const query = filter === 'appliable' ? '?appliable_only=true' : '';
     api.get<SensitivityLabel[]>(`/tenants/${selected.id}/labels${query}`)
-      .then(setLabels)
-      .catch(() => setLabels([]))
-      .finally(() => setLoading(false));
-  }, [selected, filter]);
+      .then((data) => { if (!controller.signal.aborted) setLabels(data); })
+      .catch((err) => { if (!controller.signal.aborted) { setLabels([]); showError(err.message); } })
+      .finally(() => { if (!controller.signal.aborted) setLoading(false); });
+    return () => controller.abort();
+  }, [selected, filter, showError]);
 
   const refresh = () => {
     if (!selected) return;
     setLoading(true);
     api.get<SensitivityLabel[]>(`/tenants/${selected.id}/labels?force_refresh=true`)
       .then(setLabels)
-      .catch(() => {})
+      .catch((err) => showError(err.message))
       .finally(() => setLoading(false));
   };
 

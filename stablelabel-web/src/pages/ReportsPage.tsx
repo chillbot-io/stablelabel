@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api } from '@/lib/api';
 import { useTenants } from '@/hooks/useTenants';
+import { useError } from '@/contexts/ErrorContext';
 import PageHeader from '@/components/PageHeader';
 import TenantSelector from '@/components/TenantSelector';
 
@@ -8,6 +9,7 @@ type ReportTab = 'summary' | 'detections' | 'labels' | 'throughput';
 
 export default function ReportsPage() {
   const { tenants, selected, setSelected } = useTenants();
+  const { showError } = useError();
   const [tab, setTab] = useState<ReportTab>('summary');
   const [data, setData] = useState<Record<string, unknown>[]>([]);
   const [days, setDays] = useState(30);
@@ -15,13 +17,15 @@ export default function ReportsPage() {
 
   useEffect(() => {
     if (!selected) return;
+    const controller = new AbortController();
     setLoading(true);
     const endpoint = `/tenants/${selected.id}/reports/${tab}?days=${days}`;
     api.get<Record<string, unknown>[]>(endpoint)
-      .then(setData)
-      .catch(() => setData([]))
-      .finally(() => setLoading(false));
-  }, [selected, tab, days]);
+      .then((d) => { if (!controller.signal.aborted) setData(d); })
+      .catch((err) => { if (!controller.signal.aborted) { setData([]); showError(err.message); } })
+      .finally(() => { if (!controller.signal.aborted) setLoading(false); });
+    return () => controller.abort();
+  }, [selected, tab, days, showError]);
 
   const tabs: { key: ReportTab; label: string }[] = [
     { key: 'summary', label: 'Job Summary' },
