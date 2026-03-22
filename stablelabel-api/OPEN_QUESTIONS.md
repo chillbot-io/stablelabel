@@ -7,12 +7,31 @@ Status key: `[ ]` = open, `[x]` = decided
 
 ---
 
+## Core Concept: Jobs
+
+> Everything is a **Job**. A job is the central unit of work in StableLabel.
+> It encapsulates: **scope** (which tenant, sites, drives, folders), **classification
+> rules** (what sensitive data types to detect), **label action** (which sensitivity
+> label to apply), **access control** (whether to enforce protection), and
+> **execution mode** (one-time scan, scheduled, or real-time via deltas/webhooks).
+>
+> This gives MSPs granularity that Purview's built-in GUI does not offer.
+>
+> **Example job:** "AutoLabel-Contoso-HR" — scans the HR folder on the Admin
+> SharePoint site. When PII, PHI, or PCI is found, apply "Highly Confidential"
+> with access control restrictions defined in the job config.
+
+---
+
 ## A. How does the app discover what to label?
 
-- [ ] **A1. Site/drive enumeration** — How do you crawl a tenant? Enumerate all sites → drives → items? Or does the MSP point at specific sites/libraries?
-- [ ] **A2. Delta queries vs full scan** — Graph supports `delta` on driveItems for change tracking. Do you do a one-time full scan then delta going forward? Or full scan every time?
-- [ ] **A3. Webhooks** — Graph change notifications can push "file modified" events. Do you want real-time labeling or scheduled batch?
-- [ ] **A4. Scope configuration** — Per-tenant: "label everything in these 3 sites" vs "label everything in the tenant." Who configures this and where?
+- [x] **A1. Site/drive enumeration** — Enumerate all sites → drives → folders for the tenant. The user can then select entire sites OR drill down to specific folders when creating a job. Granularity goes all the way to the folder level.
+
+- [x] **A2. Delta queries vs full scan** — One-time full scan on first run, then monitor deltas going forward. No redundant full rescans.
+
+- [x] **A3. Webhooks / real-time** — Configurable per job. User chooses: real-time monitoring (auto-label policies via Graph change notifications + delta queries) OR scheduled bulk jobs. This is a job-level setting.
+
+- [x] **A4. Scope configuration** — Configured in the **Jobs tab** during job creation. The job definition is where all scope, rules, and scheduling live. No separate "scope config" — it's all part of the job.
 
 ## B. How does classification drive labeling?
 
