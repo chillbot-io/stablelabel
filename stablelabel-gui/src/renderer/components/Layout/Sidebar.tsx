@@ -65,6 +65,13 @@ const icons: Record<string, React.ReactNode> = {
       <path d="M11 9v5" />
     </Icon>
   ),
+  /* Explorer — folder tree */
+  explorer: (
+    <Icon>
+      <path d="M2 6a1 1 0 011-1h4.5l2 2H17a1 1 0 011 1v8a1 1 0 01-1 1H3a1 1 0 01-1-1V6z" />
+      <path d="M8 13h4" />
+    </Icon>
+  ),
   /* Snapshots — stacked layers */
   snapshots: (
     <Icon>
@@ -111,6 +118,7 @@ const navItems: NavItem[] = [
   { id: 'documents', label: 'Documents', group: 'Operations' },
   { id: 'manual-label', label: 'CSV Upload', group: 'Operations' },
   { id: 'bulk-ops', label: 'Bulk Removal', group: 'Operations' },
+  { id: 'explorer', label: 'Explorer', group: 'Browse' },
   { id: 'snapshots', label: 'Snapshots', group: 'Safety' },
   { id: 'analysis', label: 'Analysis', group: 'Intelligence' },
 ];

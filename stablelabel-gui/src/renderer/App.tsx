@@ -7,6 +7,7 @@ import LabelsPage from './components/Labels/LabelsPage';
 import DocumentsPage from './components/Documents/DocumentsPage';
 import ManualLabelPage from './components/ManualLabel/ManualLabelPage';
 import BulkOpsPage from './components/BulkOps/BulkOpsPage';
+import ExplorerPage from './components/Explorer/ExplorerPage';
 import SnapshotsPage from './components/Snapshots/SnapshotsPage';
 import AnalysisPage from './components/Analysis/AnalysisPage';
 import SettingsPage from './components/Settings/SettingsPage';
@@ -27,6 +28,8 @@ export default function App() {
         return <ManualLabelPage />;
       case 'bulk-ops':
         return <BulkOpsPage />;
+      case 'explorer':
+        return <ExplorerPage />;
       case 'snapshots':
         return <SnapshotsPage />;
       case 'analysis':
@@ -38,7 +41,7 @@ export default function App() {
     }
   };
 
-  const fullBleedPages: Page[] = ['labels', 'documents', 'snapshots', 'analysis'];
+  const fullBleedPages: Page[] = ['labels', 'documents', 'explorer', 'snapshots', 'analysis'];
 
   return (
     <ErrorBoundary>

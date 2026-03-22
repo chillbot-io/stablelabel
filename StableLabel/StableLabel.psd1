@@ -37,6 +37,9 @@
         'Set-SLDocumentLabelBulk'
         'Import-SLLabelCsv'
         'Remove-SLDocumentLabelBulk'
+        'Get-SLSiteList'
+        'Get-SLDriveChildren'
+        'Get-SLDocumentDetail'
 
         # Protection (AIPService)
         'Get-SLProtectionConfig'

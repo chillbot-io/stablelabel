@@ -310,6 +310,27 @@ export const CMDLET_REGISTRY: Record<string, CmdletDef> = {
     },
   },
 
+  // ── Explorer ────────────────────────────────────────────────────────
+  'Get-SLSiteList': {
+    params: {
+      Search: { type: 'string' },
+    },
+  },
+  'Get-SLDriveChildren': {
+    params: {
+      SiteId: { type: 'string' },
+      DriveId: { type: 'string' },
+      ItemId: { type: 'string' },
+      Path: { type: 'string' },
+    },
+  },
+  'Get-SLDocumentDetail': {
+    params: {
+      DriveId: { type: 'string', required: true },
+      ItemId: { type: 'string', required: true },
+    },
+  },
+
   // ── Protection / AIP ──────────────────────────────────────────────────
   'Get-SLProtectionConfig': {},
 

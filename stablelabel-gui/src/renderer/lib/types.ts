@@ -204,6 +204,7 @@ export type Page =
   | 'documents'
   | 'manual-label'
   | 'bulk-ops'
+  | 'explorer'
   | 'snapshots'
   | 'analysis'
   | 'settings';
