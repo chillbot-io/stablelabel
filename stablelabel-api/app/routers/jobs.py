@@ -6,8 +6,11 @@ they have access to. Viewers can see job status and history.
 
 from __future__ import annotations
 
+import logging
 import uuid
+from datetime import UTC, datetime
 
+from arq import ArqRedis
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy import func, select
@@ -15,8 +18,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.entra_auth import CurrentUser
 from app.core.rbac import check_tenant_access, require_role
+from app.core.redis import JobSignal, send_job_signal
 from app.db.base import get_session
 from app.db.models import AuditEvent, CustomerTenant, Job, JobCheckpoint
+from app.dependencies import get_arq_pool
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/tenants/{customer_tenant_id}/jobs", tags=["jobs"])
 
@@ -278,6 +285,7 @@ async def job_action(
     action: str,
     user: CurrentUser = Depends(require_role("Operator")),
     db: AsyncSession = Depends(get_session),
+    arq_pool: ArqRedis = Depends(get_arq_pool),
 ) -> JobResponse:
     """Control a job: start, pause, resume, cancel, rollback, copy.
 
@@ -333,6 +341,9 @@ async def job_action(
             f"(requires: {', '.join(transition['from'])})",
         )
 
+    # Capture previous status before transition (needed for cancel signal)
+    previous_status = job.status
+
     # Resume goes back to the phase the job was in when paused.
     # The latest checkpoint tells us whether we were enumerating or labelling.
     if action == "resume":
@@ -360,12 +371,24 @@ async def job_action(
         event_type=f"job.{action}",
     ))
 
+    if action == "start":
+        job.started_at = datetime.now(UTC)
+
     await db.commit()
     await db.refresh(job)
 
-    # TODO: dispatch to arq worker queue for start/resume/rollback
-    # For pause/cancel: set Redis flag job:{id}:pause_requested = true
-    # Worker checks this between batches and stops gracefully.
+    # Dispatch to arq worker or send signal
+    if action in ("start", "resume"):
+        await arq_pool.enqueue_job("run_job", str(job.id))
+        logger.info("Dispatched run_job for %s (action=%s)", job.id, action)
+    elif action == "rollback":
+        await arq_pool.enqueue_job("rollback_job", str(job.id))
+        logger.info("Dispatched rollback_job for %s", job.id)
+    elif action == "pause":
+        await send_job_signal(arq_pool, str(job.id), JobSignal.PAUSE)
+    elif action == "cancel" and previous_status in ("enumerating", "running"):
+        # Send cancel signal so the worker stops gracefully
+        await send_job_signal(arq_pool, str(job.id), JobSignal.CANCEL)
 
     return _job_to_response(job)
 

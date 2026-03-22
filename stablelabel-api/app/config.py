@@ -13,6 +13,9 @@ class Settings(BaseSettings):
     db_pool_size: int = 5
     db_max_overflow: int = 10
 
+    # ── Redis (arq worker queue + pause signaling) ──────────
+    redis_url: str = "redis://localhost:6379/0"
+
     # ── Entra ID — Auth app (user sign-in) ────────────────────
     entra_auth_client_id: str = ""  # "StableLabel" app registration
     entra_auth_tenant_id: str = "common"  # multi-tenant

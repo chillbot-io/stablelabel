@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 from functools import lru_cache
+from typing import AsyncIterator
 
+from arq import ArqRedis
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings
@@ -12,6 +14,9 @@ from app.db.base import get_session
 from app.services.document_service import DocumentService
 from app.services.graph_client import GraphClient
 from app.services.label_service import LabelService
+
+# Module-level arq pool — set during app lifespan startup
+_arq_pool: ArqRedis | None = None
 
 
 @lru_cache
@@ -49,7 +54,20 @@ def get_document_service() -> DocumentService:
     )
 
 
-async def get_db() -> AsyncSession:
+def set_arq_pool(pool: ArqRedis) -> None:
+    """Called during app startup to set the arq connection pool."""
+    global _arq_pool
+    _arq_pool = pool
+
+
+async def get_arq_pool() -> ArqRedis:
+    """FastAPI dependency: returns the arq Redis connection pool."""
+    if _arq_pool is None:
+        raise RuntimeError("arq pool not initialized — is Redis running?")
+    return _arq_pool
+
+
+async def get_db() -> AsyncIterator[AsyncSession]:
     """Alias for get_session — used in route dependencies."""
     async for session in get_session():
         yield session

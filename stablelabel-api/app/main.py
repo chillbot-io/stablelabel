@@ -2,23 +2,50 @@
 
 from __future__ import annotations
 
+import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
+from arq import create_pool
+from arq.connections import RedisSettings
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.db.base import dispose_engine, init_engine
-from app.dependencies import get_graph_client, get_settings
+from app.dependencies import get_graph_client, get_settings, set_arq_pool
 from app.routers import audit, documents, health, jobs, labels, onboard, policies, tenants, users
+
+logger = logging.getLogger(__name__)
+
+
+def _parse_redis_settings(url: str) -> RedisSettings:
+    """Parse a redis:// URL into arq RedisSettings."""
+    from urllib.parse import urlparse
+
+    parsed = urlparse(url)
+    return RedisSettings(
+        host=parsed.hostname or "localhost",
+        port=parsed.port or 6379,
+        database=int(parsed.path.lstrip("/") or "0"),
+        password=parsed.password,
+    )
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-    # Startup: initialise database connection pool
+    # Startup: initialise database + Redis connection pools
     settings = get_settings()
     init_engine(settings)
+
+    try:
+        arq_pool = await create_pool(_parse_redis_settings(settings.redis_url))
+        set_arq_pool(arq_pool)
+        logger.info("Connected to Redis for arq task queue")
+    except Exception:
+        logger.warning("Redis not available — job dispatch will fail until Redis is running")
+
     yield
+
     # Shutdown: close connections
     graph = get_graph_client()
     await graph.close()
