@@ -11,21 +11,17 @@ BeforeAll {
     $script:SLConnection = @{
         GraphConnected      = $false
         ComplianceConnected = $false
-        ProtectionConnected = $false
         UserPrincipalName   = $null
         TenantId            = $null
-        ConnectedAt         = @{ Graph = $null; Compliance = $null; Protection = $null }
+        ConnectedAt         = @{ Graph = $null; Compliance = $null }
         ComplianceCommandCount = 0
         ComplianceSessionStart = $null
     }
     $script:SLLabelCache = @{ Labels = @(); CachedAt = $null; TenantId = $null }
     $script:SLActiveJob = $null
-    $script:SLFileShares = [System.Collections.Generic.List[hashtable]]::new()
-    $script:SLAipClientType = $null
     $script:SLConfig = @{
         SnapshotPath     = Join-Path $HOME '.stablelabel' 'snapshots'
         AuditLogPath     = Join-Path $HOME '.stablelabel' 'audit.jsonl'
-        ElevationState   = Join-Path $HOME '.stablelabel' 'elevation-state.json'
         GraphApiVersion  = 'v1.0'
         GraphBetaVersion = 'beta'
         GraphBaseUrl     = 'https://graph.microsoft.com'
@@ -150,8 +146,8 @@ Describe 'ConvertTo-SLSnapshot' {
 
     It 'Sets the Scope correctly' {
         Mock Get-Module { [PSCustomObject]@{ Version = [version]'0.1.0' } }
-        $result = ConvertTo-SLSnapshot -Data @{} -Name 'test' -Scope 'Dlp'
-        $result.Scope | Should -Be 'Dlp'
+        $result = ConvertTo-SLSnapshot -Data @{} -Name 'test' -Scope 'Labels'
+        $result.Scope | Should -Be 'Labels'
     }
 
     It 'Includes CreatedBy from connection state' {
@@ -187,26 +183,14 @@ Describe 'ConvertTo-SLSnapshot' {
     }
 }
 
-Describe 'Invoke-SLProtectionCommand' {
-    It 'Throws on non-Windows platforms' -Skip:$IsWindows {
-        { Invoke-SLProtectionCommand -ScriptBlock { 'test' } } | Should -Throw '*Windows*'
-    }
-
-    It 'Checks Protection connection on Windows' -Skip:(-not $IsWindows) {
-        $script:SLConnection.ProtectionConnected = $false
-        { Invoke-SLProtectionCommand -ScriptBlock { 'test' } } | Should -Throw '*Not connected to Protection*'
-    }
-}
-
 Describe 'Invoke-SLComplianceCommand' {
     BeforeEach {
         $script:SLConnection = @{
             GraphConnected      = $false
             ComplianceConnected = $true
-            ProtectionConnected = $false
             UserPrincipalName   = 'admin@contoso.com'
             TenantId            = 'tenant-123'
-            ConnectedAt         = @{ Graph = $null; Compliance = [datetime]::UtcNow; Protection = $null }
+            ConnectedAt         = @{ Graph = $null; Compliance = [datetime]::UtcNow }
             ComplianceCommandCount = 0
             ComplianceSessionStart = [datetime]::UtcNow
         }
