@@ -189,6 +189,7 @@ export class PowerShellBridge {
       '-NoProfile',
       '-NoLogo',
       '-NonInteractive',
+      '-ExecutionPolicy', 'Bypass',
       '-Command',
       '-',
     ], {
@@ -370,11 +371,33 @@ export class PowerShellBridge {
     try {
       // buildCommand validates the cmdlet and params against the registry
       const command = buildCommand(cmdlet, params);
-      return await this.invokeRaw(command);
+      return await this.invokeWithRetry(command);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       return { success: false, data: null, error: stripAnsi(message) };
     }
+  }
+
+  /** Detect throttling in error messages (Graph 429, IPPS rate-limit). */
+  private static isThrottled(result: PsResult): boolean {
+    if (result.success || !result.error) return false;
+    const msg = result.error.toLowerCase();
+    return msg.includes('throttl') || msg.includes('429') || msg.includes('rate limit') || msg.includes('too many requests');
+  }
+
+  /** Invoke with exponential backoff retry on throttling. */
+  private async invokeWithRetry(command: string, maxRetries = 4): Promise<PsResult> {
+    let lastResult: PsResult;
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      lastResult = await this.invokeRaw(command);
+      if (!PowerShellBridge.isThrottled(lastResult) || attempt === maxRetries) {
+        return lastResult;
+      }
+      const delayMs = Math.min(1000 * Math.pow(2, attempt + 1), 32000); // 2s, 4s, 8s, 16s
+      logger.warn('PS_BRIDGE', `Throttled — retrying in ${delayMs / 1000}s (attempt ${attempt + 1}/${maxRetries})`);
+      await new Promise((r) => setTimeout(r, delayMs));
+    }
+    return lastResult!;
   }
 
   /**

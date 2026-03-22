@@ -11,6 +11,7 @@ import ExplorerPage from './components/Explorer/ExplorerPage';
 import SnapshotsPage from './components/Snapshots/SnapshotsPage';
 import AnalysisPage from './components/Analysis/AnalysisPage';
 import ClassificationPage from './components/Classification/ClassificationPage';
+import AuditLogPage from './components/AuditLog/AuditLogPage';
 import SettingsPage from './components/Settings/SettingsPage';
 import type { Page } from './lib/types';
 
@@ -37,6 +38,8 @@ export default function App() {
         return <AnalysisPage />;
       case 'classification':
         return <ClassificationPage />;
+      case 'audit-log':
+        return <AuditLogPage />;
       case 'settings':
         return <SettingsPage />;
       default:

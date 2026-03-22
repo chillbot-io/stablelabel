@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { usePowerShell } from '../../hooks/usePowerShell';
 import { TextField, TextArea, SelectField, TagInput, FormActions } from '../common/FormFields';
 import ConfirmDialog from '../common/ConfirmDialog';
+import ShowPowerShell from '../common/ShowPowerShell';
 import type { AutoLabelPolicy } from '../../lib/types';
 
 interface AutoLabelFormProps {
@@ -114,6 +115,9 @@ export default function AutoLabelForm({ existing, onSaved, onCancel, onDeleted }
             ? 'Create a policy that automatically applies sensitivity labels to matching content.'
             : 'Modify this auto-labeling policy.'}
         </p>
+        <p className="text-[11px] text-amber-500/70 mt-2">
+          Note: Policy changes may take up to 24 hours to propagate across your tenant.
+        </p>
       </div>
 
       {error && (
@@ -191,6 +195,14 @@ export default function AutoLabelForm({ existing, onSaved, onCancel, onDeleted }
           </p>
         )}
       </div>
+
+      <ShowPowerShell
+        cmdlet={isNew ? 'New-SLAutoLabelPolicy' : 'Set-SLAutoLabelPolicy'}
+        params={isNew
+          ? { Name: name, ApplySensitivityLabel: applySensitivityLabel, Mode: mode || undefined, ExchangeLocation: exchangeLocation.length > 0 ? exchangeLocation : undefined, SharePointLocation: sharePointLocation.length > 0 ? sharePointLocation : undefined, OneDriveLocation: oneDriveLocation.length > 0 ? oneDriveLocation : undefined }
+          : { Identity: existing!.Name, Mode: mode !== existing!.Mode ? mode : undefined }
+        }
+      />
 
       <FormActions
         onSave={handleSave}

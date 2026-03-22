@@ -11,6 +11,12 @@ export default function TopBar() {
         <ServiceDot label="Compliance" connected={status?.ComplianceConnected ?? false} loading={loading} />
         <ServiceDot label="Protection" connected={status?.ProtectionConnected ?? false} loading={loading} />
 
+        {status?.ComplianceSessionAge && (
+          <span className="text-[11px] text-zinc-600 ml-1" title="Compliance session age">
+            {status.ComplianceSessionAge}
+          </span>
+        )}
+
         {status?.UserPrincipalName && (
           <span className="text-[11px] text-zinc-500 ml-1 font-medium">
             {status.UserPrincipalName}

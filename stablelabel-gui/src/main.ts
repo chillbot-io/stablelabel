@@ -1,9 +1,10 @@
 import { app, BrowserWindow, ipcMain, dialog, session, shell } from 'electron';
 import path from 'node:path';
+import { autoUpdater } from 'electron-updater';
 import { PowerShellBridge } from './powershell-bridge';
 import { ClassifierBridge } from './classifier-bridge';
 import { CredentialStore } from './credential-store';
-import { logger } from './logger';
+import { logger, initFileLogging } from './logger';
 import { CMDLET_REGISTRY } from './cmdlet-registry';
 import { TRUSTED_EXTERNAL_HOSTS } from './trusted-hosts';
 
@@ -100,6 +101,11 @@ function createWindow(): void {
 }
 
 app.whenReady().then(() => {
+  // ── Structured file logging ─────────────────────────────────────────
+  initFileLogging(app.getPath('userData')).then(() => {
+    logger.info('APP', `StableLabel v0.1.0 starting (${process.platform}, Electron ${process.versions.electron})`);
+  });
+
   // ── Permission handler — deny all (L3) ──────────────────────────────
   session.defaultSession.setPermissionRequestHandler((_webContents, _permission, callback) => {
     callback(false);
@@ -197,6 +203,28 @@ app.whenReady().then(() => {
   });
 
   createWindow();
+
+  // ── Auto-update (check silently, notify user when ready) ──────────
+  if (app.isPackaged) {
+    autoUpdater.logger = {
+      info: (msg: unknown) => logger.info('UPDATER', String(msg)),
+      warn: (msg: unknown) => logger.warn('UPDATER', String(msg)),
+      error: (msg: unknown) => logger.error('UPDATER', String(msg)),
+      debug: (msg: unknown) => logger.debug('UPDATER', String(msg)),
+    };
+    autoUpdater.autoDownload = true;
+    autoUpdater.autoInstallOnAppQuit = true;
+    autoUpdater.on('update-available', (info) => {
+      logger.info('UPDATER', `Update available: ${info.version}`);
+    });
+    autoUpdater.on('update-downloaded', (info) => {
+      logger.info('UPDATER', `Update downloaded: ${info.version} — will install on quit`);
+      mainWindow?.webContents.send('update:ready', info.version);
+    });
+    autoUpdater.checkForUpdates().catch((err) => {
+      logger.warn('UPDATER', `Update check failed: ${err}`);
+    });
+  }
 });
 
 app.on('window-all-closed', () => {

@@ -89,6 +89,16 @@ const icons: Record<string, React.ReactNode> = {
       <path d="M18 17V3" strokeWidth="2.5" />
     </Icon>
   ),
+  /* Audit Log — clipboard list */
+  'audit-log': (
+    <Icon>
+      <path d="M8 2h4a1 1 0 011 1v1H7V3a1 1 0 011-1z" />
+      <rect x="4" y="4" width="12" height="14" rx="1" />
+      <path d="M8 9h4" />
+      <path d="M8 12h4" />
+      <path d="M8 15h2" />
+    </Icon>
+  ),
   /* Classification — magnifying glass with lock */
   classification: (
     <Icon>
@@ -130,6 +140,7 @@ const navItems: NavItem[] = [
   { id: 'snapshots', label: 'Snapshots', group: 'Safety' },
   { id: 'analysis', label: 'Analysis', group: 'Intelligence' },
   { id: 'classification', label: 'Classification', group: 'Intelligence' },
+  { id: 'audit-log', label: 'Audit Log', group: 'Intelligence' },
 ];
 
 interface SidebarProps {

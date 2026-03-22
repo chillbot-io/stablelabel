@@ -3,6 +3,8 @@ import { usePowerShell } from '../../hooks/usePowerShell';
 import { useElapsedTime } from '../../hooks/useElapsedTime';
 import { TextArea, TextField, ToggleField } from '../common/FormFields';
 import BulkResultSummary from '../common/BulkResultSummary';
+import ConfirmDialog from '../common/ConfirmDialog';
+import ShowPowerShell from '../common/ShowPowerShell';
 import type { BulkRemoveResult } from '../../lib/types';
 
 type RemovalMode = 'LabelOnly' | 'EncryptionOnly' | 'Both';
@@ -23,6 +25,7 @@ export default function BulkOpsPage() {
   const elapsed = useElapsedTime(loading);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<BulkRemoveResult | null>(null);
+  const [showConfirm, setShowConfirm] = useState(false);
 
   const parseItems = (): Array<{ DriveId: string; ItemId: string }> | null => {
     const text = itemsText.trim();
@@ -56,7 +59,21 @@ export default function BulkOpsPage() {
     return items.length > 0 ? items : null;
   };
 
+  const handleClick = () => {
+    const items = parseItems();
+    if (!items || items.length === 0) {
+      setError('Provide items as JSON array or CSV (DriveId,ItemId per line).');
+      return;
+    }
+    if (!dryRun) {
+      setShowConfirm(true);
+    } else {
+      handleRemove();
+    }
+  };
+
   const handleRemove = async () => {
+    setShowConfirm(false);
     const items = parseItems();
     if (!items || items.length === 0) {
       setError('Provide items as JSON array or CSV (DriveId,ItemId per line).');
@@ -122,10 +139,15 @@ export default function BulkOpsPage() {
       <TextField label="Justification" value={justification} onChange={setJustification} placeholder="Reason for removal..." />
       <ToggleField label="Dry Run" checked={dryRun} onChange={setDryRun} helpText="Simulate without making changes. Recommended first." />
 
+      <ShowPowerShell
+        cmdlet="Remove-SLDocumentLabelBulk"
+        params={{ Items: parseItems() ?? [], Mode: mode, Justification: justification.trim() || undefined, DryRun: dryRun || undefined }}
+      />
+
       {error && <div className="p-3 bg-red-900/20 border border-red-800 rounded-lg text-sm text-red-300">{error}</div>}
 
       <div className="flex items-center gap-3">
-        <button onClick={handleRemove} disabled={loading} className={`px-4 py-2 text-xs font-medium text-white rounded-lg transition-colors disabled:opacity-50 ${
+        <button onClick={handleClick} disabled={loading} className={`px-4 py-2 text-xs font-medium text-white rounded-lg transition-colors disabled:opacity-50 ${
           dryRun ? 'bg-blue-600 hover:bg-blue-500' : 'bg-red-600 hover:bg-red-500'
         }`}>
           {loading ? 'Processing...' : dryRun ? `Dry Run — ${modeOptions.find(m => m.id === mode)?.label}` : modeOptions.find(m => m.id === mode)?.label}
@@ -139,6 +161,17 @@ export default function BulkOpsPage() {
       </div>
 
       {result && <BulkResultSummary result={result} subtitle={result.Mode} />}
+
+      {showConfirm && (
+        <ConfirmDialog
+          title="Confirm Bulk Removal"
+          message={`This will ${modeOptions.find(m => m.id === mode)?.label.toLowerCase()} on ${parseItems()?.length ?? 0} documents. This cannot be undone. Run a dry run first if you haven't already.`}
+          confirmLabel={modeOptions.find(m => m.id === mode)?.label ?? 'Proceed'}
+          variant="danger"
+          onConfirm={handleRemove}
+          onCancel={() => setShowConfirm(false)}
+        />
+      )}
     </div>
   );
 }

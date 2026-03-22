@@ -208,6 +208,7 @@ export type Page =
   | 'snapshots'
   | 'analysis'
   | 'classification'
+  | 'audit-log'
   | 'settings';
 
 /* ─── Data Classification (Presidio) ──────────────────────────────── */
