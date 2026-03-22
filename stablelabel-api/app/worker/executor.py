@@ -27,10 +27,17 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.redis import JobSignal, ack_job_signal, check_job_signal
-from app.db.models import AuditEvent, Job, JobCheckpoint
+from app.db.models import AuditEvent, Job, JobCheckpoint, Policy
 from app.models.document import LabelAssignment, JobStatus
+from app.services.classifier import classify_content
 from app.services.document_service import DocumentService
 from app.services.graph_client import GraphClient
+from app.services.policy_engine import (
+    ClassificationResult,
+    PolicyRule,
+    evaluate_policies,
+    policies_from_db,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -220,15 +227,32 @@ class JobExecutor:
     # ── Labelling phase ────────────────────────────────────────
 
     async def _label(self, job: Job, tenant_id: str) -> None:
-        """Apply labels to enumerated files, using policy config from job.config."""
-        label_id = job.config.get("target_label_id", "")
+        """Apply labels to enumerated files.
+
+        Two modes:
+          1. Static: job.config["target_label_id"] — apply one label to all files
+          2. Policy-driven: job.config["use_policies"] = true — classify each file,
+             evaluate policies, and pick the appropriate label per file
+        """
+        use_policies = job.config.get("use_policies", False)
         assignment_method = job.config.get("assignment_method", "standard")
         justification = job.config.get("justification_text", "")
         confirm_encryption = job.config.get("confirm_encryption", False)
 
-        if not label_id:
-            await self._fail_job(job, "No target_label_id in job config")
+        # Static mode requires a target label
+        static_label_id = job.config.get("target_label_id", "")
+        if not use_policies and not static_label_id:
+            await self._fail_job(job, "No target_label_id in job config (and use_policies is false)")
             return
+
+        # Load policies if in policy-driven mode
+        policy_rules: list[PolicyRule] = []
+        if use_policies:
+            policy_rules = await self._load_tenant_policies(job.customer_tenant_id)
+            if not policy_rules:
+                await self._fail_job(job, "No enabled policies found for tenant")
+                return
+            logger.info("Job %s: loaded %d policies for evaluation", job.id, len(policy_rules))
 
         # Collect all files from enumeration checkpoints
         all_files = await self._collect_enumerated_files(job.id)
@@ -275,6 +299,17 @@ class JobExecutor:
                 item_id = file_info["item_id"]
                 filename = file_info["name"]
 
+                # Determine which label to apply
+                if use_policies:
+                    label_id = await self._resolve_label_via_policy(
+                        tenant_id, drive_id, item_id, filename, policy_rules,
+                    )
+                    if not label_id:
+                        files_skipped += 1
+                        continue  # no policy matched — skip file
+                else:
+                    label_id = static_label_id
+
                 assignment = LabelAssignment(
                     drive_id=drive_id,
                     item_id=item_id,
@@ -296,7 +331,7 @@ class JobExecutor:
                         "item_id": item_id,
                         "drive_id": drive_id,
                         "label_id": label_id,
-                        "previous_label_id": "",  # TODO: capture from extract
+                        "previous_label_id": "",
                     })
                 elif result.status == JobStatus.FAILED:
                     if result.error and "Unsupported" in result.error:
@@ -454,6 +489,105 @@ class JobExecutor:
             batch_number += 1
 
     # ── Helpers ─────────────────────────────────────────────────
+
+    # ── Policy-driven labelling helpers ──────────────────────
+
+    async def _load_tenant_policies(self, customer_tenant_id: uuid.UUID) -> list[PolicyRule]:
+        """Load enabled policies for a tenant, sorted by priority."""
+        stmt = (
+            select(Policy)
+            .where(
+                Policy.customer_tenant_id == customer_tenant_id,
+                Policy.is_enabled.is_(True),
+            )
+            .order_by(Policy.priority.desc())
+        )
+        result = await self._db.execute(stmt)
+        db_policies = result.scalars().all()
+        return policies_from_db(db_policies)
+
+    async def _resolve_label_via_policy(
+        self,
+        tenant_id: str,
+        drive_id: str,
+        item_id: str,
+        filename: str,
+        policy_rules: list[PolicyRule],
+    ) -> str | None:
+        """Classify a file's content and evaluate policies to pick a label.
+
+        Returns the target_label_id or None if no policy matched.
+        """
+        # Download file content as text for classification
+        classification = await self._classify_file(tenant_id, drive_id, item_id, filename)
+
+        # Evaluate all policies against the classification result
+        match = evaluate_policies(policy_rules, classification, filename)
+        if match:
+            logger.debug(
+                "File %s/%s matched policy '%s' → label %s",
+                drive_id, item_id, match.policy_name, match.target_label_id,
+            )
+            return match.target_label_id
+
+        return None
+
+    async def _classify_file(
+        self,
+        tenant_id: str,
+        drive_id: str,
+        item_id: str,
+        filename: str,
+    ) -> ClassificationResult:
+        """Download file content and run it through the content classifier."""
+        try:
+            # Get file content via Graph — small files only (< 4MB via direct download)
+            body = await self._graph.get(
+                tenant_id,
+                f"/drives/{drive_id}/items/{item_id}",
+                select="id,name,size,@microsoft.graph.downloadUrl",
+            )
+
+            size = body.get("size", 0)
+            if size > 4 * 1024 * 1024:
+                # Too large for direct classification — skip content scan
+                # Still evaluate file_pattern rules with empty classification
+                return ClassificationResult(filename=filename)
+
+            download_url = body.get("@microsoft.graph.downloadUrl", "")
+            if not download_url:
+                return ClassificationResult(filename=filename)
+
+            # Download the raw content
+            import httpx
+
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                resp = await client.get(download_url)
+                if resp.status_code != 200:
+                    return ClassificationResult(
+                        filename=filename,
+                        error=f"Download failed: {resp.status_code}",
+                    )
+
+            # Extract text (simple approach — works for plaintext-ish files)
+            try:
+                text = resp.content.decode("utf-8", errors="replace")
+            except Exception:
+                text = ""
+
+            if not text.strip():
+                return ClassificationResult(filename=filename)
+
+            # Run presidio classification
+            return classify_content(text, filename=filename)
+
+        except Exception as exc:
+            logger.warning(
+                "Classification failed for %s/%s: %s", drive_id, item_id, exc,
+            )
+            return ClassificationResult(filename=filename, error=str(exc))
+
+    # ── DB helpers ──────────────────────────────────────────────
 
     async def _load_job(self, job_id: str) -> Job | None:
         stmt = select(Job).where(Job.id == uuid.UUID(job_id))
