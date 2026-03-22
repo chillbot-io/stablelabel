@@ -47,6 +47,94 @@ Status key: `[ ]` = open, `[x]` = decided
 
 - [x] **B8. Classification caching** — Only classify new files and deltas. Store classification results in the database. Files that haven't changed since last scan are skipped entirely.
 
+---
+
+## Pricing & Unit Economics (500K files/tenant baseline)
+
+### Microsoft API Costs — assignSensitivityLabel
+
+The Graph `assignSensitivityLabel` API is a **metered API**: **$0.00185 per label assignment** ($185 per 100K files). Requires a `Microsoft.GraphServices/accounts` Azure resource linking the app registration to an active Azure subscription. Without it, you get evaluation mode (limited free calls) then `HTTP 402`.
+
+Setup:
+```bash
+az graph-services account create \
+  --resource-group myRG \
+  --resource-name myGraphAppBilling \
+  --subscription <azure-subscription-id> \
+  --location global \
+  --app-id <app-registration-id>
+```
+
+Requires: Azure subscription (Pay-As-You-Go or EA), Application Owner/Admin on app reg, Contributor/Owner on subscription. Confidential client only. Not available in GCC.
+
+> **Note (March 2026):** Unconfirmed reports suggest Microsoft may have stopped actively billing for this API. Docs still list it as metered. Build pricing assuming it's billed; treat any change as upside.
+
+### Per-Tenant API Cost (500K files, 7% monthly churn)
+
+| Item | Calculation | Annual Cost |
+|---|---|---|
+| Initial full scan (Year 1 only) | 500,000 × $0.00185 | $925 |
+| Monthly delta labeling | 35,000 × $0.00185 × 12 | $777 |
+| **Year 1 total** | | **$1,702** |
+| **Year 2+ total** | | **$777** |
+
+### Infrastructure Costs (multi-tenant, amortized @ 50 tenants)
+
+| Component | Monthly (shared) | Per-tenant/mo | Annual/tenant | Notes |
+|---|---|---|---|---|
+| Compute (App Service B2 / Container Apps) | $55 | $1.10 | $13.20 | API + classification workers |
+| PostgreSQL Flexible (Burstable B1ms) | $25 | $0.50 | $6.00 | Jobs, classification cache, audit |
+| Key Vault | $5 | $0.10 | $1.20 | Tenant secrets, certificates |
+| Blob Storage | $10 | $0.20 | $2.40 | Metadata only, no file content |
+| Log Analytics / monitoring | $15 | $0.30 | $3.60 | Audit trail, diagnostics |
+| Bandwidth (Graph download egress) | $20 | $0.40 | $4.80 | ~250GB initial scan, deltas much less |
+| **Total infra** | **$130** | **$2.60** | **$31.20** | |
+
+### Misc Overhead
+
+| Item | Per-tenant/year | Notes |
+|---|---|---|
+| Support/ops labor allocation | $200 | Lean team, amortized |
+| Compliance PowerShell compute | $25 | Label creation, bursty |
+| Throttling buffer (429 retry overhead) | $50 | Extra compute for backoff |
+| **Total overhead** | **$275** | |
+
+### Full COGS Stack (per tenant/year)
+
+| Cost Category | Year 1 | Year 2+ |
+|---|---|---|
+| Microsoft API (label assignments) | $1,702 | $777 |
+| Infrastructure (@ 50 tenants) | $31 | $31 |
+| Overhead | $275 | $275 |
+| **Total COGS** | **$2,008** | **$1,083** |
+
+### Pricing at SaaS Margins (industry standard: 75-80% gross)
+
+| Target Gross Margin | Year 1 Price | Year 2+ Price | Blended Annual |
+|---|---|---|---|
+| 75% (conservative) | $8,032 | $4,332 | $6,182 |
+| 78% (median B2B SaaS) | $9,127 | $4,923 | $7,025 |
+| 80% (strong) | $10,040 | $5,415 | $7,728 |
+
+### Recommended Pricing Tiers
+
+| Tier | Files | Monthly | Annual | Blended Margin |
+|---|---|---|---|---|
+| **Starter** | Up to 100K | $199/mo | $1,990/yr | ~82% |
+| **Professional** | Up to 500K | $499/mo | $4,990/yr | ~75% Y1 / 82% Y2+ |
+| **Enterprise** | Up to 2M | $1,499/mo | $14,990/yr | ~80% |
+
+### Key Insights
+
+1. **Microsoft API cost is the biggest COGS line** — not infrastructure. Margin depends on file churn rate.
+2. **Year 2 is dramatically cheaper** — delta-only scanning. Annual contracts smooth this out.
+3. **At 50+ tenants, infra cost is noise** — multi-tenant model scales well.
+4. **If Microsoft stops billing `assignSensitivityLabel`**, margins jump to 90%+ overnight.
+5. **Show estimated API cost at job creation** — transparency is a differentiator vs Varonis/BigID opaque pricing.
+6. **Cost monitoring** — charges appear in Azure Cost Management under "Microsoft Graph services", split by app and calling tenant. Useful for per-customer billing passthrough.
+
+---
+
 ## C. Multi-tenant / MSP architecture
 
 - [ ] **C9. Tenant onboarding** — How does an MSP add a new customer tenant? Multi-tenant app registration with admin consent in each tenant? Or per-tenant app registrations?
