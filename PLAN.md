@@ -1,5 +1,14 @@
 # StableLabel v1 — Sensitivity Label Management Tool
 
+> **Note (2026-03-22):** This document describes the original Electron desktop app
+> architecture. StableLabel is pivoting to a **SaaS web platform**. See
+> **ARCHITECTURE.md** for the current architecture decisions.
+>
+> This document remains useful as a feature reference — the pages, components,
+> and capabilities described below still represent the product vision, but the
+> delivery mechanism is now a Vite SPA + FastAPI backend, not Electron + PowerShell.
+> The Electron app is being sunset.
+
 ## Vision
 
 A precision tool for MIP/AIP sensitivity label management that gives E3 users

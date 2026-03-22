@@ -1,5 +1,17 @@
 # StableLabel API — Open Architecture Questions
 
+> **Note (2026-03-22):** Several decisions in this document have been superseded
+> by ARCHITECTURE.md at the repo root. Key changes:
+> - Auth: Entra ID with two app registrations (not session-based with built-in RBAC)
+> - RBAC: Entra App Roles + DB tenant assignments (not DB-managed roles)
+> - Frontend: Vite SPA (not React/Next.js)
+> - Classifier: Embedded in worker (not sidecar container)
+> - Tenant onboarding: Multi-tenant Data Connector app with admin consent (not per-tenant app regs)
+> - Task queue: arq/Python (not BullMQ/Node.js)
+>
+> This document remains valuable for its Jobs design, pricing analysis, data stack
+> details, and scope decisions. See ARCHITECTURE.md for the authoritative current state.
+
 These questions must be resolved before building beyond the scaffold.
 Each answer shapes the production architecture.
 
