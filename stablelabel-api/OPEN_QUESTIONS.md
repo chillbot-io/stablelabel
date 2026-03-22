@@ -196,14 +196,38 @@ Requires: Azure subscription (Pay-As-You-Go or EA), Application Owner/Admin on a
 
 ## E. The API's own auth
 
-- [ ] **E16. Who calls the API?** — A web frontend? MSP operators via API keys? Both?
-- [ ] **E17. Permissions model** — Can any authenticated user apply labels to any tenant? Or role-based (viewer, operator, admin)?
+- [x] **E16. Who calls the API?** — **Web frontend → API. The frontend is the primary client.**
+  - The React/Next.js frontend calls the API over HTTPS. No direct API key access for MSP operators in v1 — all interaction goes through the web UI. This simplifies auth (session-based), keeps the attack surface small, and means we only need to secure one client. API keys for programmatic/CLI access can be added later as a feature.
+
+- [x] **E17. Permissions model** — **RBAC with three roles: Viewer, Operator, Admin.**
+  - **Viewer:** Read-only access. Can see job status, reporting dashboards, audit logs, label snapshots. Cannot trigger jobs or modify config. Ideal for compliance officers and auditors.
+  - **Operator:** Everything Viewer can do, plus: start/pause/stop/rollback labelling jobs, run scans, manage rules and label mappings. Cannot manage tenants, users, or system settings. The day-to-day MSP technician role.
+  - **Admin:** Full access. Tenant onboarding/offboarding, user management, vault configuration, RBAC assignments, system settings, reporting exports. The MSP owner / security lead role.
+  - Roles are assigned per-user and scoped globally (not per-tenant) in v1. Per-tenant role overrides (e.g., "Operator on Contoso only") is a v2 consideration.
 
 ## F. Background processing
 
-- [ ] **F18. Task queue** — Bulk labeling 100K files is a multi-hour job. That can't be a synchronous HTTP request. Do you want a real task queue (Celery, arq, Dramatiq) or just in-process asyncio tasks with durable state?
-- [ ] **F19. Scheduling** — "Run a full scan of Contoso every Sunday at 2am." Cron? Built-in scheduler? External trigger?
+- [x] **F18. Task queue & message broker** — **Redis (Bull/BullMQ) as both message broker and task queue.**
+  - **BullMQ** (Node.js) or **arq** (Python) backed by **Redis**. Redis serves double duty: message broker for job dispatch + result backend for job state. No need for a separate broker (RabbitMQ, Kafka) at this scale — Redis handles both roles cleanly with sub-millisecond latency.
+  - **Why BullMQ/arq over Celery:** Lighter weight, native async support, built-in job priorities, rate limiting, repeatable jobs, and delayed jobs. Celery is powerful but heavy and has a reputation for operational complexity. BullMQ (if we go Node/TypeScript API) or arq (if Python API) are the modern choices.
+  - **Redis also provides:** Pub/Sub for pushing real-time job progress to the frontend (WebSocket gateway subscribes to Redis channels), caching for Graph API token reuse across workers, and distributed locking for tenant-scoped rate limiting.
+  - **Job isolation:** Each job carries a `tenant_id`. Workers pull jobs from tenant-specific queues (or a shared queue with tenant tags). A worker processing Contoso files never touches Fabrikam data. Combined with the tenant-scoped sessions from C12, there's no cross-tenant data mixing at any layer.
+
+- [x] **F19. Scheduling** — **Built-in scheduler via BullMQ repeatable jobs. Run now or schedule.**
+  - Jobs can be triggered two ways from the UI: **Run Now** (immediate dispatch to the queue) or **Schedule** (cron expression or one-time future timestamp).
+  - BullMQ repeatable jobs handle cron natively — "Run a full scan of Contoso every Sunday at 2am" is just a repeatable job with a cron spec. No external scheduler (no cron daemon, no Azure Logic Apps) needed.
+  - Scheduled jobs appear in the Running Jobs Pane (D14) with their next run time, last run status, and the ability to edit/pause/delete the schedule.
+  - On process restart, BullMQ recovers repeatable job definitions from Redis — schedules survive restarts.
 
 ## G. Deployment
 
-- [ ] **G20. Where does it run?** — Docker on Azure? Azure App Service? Customer-hosted? This shapes DB choice, secret management, and networking.
+- [x] **G20. Deployment** — **Azure Container Apps, multi-container, tenant-isolated spaCy workers.**
+  - **Platform:** Azure Container Apps (ACA). Managed container orchestration with built-in autoscaling, revision management, and HTTPS ingress. Simpler and cheaper than AKS for this workload, more flexible than App Service.
+  - **Container topology:**
+    - `stablelabel-api` — The API server (handles frontend requests, RBAC, job dispatch). Scales horizontally based on HTTP load.
+    - `stablelabel-worker` — BullMQ/arq workers that pull labelling jobs from Redis and call the Graph API. Scale independently based on queue depth. Each worker process is single-tenant-at-a-time per job (tenant_id on every job, tenant credentials loaded per job, no shared in-memory state between tenants).
+    - `stablelabel-spacy` — **Dedicated spaCy NER service** running as a sidecar or separate container. Exposes a lightweight internal API (FastAPI) that workers call for entity extraction. Stateless — receives text, returns entities, holds nothing. Tenant isolation is guaranteed because: (a) no persistent state in the spaCy container, (b) each request is self-contained with no session carryover, (c) workers pass only the text content, never tenant identifiers that could leak into model state.
+    - `redis` — Azure Cache for Redis (managed). Job queue, pub/sub, caching.
+    - `postgres` — Azure Database for PostgreSQL Flexible Server (managed). TimescaleDB extension enabled.
+  - **Scaling spaCy:** The spaCy container scales horizontally via ACA scaling rules (e.g., scale on concurrent requests or queue depth). Each instance is stateless, so you can run 1 or 20 depending on load. For heavy NER workloads, consider batching: workers send batches of text to the spaCy service rather than one-file-at-a-time, reducing HTTP overhead.
+  - **Data isolation at every layer:** Tenant credentials never leave the vault except into a scoped worker session. Workers process one tenant's job at a time. spaCy is stateless. Postgres data is tenant-partitioned. Redis queues are tenant-tagged. No mixing.
