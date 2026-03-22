@@ -15,6 +15,13 @@ describe('IPC channel constants', () => {
   });
 
   it('exports exactly the expected channel names', () => {
-    expect(Object.keys(IPC).sort()).toEqual(['PS_CHECK_PWSH', 'PS_GET_STATUS', 'PS_INVOKE']);
+    expect(Object.keys(IPC).sort()).toEqual([
+      'CLASSIFIER_CHECK',
+      'CLASSIFIER_GET_STATUS',
+      'CLASSIFIER_INVOKE',
+      'PS_CHECK_PWSH',
+      'PS_GET_STATUS',
+      'PS_INVOKE',
+    ]);
   });
 });

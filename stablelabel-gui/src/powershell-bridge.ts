@@ -42,6 +42,7 @@ export class PowerShellBridge {
   private stderrBuffer = '';
   private currentMarker: string | null = null;
   private currentResolve: ((output: string) => void) | null = null;
+  private currentReject: ((reason: Error) => void) | null = null;
   private currentTimeout: ReturnType<typeof setTimeout> | null = null;
 
   /** Callback invoked when a device-code authentication message is detected in stdout. */
@@ -227,16 +228,17 @@ export class PowerShellBridge {
       this.process = null;
 
       // Fail the in-flight command immediately instead of waiting for 10min timeout
-      if (this.currentResolve) {
-        const resolve = this.currentResolve;
+      if (this.currentReject) {
+        const reject = this.currentReject;
         this.currentMarker = null;
         this.currentResolve = null;
+        this.currentReject = null;
         if (this.currentTimeout) {
           clearTimeout(this.currentTimeout);
           this.currentTimeout = null;
         }
         this.processing = false;
-        resolve(''); // invokeRaw treats empty output + stderrBuffer as error
+        reject(new Error(`PowerShell process exited unexpectedly (code ${code})`));
       }
 
       // Drain queued commands that haven't started yet
@@ -334,6 +336,7 @@ export class PowerShellBridge {
     const timeout = setTimeout(() => {
       this.currentMarker = null;
       this.currentResolve = null;
+      this.currentReject = null;
       this.currentTimeout = null;
       this.processing = false;
       reject(new Error(`Command timed out: ${command.substring(0, 100)}`));
@@ -342,9 +345,11 @@ export class PowerShellBridge {
 
     this.currentTimeout = timeout;
     this.currentMarker = marker;
+    this.currentReject = reject;
     this.currentResolve = (output: string) => {
       clearTimeout(timeout);
       this.currentTimeout = null;
+      this.currentReject = null;
       this.processing = false;
       (resolve as unknown as (value: string) => void)(output);
       this.processQueue();
@@ -431,16 +436,17 @@ export class PowerShellBridge {
       this._initialized = false;
 
       // Fail in-flight command
-      if (this.currentResolve) {
-        const resolve = this.currentResolve;
+      if (this.currentReject) {
+        const reject = this.currentReject;
         this.currentMarker = null;
         this.currentResolve = null;
+        this.currentReject = null;
         if (this.currentTimeout) {
           clearTimeout(this.currentTimeout);
           this.currentTimeout = null;
         }
         this.processing = false;
-        resolve('');
+        reject(new Error('PowerShell bridge disposed'));
       }
 
       // Drain queued commands

@@ -225,7 +225,7 @@ export const CMDLET_REGISTRY: Record<string, CmdletDef> = {
   'New-SLLabelPolicy': {
     confirm: true,
     params: {
-      Name: { type: 'string', required: true },
+      Name: { type: 'string', required: true, maxLength: 1024 },
       Labels: { type: 'string[]' },
       Comment: { type: 'string', maxLength: 1024 },
     },

@@ -193,7 +193,7 @@ describe('PowerShellBridge', () => {
     });
 
     it('builds structured command correctly', async () => {
-      const invokePromise = bridge.invokeStructured('New-SLDlpPolicy', {
+      const invokePromise = bridge.invokeStructured('New-SLAutoLabelPolicy', {
         Name: 'Test Policy',
         Mode: 'Enable',
       });
@@ -203,12 +203,12 @@ describe('PowerShellBridge', () => {
       await vi.advanceTimersByTimeAsync(10);
 
       const cmdWrite = proc.stdin.write.mock.calls.find((c: string[]) =>
-        c[0]?.includes('New-SLDlpPolicy')
+        c[0]?.includes('New-SLAutoLabelPolicy')
       )?.[0] as string;
 
-      expect(cmdWrite).toContain("New-SLDlpPolicy -Name 'Test Policy' -Mode 'Enable' -Confirm:$false");
+      expect(cmdWrite).toContain("New-SLAutoLabelPolicy -Name 'Test Policy' -Mode 'Enable' -Confirm:$false");
 
-      completeCommand(proc, 'New-SLDlpPolicy', '{"Name":"Test Policy"}');
+      completeCommand(proc, 'New-SLAutoLabelPolicy', '{"Name":"Test Policy"}');
       const result = await invokePromise;
       expect(result.success).toBe(true);
     });
@@ -242,15 +242,15 @@ describe('PowerShellBridge', () => {
     });
 
     it('validates GUID parameters', async () => {
-      const result = await bridge.invokeStructured('Remove-SLProtectionTemplate', {
-        TemplateId: "'; evil code; '",
+      const result = await bridge.invokeStructured('Invoke-SLAutoLabelScan', {
+        LabelId: "'; evil code; '",
       });
       expect(result.success).toBe(false);
       expect(result.error).toContain('valid GUID');
     });
 
     it('validates enum parameters', async () => {
-      const result = await bridge.invokeStructured('New-SLDlpPolicy', {
+      const result = await bridge.invokeStructured('New-SLAutoLabelPolicy', {
         Name: 'P1',
         Mode: 'InvalidMode',
       });
@@ -259,7 +259,8 @@ describe('PowerShellBridge', () => {
     });
 
     it('rejects path traversal', async () => {
-      const result = await bridge.invokeStructured('Import-SLProtectionTemplate', {
+      const result = await bridge.invokeStructured('Restore-SLSnapshot', {
+        Name: 'test',
         Path: 'C:\\..\\Windows\\System32\\evil.xml',
       });
       expect(result.success).toBe(false);
@@ -331,14 +332,12 @@ describe('PowerShellBridge', () => {
       await completeInit(proc);
       await vi.advanceTimersByTimeAsync(10);
 
-      // Simulate process closing
+      // Simulate process closing — bridge rejects immediately
       proc.emit('close', 1);
-
-      // The command should timeout after 600s
-      vi.advanceTimersByTime(610000);
 
       const result = await invokePromise;
       expect(result.success).toBe(false);
+      expect(result.error).toContain('exited unexpectedly');
     });
 
     it('logs stderr output', async () => {
