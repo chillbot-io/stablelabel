@@ -125,21 +125,23 @@ function Restore-SLSnapshot {
 
             foreach ($item in $catData.Removed) {
                 $plan.Add([PSCustomObject]@{
-                    Phase    = 'Create'
-                    Category = $cat.Verb
-                    Identity = $item.Identity
-                    Action   = "Create (exists in snapshot but not in live)"
-                    Command  = $cat.NewCmd
+                    Phase        = 'Create'
+                    Category     = $cat.Verb
+                    Identity     = $item.Identity
+                    Action       = "Create (exists in snapshot but not in live)"
+                    Command      = $cat.NewCmd
+                    SnapshotItem = $item.Item
                 })
             }
 
             foreach ($item in $catData.Modified) {
                 $plan.Add([PSCustomObject]@{
-                    Phase    = 'Update'
-                    Category = $cat.Verb
-                    Identity = $item.Identity
-                    Action   = "Update (differs between snapshot and live)"
-                    Command  = $cat.SetCmd
+                    Phase        = 'Update'
+                    Category     = $cat.Verb
+                    Identity     = $item.Identity
+                    Action       = "Update (differs between snapshot and live)"
+                    Command      = $cat.SetCmd
+                    SnapshotItem = $item.SnapshotState
                 })
             }
         }
@@ -204,24 +206,41 @@ function Restore-SLSnapshot {
                         }.GetNewClosure() -OperationName "Restore: $($step.Command)"
                     }
                     'Create' {
-                        Write-Warning "Create operations require manual implementation per category. Skipping: $($step.Identity)"
-                        $results.Add([PSCustomObject]@{
-                            Step    = $step
-                            Status  = 'Skipped'
-                            Error   = 'Create operations not yet implemented'
-                        })
-                        $failCount++
-                        continue
+                        $snapshotItem = $step.SnapshotItem
+                        switch ($step.Category) {
+                            'Label Policy' {
+                                $createParams = @{ Name = $snapshotItem.Name }
+                                if ($snapshotItem.Labels) { $createParams.Labels = @($snapshotItem.Labels) }
+                                if ($snapshotItem.Comment) { $createParams.Comment = $snapshotItem.Comment }
+                                New-SLLabelPolicy @createParams
+                            }
+                            'Auto-Label Policy' {
+                                $createParams = @{ Name = $snapshotItem.Name }
+                                if ($snapshotItem.ApplySensitivityLabel) { $createParams.ApplySensitivityLabel = $snapshotItem.ApplySensitivityLabel }
+                                if ($snapshotItem.ExchangeLocation) { $createParams.ExchangeLocation = @($snapshotItem.ExchangeLocation) }
+                                if ($snapshotItem.SharePointLocation) { $createParams.SharePointLocation = @($snapshotItem.SharePointLocation) }
+                                if ($snapshotItem.OneDriveLocation) { $createParams.OneDriveLocation = @($snapshotItem.OneDriveLocation) }
+                                if ($snapshotItem.Mode) { $createParams.Mode = $snapshotItem.Mode }
+                                New-SLAutoLabelPolicy @createParams
+                            }
+                        }
                     }
                     'Update' {
-                        Write-Warning "Update operations require manual implementation per category. Skipping: $($step.Identity)"
-                        $results.Add([PSCustomObject]@{
-                            Step    = $step
-                            Status  = 'Skipped'
-                            Error   = 'Update operations not yet implemented'
-                        })
-                        $failCount++
-                        continue
+                        $snapshotItem = $step.SnapshotItem
+                        switch ($step.Category) {
+                            'Label Policy' {
+                                $setParams = @{ Identity = $step.Identity }
+                                if ($snapshotItem.Labels) { $setParams.Labels = @($snapshotItem.Labels) }
+                                if ($snapshotItem.Comment) { $setParams.Comment = $snapshotItem.Comment }
+                                Set-SLLabelPolicy @setParams
+                            }
+                            'Auto-Label Policy' {
+                                $setParams = @{ Identity = $step.Identity }
+                                if ($snapshotItem.ApplySensitivityLabel) { $setParams.ApplySensitivityLabel = $snapshotItem.ApplySensitivityLabel }
+                                if ($snapshotItem.Mode) { $setParams.Mode = $snapshotItem.Mode }
+                                Set-SLAutoLabelPolicy @setParams
+                            }
+                        }
                     }
                 }
 
@@ -251,26 +270,18 @@ function Restore-SLSnapshot {
             }
         }
 
-        $skippedCount = @($results | Where-Object { $_.Status -eq 'Skipped' }).Count
-
         $finalResult = [PSCustomObject]@{
             SnapshotName      = $Name
             PreRestoreSnapshot = $preRestoreName
             TotalChanges      = $plan.Count
             Succeeded         = $successCount
             Failed            = $failCount
-            Skipped           = $skippedCount
             Results           = $results
-        }
-
-        if ($skippedCount -gt 0) {
-            Write-Warning "$skippedCount operation(s) were skipped because Create/Update restore is not yet implemented. Review the Results for details."
         }
 
         Write-SLAuditEntry -Action 'Restore-SLSnapshot' -Target $Name -Detail @{
             Succeeded  = $successCount
             Failed     = $failCount
-            Skipped    = $skippedCount
             PreRestore = $preRestoreName
         }
 
