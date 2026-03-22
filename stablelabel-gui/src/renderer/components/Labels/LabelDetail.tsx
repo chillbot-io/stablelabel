@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { usePowerShell } from '../../hooks/usePowerShell';
 import type { SensitivityLabel } from '../../lib/types';
+import PropertyCard from '../common/PropertyCard';
+import RawJsonSection from '../common/RawJsonSection';
 
 interface LabelDetailProps {
   labelId: string;
@@ -41,15 +43,15 @@ export default function LabelDetail({ labelId, onOpenPolicy }: LabelDetailProps)
             .map((p) => p.Name);
           setPolicies(matching);
         }
-      } catch {
-        // Non-critical
+      } catch (err) {
+        console.error('Failed to fetch label policies:', err);
       }
 
       setLoading(false);
     };
 
     fetchLabel();
-  }, [labelId]);
+  }, [labelId, invoke]);
 
   if (loading) {
     return (
@@ -152,7 +154,7 @@ function StatusBadge({ active }: { active: boolean }) {
       className={`px-2 py-1 text-xs rounded-lg ${
         active
           ? 'bg-emerald-400/10 text-emerald-400 border border-green-500/20'
-          : 'bg-white/[0.08]/50 text-zinc-400 border border-gray-600'
+          : 'bg-white/[0.08] text-zinc-400 border border-gray-600'
       }`}
     >
       {active ? 'Active' : 'Inactive'}
@@ -160,44 +162,3 @@ function StatusBadge({ active }: { active: boolean }) {
   );
 }
 
-function PropertyCard({
-  label,
-  value,
-  mono,
-  children,
-}: {
-  label: string;
-  value: string;
-  mono?: boolean;
-  children?: React.ReactNode;
-}) {
-  return (
-    <div className="bg-white/[0.03] rounded-lg p-3">
-      <dt className="text-xs text-zinc-500 mb-1">{label}</dt>
-      <dd className={`text-sm text-zinc-200 flex items-center gap-2 ${mono ? 'font-mono text-xs' : ''}`}>
-        {children}
-        <span className="truncate" title={value}>{value}</span>
-      </dd>
-    </div>
-  );
-}
-
-function RawJsonSection({ data }: { data: unknown }) {
-  const [expanded, setExpanded] = useState(false);
-
-  return (
-    <div className="border-t border-white/[0.06] pt-4">
-      <button
-        onClick={() => setExpanded(!expanded)}
-        className="text-xs text-zinc-500 hover:text-zinc-300 transition-colors"
-      >
-        {expanded ? '▾ Hide' : '▸ Show'} raw JSON
-      </button>
-      {expanded && (
-        <pre className="mt-2 p-3 bg-zinc-950 rounded-lg text-xs text-zinc-400 overflow-x-auto max-h-64 overflow-y-auto">
-          {JSON.stringify(data, null, 2)}
-        </pre>
-      )}
-    </div>
-  );
-}

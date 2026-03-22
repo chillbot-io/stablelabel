@@ -37,9 +37,10 @@ export default function LabelList({ onOpenLabel }: LabelListProps) {
     setLoading(false);
   };
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- invoke is stable (useCallback with [])
   useEffect(() => {
     fetchLabels();
-  }, []);
+  }, [invoke]);
 
   const toggleExpand = (id: string) => {
     setExpandedIds((prev) => {
@@ -89,6 +90,7 @@ export default function LabelList({ onOpenLabel }: LabelListProps) {
       <div className="p-2 border-b border-white/[0.06]">
         <input
           type="text"
+          aria-label="Search labels"
           placeholder="Search labels..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}

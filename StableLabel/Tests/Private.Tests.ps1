@@ -11,21 +11,17 @@ BeforeAll {
     $script:SLConnection = @{
         GraphConnected      = $false
         ComplianceConnected = $false
-        ProtectionConnected = $false
         UserPrincipalName   = $null
         TenantId            = $null
-        ConnectedAt         = @{ Graph = $null; Compliance = $null; Protection = $null }
+        ConnectedAt         = @{ Graph = $null; Compliance = $null }
         ComplianceCommandCount = 0
         ComplianceSessionStart = $null
     }
     $script:SLLabelCache = @{ Labels = @(); CachedAt = $null; TenantId = $null }
     $script:SLActiveJob = $null
-    $script:SLFileShares = [System.Collections.Generic.List[hashtable]]::new()
-    $script:SLAipClientType = $null
     $script:SLConfig = @{
         SnapshotPath     = Join-Path $HOME '.stablelabel' 'snapshots'
         AuditLogPath     = Join-Path $HOME '.stablelabel' 'audit.jsonl'
-        ElevationState   = Join-Path $HOME '.stablelabel' 'elevation-state.json'
         GraphApiVersion  = 'v1.0'
         GraphBetaVersion = 'beta'
         GraphBaseUrl     = 'https://graph.microsoft.com'
@@ -150,8 +146,8 @@ Describe 'ConvertTo-SLSnapshot' {
 
     It 'Sets the Scope correctly' {
         Mock Get-Module { [PSCustomObject]@{ Version = [version]'0.1.0' } }
-        $result = ConvertTo-SLSnapshot -Data @{} -Name 'test' -Scope 'Dlp'
-        $result.Scope | Should -Be 'Dlp'
+        $result = ConvertTo-SLSnapshot -Data @{} -Name 'test' -Scope 'Labels'
+        $result.Scope | Should -Be 'Labels'
     }
 
     It 'Includes CreatedBy from connection state' {
@@ -187,26 +183,14 @@ Describe 'ConvertTo-SLSnapshot' {
     }
 }
 
-Describe 'Invoke-SLProtectionCommand' {
-    It 'Throws on non-Windows platforms' -Skip:$IsWindows {
-        { Invoke-SLProtectionCommand -ScriptBlock { 'test' } } | Should -Throw '*Windows*'
-    }
-
-    It 'Checks Protection connection on Windows' -Skip:(-not $IsWindows) {
-        $script:SLConnection.ProtectionConnected = $false
-        { Invoke-SLProtectionCommand -ScriptBlock { 'test' } } | Should -Throw '*Not connected to Protection*'
-    }
-}
-
 Describe 'Invoke-SLComplianceCommand' {
     BeforeEach {
         $script:SLConnection = @{
             GraphConnected      = $false
             ComplianceConnected = $true
-            ProtectionConnected = $false
             UserPrincipalName   = 'admin@contoso.com'
             TenantId            = 'tenant-123'
-            ConnectedAt         = @{ Graph = $null; Compliance = [datetime]::UtcNow; Protection = $null }
+            ConnectedAt         = @{ Graph = $null; Compliance = [datetime]::UtcNow }
             ComplianceCommandCount = 0
             ComplianceSessionStart = [datetime]::UtcNow
         }
@@ -425,76 +409,6 @@ Describe 'Test-SLDryRun' {
     It 'Returns false when -DryRun is explicitly false' {
         $result = Test-SLDryRun -DryRun:$false
         $result | Should -BeFalse
-    }
-}
-
-# =============================================================================
-# Assert-SLAipClient
-# =============================================================================
-Describe 'Assert-SLAipClient' {
-    BeforeEach {
-        $script:SLAipClientType = $null
-    }
-
-    It 'Throws on non-Windows platforms' -Skip:$IsWindows {
-        { Assert-SLAipClient } | Should -Throw '*requires Windows*'
-    }
-
-    It 'Sets client type to UnifiedLabeling when AIP module available' -Skip:(-not $IsWindows) {
-        Mock Get-Module {
-            [PSCustomObject]@{ Version = [version]'2.16.0'; Name = 'AzureInformationProtection' }
-        } -ParameterFilter { $ListAvailable -eq $true }
-        Mock Get-Module { $null } -ParameterFilter { $ListAvailable -ne $true }
-        Mock Import-Module { }
-
-        Assert-SLAipClient
-        $script:SLAipClientType | Should -Be 'UnifiedLabeling'
-    }
-
-    It 'Imports the module if not already loaded' -Skip:(-not $IsWindows) {
-        Mock Get-Module {
-            [PSCustomObject]@{ Version = [version]'2.16.0'; Name = 'AzureInformationProtection' }
-        } -ParameterFilter { $ListAvailable -eq $true }
-        Mock Get-Module { $null } -ParameterFilter { $ListAvailable -ne $true }
-        Mock Import-Module { } -Verifiable
-
-        Assert-SLAipClient
-        Should -InvokeVerifiable
-    }
-
-    It 'Skips import when module already loaded' -Skip:(-not $IsWindows) {
-        $loaded = [PSCustomObject]@{ Version = [version]'2.16.0'; Name = 'AzureInformationProtection' }
-        Mock Get-Module { $loaded } -ParameterFilter { $ListAvailable -eq $true }
-        Mock Get-Module { $loaded } -ParameterFilter { $ListAvailable -ne $true }
-        Mock Import-Module { }
-
-        Assert-SLAipClient
-        Should -Not -Invoke Import-Module
-    }
-
-    It 'Falls back to Legacy when Set-AIPFileLabel command exists' -Skip:(-not $IsWindows) {
-        Mock Get-Module { $null } -ParameterFilter { $ListAvailable -eq $true }
-        Mock Get-Command { [PSCustomObject]@{ Name = 'Set-AIPFileLabel' } } -ParameterFilter { $Name -eq 'Set-AIPFileLabel' }
-
-        Assert-SLAipClient
-        $script:SLAipClientType | Should -Be 'Legacy'
-    }
-
-    It 'Throws when neither module nor command available' -Skip:(-not $IsWindows) {
-        Mock Get-Module { $null }
-        Mock Get-Command { $null } -ParameterFilter { $Name -eq 'Set-AIPFileLabel' }
-
-        { Assert-SLAipClient } | Should -Throw '*not found*'
-    }
-
-    It 'Error message includes install URL' -Skip:(-not $IsWindows) {
-        Mock Get-Module { $null }
-        Mock Get-Command { $null } -ParameterFilter { $Name -eq 'Set-AIPFileLabel' }
-
-        $err = $null
-        try { Assert-SLAipClient } catch { $err = $_.Exception.Message }
-        $err | Should -Match 'learn.microsoft.com'
-        $err | Should -Match 'Install-Module'
     }
 }
 

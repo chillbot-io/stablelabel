@@ -51,6 +51,7 @@ vi.mock('electron', () => {
       on: vi.fn(),
       isPackaged: false,
       quit: vi.fn(),
+      getPath: vi.fn(() => '/tmp/stablelabel-test'),
     },
     BrowserWindow,
     ipcMain: { handle: mockHandle },
@@ -80,6 +81,16 @@ vi.mock('../powershell-bridge', () => {
 
 vi.mock('../credential-store', () => ({
   CredentialStore: { clear: mockCredentialsClear },
+}));
+
+vi.mock('electron-updater', () => ({
+  autoUpdater: {
+    on: vi.fn(),
+    checkForUpdates: vi.fn().mockResolvedValue(null),
+    autoDownload: false,
+    autoInstallOnAppQuit: false,
+    logger: null,
+  },
 }));
 
 vi.mock('../cmdlet-registry', () => ({

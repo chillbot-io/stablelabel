@@ -20,12 +20,10 @@ BeforeAll {
     }
     $script:SLLabelCache = @{ Labels = @(); CachedAt = $null; TenantId = $null }
     $script:SLActiveJob = $null
-    $script:SLFileShares = [System.Collections.Generic.List[hashtable]]::new()
     $script:SLAipClientType = $null
     $script:SLConfig = @{
         SnapshotPath     = Join-Path $HOME '.stablelabel' 'snapshots'
         AuditLogPath     = Join-Path $TestDrive 'audit.jsonl'
-        ElevationState   = Join-Path $TestDrive 'elevation-state.json'
         GraphApiVersion  = 'v1.0'
         GraphBetaVersion = 'beta'
         GraphBaseUrl     = 'https://graph.microsoft.com'

@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { usePowerShell } from '../../hooks/usePowerShell';
 import { TextField, TextArea, SelectField, TagInput, FormActions } from '../common/FormFields';
+import ConfirmDialog from '../common/ConfirmDialog';
+import ShowPowerShell from '../common/ShowPowerShell';
 import type { AutoLabelPolicy } from '../../lib/types';
 
 interface AutoLabelFormProps {
@@ -113,6 +115,9 @@ export default function AutoLabelForm({ existing, onSaved, onCancel, onDeleted }
             ? 'Create a policy that automatically applies sensitivity labels to matching content.'
             : 'Modify this auto-labeling policy.'}
         </p>
+        <p className="text-[11px] text-amber-500/70 mt-2">
+          Note: Policy changes may take up to 24 hours to propagate across your tenant.
+        </p>
       </div>
 
       {error && (
@@ -191,6 +196,14 @@ export default function AutoLabelForm({ existing, onSaved, onCancel, onDeleted }
         )}
       </div>
 
+      <ShowPowerShell
+        cmdlet={isNew ? 'New-SLAutoLabelPolicy' : 'Set-SLAutoLabelPolicy'}
+        params={isNew
+          ? { Name: name, ApplySensitivityLabel: applySensitivityLabel, Mode: mode || undefined, ExchangeLocation: exchangeLocation.length > 0 ? exchangeLocation : undefined, SharePointLocation: sharePointLocation.length > 0 ? sharePointLocation : undefined, OneDriveLocation: oneDriveLocation.length > 0 ? oneDriveLocation : undefined }
+          : { Identity: existing!.Name, Mode: mode !== existing!.Mode ? mode : undefined }
+        }
+      />
+
       <FormActions
         onSave={handleSave}
         onCancel={onCancel}
@@ -201,55 +214,16 @@ export default function AutoLabelForm({ existing, onSaved, onCancel, onDeleted }
       />
 
       {showDelete && (
-        <DeleteConfirm
-          name={existing!.Name}
-          deleting={deleting}
+        <ConfirmDialog
+          title="Delete Auto-Label Policy"
+          message={`Permanently delete "${existing!.Name}"? Content previously labeled by this policy will keep its labels, but no new content will be auto-labeled.`}
+          confirmLabel="Delete Policy"
+          variant="danger"
+          loading={deleting}
           onConfirm={handleDelete}
           onCancel={() => setShowDelete(false)}
         />
       )}
-    </div>
-  );
-}
-
-function DeleteConfirm({
-  name,
-  deleting,
-  onConfirm,
-  onCancel,
-}: {
-  name: string;
-  deleting: boolean;
-  onConfirm: () => void;
-  onCancel: () => void;
-}) {
-  return (
-    <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50">
-      <div className="bg-white/[0.03] border border-white/[0.08] rounded-lg p-6 w-96">
-        <h3 className="text-lg font-semibold text-white mb-2">Delete Auto-Label Policy</h3>
-        <p className="text-sm text-zinc-400 mb-1">
-          Permanently delete <strong className="text-zinc-200">{name}</strong>?
-        </p>
-        <p className="text-xs text-red-400/70 mb-6">
-          Content previously labeled by this policy will keep its labels, but no new content will be auto-labeled.
-        </p>
-        <div className="flex gap-3 justify-end">
-          <button
-            onClick={onCancel}
-            disabled={deleting}
-            className="px-4 py-2 text-sm text-zinc-400 bg-white/[0.06] rounded-lg border border-white/[0.08] hover:bg-white/[0.08] transition-colors"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={onConfirm}
-            disabled={deleting}
-            className="px-4 py-2 text-sm bg-red-600 hover:bg-red-500 text-white rounded-lg transition-colors disabled:opacity-40"
-          >
-            {deleting ? 'Deleting...' : 'Delete Policy'}
-          </button>
-        </div>
-      </div>
     </div>
   );
 }

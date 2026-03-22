@@ -1,0 +1,3 @@
+presidio-analyzer>=2.2.0
+spacy>=3.7.0
+# spaCy model installed via: python -m spacy download en_core_web_lg

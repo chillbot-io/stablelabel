@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { usePowerShell } from '../../hooks/usePowerShell';
 import { TextField, TextArea, ToggleField } from '../common/FormFields';
+import ShowPowerShell from '../common/ShowPowerShell';
 
 export default function DocumentLabelApply() {
   const { invoke } = usePowerShell();
@@ -55,6 +56,11 @@ export default function DocumentLabelApply() {
 
       {error && <div className="p-3 bg-red-900/20 border border-red-800 rounded-lg text-sm text-red-300">{error}</div>}
       {success && <div className="p-3 bg-green-900/20 border border-green-800 rounded-lg text-sm text-green-300">{success}</div>}
+
+      <ShowPowerShell
+        cmdlet="Set-SLDocumentLabel"
+        params={{ DriveId: driveId, ItemId: itemId, LabelId: labelId.trim() || undefined, LabelName: labelName.trim() || undefined, Justification: justification.trim() || undefined, DryRun: dryRun || undefined }}
+      />
 
       <button onClick={handleApply} disabled={loading} className="px-4 py-2 text-xs font-medium text-white bg-blue-600 hover:bg-blue-500 disabled:bg-blue-600/50 rounded-lg transition-colors">
         {loading ? 'Applying...' : dryRun ? 'Dry Run — Apply Label' : 'Apply Label'}

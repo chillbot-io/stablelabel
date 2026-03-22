@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useRef } from 'react';
 import { usePowerShell } from '../../hooks/usePowerShell';
 import TabBar, { type Tab } from '../common/TabBar';
 import type { LabelPolicy, AutoLabelPolicy } from '../../lib/types';
@@ -18,24 +18,21 @@ interface OpenTab extends Tab {
   itemId: string;
 }
 
-let formCounter = 0;
-
 export default function LabelsPage() {
   const [browserSection, setBrowserSection] = useState<BrowserSection>('labels');
   const [tabs, setTabs] = useState<OpenTab[]>([]);
   const [activeTabId, setActiveTabId] = useState<string | null>(null);
+  const activeTabIdRef = useRef(activeTabId);
+  const formCounterRef = useRef(0);
+  activeTabIdRef.current = activeTabId;
 
   const openTab = useCallback(
     (type: string, itemId: string, label: string, kind: string) => {
       const tabId = `${type}:${itemId}`;
       setTabs((prev) => {
         const existing = prev.find((t) => t.id === tabId);
-        if (existing) {
-          setActiveTabId(tabId);
-          return prev;
-        }
+        if (existing) return prev;
         const newTab: OpenTab = { id: tabId, label, kind, type, itemId };
-        setActiveTabId(tabId);
         return [...prev, newTab];
       });
       setActiveTabId(tabId);
@@ -48,7 +45,8 @@ export default function LabelsPage() {
       setTabs((prev) => {
         const idx = prev.findIndex((t) => t.id === tabId);
         const next = prev.filter((t) => t.id !== tabId);
-        if (activeTabId === tabId) {
+        // Use ref to avoid stale closure on activeTabId
+        if (activeTabIdRef.current === tabId) {
           if (next.length === 0) {
             setActiveTabId(null);
           } else {
@@ -59,7 +57,7 @@ export default function LabelsPage() {
         return next;
       });
     },
-    [activeTabId],
+    [],
   );
 
   // View handlers
@@ -80,13 +78,13 @@ export default function LabelsPage() {
 
   // Form handlers — new
   const handleNewPolicy = useCallback(() => {
-    formCounter++;
-    openTab('policy-form-new', `new-${formCounter}`, '+ New Policy', 'policy');
+    formCounterRef.current++;
+    openTab('policy-form-new', `new-${formCounterRef.current}`, '+ New Policy', 'policy');
   }, [openTab]);
 
   const handleNewAutoLabel = useCallback(() => {
-    formCounter++;
-    openTab('autolabel-form-new', `new-${formCounter}`, '+ New Auto-Label', 'autolabel');
+    formCounterRef.current++;
+    openTab('autolabel-form-new', `new-${formCounterRef.current}`, '+ New Auto-Label', 'autolabel');
   }, [openTab]);
 
   // Form handlers — edit (opens a form tab pre-populated with existing data)

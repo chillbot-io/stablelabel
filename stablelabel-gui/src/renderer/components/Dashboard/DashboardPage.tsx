@@ -7,11 +7,9 @@ import ConnectionDialog from '../Connection/ConnectionDialog';
 
 interface DashboardStats {
   labels: number | null;
-  dlpPolicies: number | null;
-  retentionPolicies: number | null;
+  labelPolicies: number | null;
   autoLabelPolicies: number | null;
   snapshots: number | null;
-  activeElevations: number | null;
 }
 
 interface AuditEntry {
@@ -30,11 +28,9 @@ export default function DashboardPage({ onNavigate }: DashboardPageProps) {
   const { invoke } = usePowerShell();
   const [stats, setStats] = useState<DashboardStats>({
     labels: null,
-    dlpPolicies: null,
-    retentionPolicies: null,
+    labelPolicies: null,
     autoLabelPolicies: null,
     snapshots: null,
-    activeElevations: null,
   });
   const [recentActivity, setRecentActivity] = useState<AuditEntry[]>([]);
   const [loading, setLoading] = useState(false);
@@ -55,37 +51,25 @@ export default function DashboardPage({ onNavigate }: DashboardPageProps) {
       promises.push(
         invoke('Get-SLLabel').then((r) => {
           if (r.success && Array.isArray(r.data)) updates.labels = r.data.length;
-        }).catch(() => {}),
+        }).catch((err) => { console.error('Failed to fetch labels:', err); }),
       );
     }
 
     if (complianceConnected) {
       promises.push(
-        invoke('Get-SLDlpPolicy').then((r) => {
-          if (r.success && Array.isArray(r.data)) updates.dlpPolicies = r.data.length;
-        }).catch(() => {}),
-        invoke('Get-SLRetentionPolicy').then((r) => {
-          if (r.success && Array.isArray(r.data)) updates.retentionPolicies = r.data.length;
-        }).catch(() => {}),
+        invoke('Get-SLLabelPolicy').then((r) => {
+          if (r.success && Array.isArray(r.data)) updates.labelPolicies = r.data.length;
+        }).catch((err) => { console.error('Failed to fetch label policies:', err); }),
         invoke('Get-SLAutoLabelPolicy').then((r) => {
           if (r.success && Array.isArray(r.data)) updates.autoLabelPolicies = r.data.length;
-        }).catch(() => {}),
+        }).catch((err) => { console.error('Failed to fetch auto-label policies:', err); }),
       );
     }
 
     promises.push(
       invoke('Get-SLSnapshot').then((r) => {
         if (r.success && Array.isArray(r.data)) updates.snapshots = r.data.length;
-      }).catch(() => {}),
-    );
-
-    promises.push(
-      invoke('Get-SLElevationStatus').then((r) => {
-        if (r.success && r.data) {
-          const d = r.data as { State?: { ActiveJob?: unknown } };
-          updates.activeElevations = d.State?.ActiveJob ? 1 : 0;
-        }
-      }).catch(() => {}),
+      }).catch((err) => { console.error('Failed to fetch snapshots:', err); }),
     );
 
     await Promise.all(promises);
@@ -96,8 +80,8 @@ export default function DashboardPage({ onNavigate }: DashboardPageProps) {
       if (auditResult.success && Array.isArray(auditResult.data)) {
         setRecentActivity(auditResult.data);
       }
-    } catch {
-      // Audit log may not exist yet
+    } catch (err) {
+      console.error('Failed to fetch audit log:', err);
     }
 
     setLoading(false);
@@ -154,19 +138,11 @@ export default function DashboardPage({ onNavigate }: DashboardPageProps) {
 
       <ConnectionStrip status={status} />
 
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-2 gap-3">
         <StatCard title="Sensitivity Labels" value={stats.labels} loading={loading} onClick={() => onNavigate?.('labels')} />
-        <StatCard title="DLP Policies" value={stats.dlpPolicies} loading={loading} onClick={() => onNavigate?.('dlp')} />
-        <StatCard title="Retention Policies" value={stats.retentionPolicies} loading={loading} onClick={() => onNavigate?.('retention')} />
+        <StatCard title="Label Policies" value={stats.labelPolicies} loading={loading} onClick={() => onNavigate?.('labels')} />
         <StatCard title="Auto-Label Policies" value={stats.autoLabelPolicies} loading={loading} onClick={() => onNavigate?.('labels')} />
         <StatCard title="Snapshots" value={stats.snapshots} loading={loading} onClick={() => onNavigate?.('snapshots')} />
-        <StatCard
-          title="Active Elevations"
-          value={stats.activeElevations}
-          loading={loading}
-          alert={!!stats.activeElevations && stats.activeElevations > 0}
-          onClick={() => onNavigate?.('elevation')}
-        />
       </div>
 
       <div className="grid grid-cols-2 gap-3">
@@ -181,7 +157,7 @@ function PageHeader() {
   return (
     <div>
       <h1 className="text-2xl font-semibold text-white tracking-tight">Dashboard</h1>
-      <p className="text-zinc-500 text-sm mt-0.5">Tenant compliance overview</p>
+      <p className="text-zinc-500 text-sm mt-0.5">Sensitivity label overview</p>
     </div>
   );
 }
@@ -191,7 +167,7 @@ function WelcomeCard({ onConnect }: { onConnect: () => void }) {
     <div className="bg-white/[0.03] rounded-xl p-10 text-center max-w-lg mx-auto">
       <h2 className="text-xl font-semibold text-zinc-200 mb-2">Not Connected</h2>
       <p className="text-zinc-500 text-sm mb-8 leading-relaxed">
-        Connect to Microsoft Purview to manage sensitivity labels, DLP policies, retention, and more.
+        Connect to Microsoft 365 to manage sensitivity labels, auto-labelling policies, and document protection.
       </p>
       <button
         onClick={onConnect}
@@ -244,13 +220,11 @@ function StatCard({
   title,
   value,
   loading,
-  alert,
   onClick,
 }: {
   title: string;
   value: number | null;
   loading: boolean;
-  alert?: boolean;
   onClick?: () => void;
 }) {
   return (
@@ -259,7 +233,7 @@ function StatCard({
       className="bg-white/[0.03] hover:bg-white/[0.05] rounded-xl p-5 text-left transition-colors cursor-pointer"
     >
       <p className="text-[12px] text-zinc-500">{title}</p>
-      <p className={`text-3xl font-semibold mt-1.5 tracking-tight ${alert ? 'text-red-400' : 'text-white'}`}>
+      <p className="text-3xl font-semibold mt-1.5 tracking-tight text-white">
         {loading && value === null ? (
           <span className="inline-block w-8 h-8 bg-white/[0.06] rounded animate-pulse" />
         ) : (
@@ -336,7 +310,8 @@ function QuickActions({
       } else {
         setSnapshotResult(result.error ?? 'Failed');
       }
-    } catch {
+    } catch (err) {
+      console.error('Failed to take snapshot:', err);
       setSnapshotResult('Failed');
     }
     setSnapshotting(false);
@@ -349,20 +324,20 @@ function QuickActions({
       <div className="space-y-2">
         <ActionButton
           label="Take Snapshot"
-          description="Capture current tenant configuration"
+          description="Capture current label configuration"
           loading={snapshotting}
           result={snapshotResult}
           onClick={takeSnapshot}
         />
         <ActionButton
-          label="Run Health Check"
-          description="Analyze policy health across all services"
+          label="Label Report"
+          description="View label distribution and mismatches"
           onClick={() => onNavigate?.('analysis')}
         />
         <ActionButton
-          label="View Templates"
-          description="Pre-built compliance configurations"
-          onClick={() => onNavigate?.('templates')}
+          label="Manage Documents"
+          description="Apply or remove labels from documents"
+          onClick={() => onNavigate?.('documents')}
         />
       </div>
     </div>

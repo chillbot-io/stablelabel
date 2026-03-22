@@ -1,11 +1,12 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, act, waitFor } from '@testing-library/react';
-import { useConnectionStatus } from '../../renderer/hooks/useConnectionStatus';
+import { useConnectionStatus, _resetForTesting } from '../../renderer/hooks/useConnectionStatus';
 import { mockInvoke } from '../setup';
 
 describe('useConnectionStatus', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    _resetForTesting();
   });
 
   const mockStatus = {

@@ -8,9 +8,8 @@ function Restore-SLSnapshot {
         so the restore itself is rollback-able.
 
         Restore order (respects dependencies):
-        1. Remove rules/policies not in snapshot
+        1. Remove policies not in snapshot
         2. Recreate/update policies from snapshot
-        3. Recreate/update rules from snapshot
 
         Sensitivity label definitions are NOT restored (read-only in API).
     .PARAMETER Name
@@ -44,6 +43,7 @@ function Restore-SLSnapshot {
     )
 
     begin {
+        Assert-SLSnapshotName -Name $Name
         Assert-SLConnected -Require Compliance
     }
 
@@ -94,15 +94,11 @@ function Restore-SLSnapshot {
         $plan = [System.Collections.Generic.List[PSCustomObject]]::new()
 
         $restorableCategories = @(
-            @{ Category = 'DlpRules';          Verb = 'DLP Rule';             RemoveCmd = 'Remove-DlpComplianceRule';     NewCmd = 'New-DlpComplianceRule';     SetCmd = 'Set-DlpComplianceRule' }
-            @{ Category = 'DlpPolicies';       Verb = 'DLP Policy';           RemoveCmd = 'Remove-DlpCompliancePolicy';   NewCmd = 'New-DlpCompliancePolicy';   SetCmd = 'Set-DlpCompliancePolicy' }
             @{ Category = 'AutoLabelPolicies'; Verb = 'Auto-Label Policy';    RemoveCmd = 'Remove-AutoSensitivityLabelPolicy'; NewCmd = 'New-AutoSensitivityLabelPolicy'; SetCmd = 'Set-AutoSensitivityLabelPolicy' }
             @{ Category = 'LabelPolicies';     Verb = 'Label Policy';         RemoveCmd = 'Remove-LabelPolicy';           NewCmd = 'New-LabelPolicy';           SetCmd = 'Set-LabelPolicy' }
-            @{ Category = 'RetentionPolicies'; Verb = 'Retention Policy';     RemoveCmd = 'Remove-RetentionCompliancePolicy'; NewCmd = 'New-RetentionCompliancePolicy'; SetCmd = 'Set-RetentionCompliancePolicy' }
-            @{ Category = 'RetentionLabels';   Verb = 'Retention Label';      RemoveCmd = 'Remove-ComplianceTag';         NewCmd = 'New-ComplianceTag';         SetCmd = 'Set-ComplianceTag' }
         )
 
-        # Phase 1: Removals (rules first, then policies)
+        # Phase 1: Removals
         foreach ($cat in $restorableCategories) {
             $catDiff = $diff.Categories.PSObject.Properties[$cat.Category]
             if (-not $catDiff) { continue }
@@ -119,7 +115,7 @@ function Restore-SLSnapshot {
             }
         }
 
-        # Phase 2: Recreations and modifications (policies first, then rules)
+        # Phase 2: Recreations and modifications (policies first)
         $reversedCategories = @($restorableCategories)
         [array]::Reverse($reversedCategories)
 
@@ -130,21 +126,23 @@ function Restore-SLSnapshot {
 
             foreach ($item in $catData.Removed) {
                 $plan.Add([PSCustomObject]@{
-                    Phase    = 'Create'
-                    Category = $cat.Verb
-                    Identity = $item.Identity
-                    Action   = "Create (exists in snapshot but not in live)"
-                    Command  = $cat.NewCmd
+                    Phase        = 'Create'
+                    Category     = $cat.Verb
+                    Identity     = $item.Identity
+                    Action       = "Create (exists in snapshot but not in live)"
+                    Command      = $cat.NewCmd
+                    SnapshotItem = $item.Item
                 })
             }
 
             foreach ($item in $catData.Modified) {
                 $plan.Add([PSCustomObject]@{
-                    Phase    = 'Update'
-                    Category = $cat.Verb
-                    Identity = $item.Identity
-                    Action   = "Update (differs between snapshot and live)"
-                    Command  = $cat.SetCmd
+                    Phase        = 'Update'
+                    Category     = $cat.Verb
+                    Identity     = $item.Identity
+                    Action       = "Update (differs between snapshot and live)"
+                    Command      = $cat.SetCmd
+                    SnapshotItem = $item.SnapshotState
                 })
             }
         }
@@ -158,7 +156,6 @@ function Restore-SLSnapshot {
             Updates         = @($plan | Where-Object Phase -eq 'Update').Count
             DryRun          = [bool]$DryRun
             Plan            = $plan
-            Warning         = 'DLP policy changes may take up to 24 hours to propagate to Outlook clients.'
         }
 
         if ($DryRun) {
@@ -175,8 +172,6 @@ function Restore-SLSnapshot {
             $color = switch ($step.Phase) { 'Remove' { 'Red' } 'Create' { 'Green' } 'Update' { 'Cyan' } }
             Write-Host "  [$($step.Phase.ToUpper())] $($step.Category): $($step.Identity)" -ForegroundColor $color
         }
-        Write-Host ''
-        Write-Host 'WARNING: DLP policy changes may take up to 24 hours to propagate to Outlook clients.' -ForegroundColor DarkYellow
         Write-Host ''
 
         if (-not $PSCmdlet.ShouldProcess("$($plan.Count) changes from snapshot '$Name'", 'Restore tenant configuration')) {
@@ -202,28 +197,51 @@ function Restore-SLSnapshot {
             try {
                 switch ($step.Phase) {
                     'Remove' {
-                        Invoke-SLComplianceCommand -ScriptBlock ([scriptblock]::Create("$($step.Command) -Identity '$($step.Identity)' -Confirm:`$false")) -OperationName "Restore: $($step.Command)"
+                        # Use closure to safely pass variables — avoid scriptblock::Create
+                        # with string interpolation which is vulnerable to injection via
+                        # crafted snapshot Identity values
+                        $cmd = $step.Command
+                        $id = $step.Identity
+                        Invoke-SLComplianceCommand -ScriptBlock {
+                            & $cmd -Identity $id -Confirm:$false
+                        }.GetNewClosure() -OperationName "Restore: $($step.Command)"
                     }
                     'Create' {
-                        # For creates, we need the full object from the snapshot
-                        Write-Warning "Create operations require manual implementation per category. Skipping: $($step.Identity)"
-                        $results.Add([PSCustomObject]@{
-                            Step    = $step
-                            Status  = 'Skipped'
-                            Error   = 'Create operations not yet implemented'
-                        })
-                        $failCount++
-                        continue
+                        $snapshotItem = $step.SnapshotItem
+                        switch ($step.Category) {
+                            'Label Policy' {
+                                $createParams = @{ Name = $snapshotItem.Name }
+                                if ($snapshotItem.Labels) { $createParams.Labels = @($snapshotItem.Labels) }
+                                if ($snapshotItem.Comment) { $createParams.Comment = $snapshotItem.Comment }
+                                New-SLLabelPolicy @createParams
+                            }
+                            'Auto-Label Policy' {
+                                $createParams = @{ Name = $snapshotItem.Name }
+                                if ($snapshotItem.ApplySensitivityLabel) { $createParams.ApplySensitivityLabel = $snapshotItem.ApplySensitivityLabel }
+                                if ($snapshotItem.ExchangeLocation) { $createParams.ExchangeLocation = @($snapshotItem.ExchangeLocation) }
+                                if ($snapshotItem.SharePointLocation) { $createParams.SharePointLocation = @($snapshotItem.SharePointLocation) }
+                                if ($snapshotItem.OneDriveLocation) { $createParams.OneDriveLocation = @($snapshotItem.OneDriveLocation) }
+                                if ($snapshotItem.Mode) { $createParams.Mode = $snapshotItem.Mode }
+                                New-SLAutoLabelPolicy @createParams
+                            }
+                        }
                     }
                     'Update' {
-                        Write-Warning "Update operations require manual implementation per category. Skipping: $($step.Identity)"
-                        $results.Add([PSCustomObject]@{
-                            Step    = $step
-                            Status  = 'Skipped'
-                            Error   = 'Update operations not yet implemented'
-                        })
-                        $failCount++
-                        continue
+                        $snapshotItem = $step.SnapshotItem
+                        switch ($step.Category) {
+                            'Label Policy' {
+                                $setParams = @{ Identity = $step.Identity }
+                                if ($snapshotItem.Labels) { $setParams.Labels = @($snapshotItem.Labels) }
+                                if ($snapshotItem.Comment) { $setParams.Comment = $snapshotItem.Comment }
+                                Set-SLLabelPolicy @setParams
+                            }
+                            'Auto-Label Policy' {
+                                $setParams = @{ Identity = $step.Identity }
+                                if ($snapshotItem.ApplySensitivityLabel) { $setParams.ApplySensitivityLabel = $snapshotItem.ApplySensitivityLabel }
+                                if ($snapshotItem.Mode) { $setParams.Mode = $snapshotItem.Mode }
+                                Set-SLAutoLabelPolicy @setParams
+                            }
+                        }
                     }
                 }
 
@@ -253,26 +271,18 @@ function Restore-SLSnapshot {
             }
         }
 
-        $skippedCount = @($results | Where-Object { $_.Status -eq 'Skipped' }).Count
-
         $finalResult = [PSCustomObject]@{
             SnapshotName      = $Name
             PreRestoreSnapshot = $preRestoreName
             TotalChanges      = $plan.Count
             Succeeded         = $successCount
             Failed            = $failCount
-            Skipped           = $skippedCount
             Results           = $results
-        }
-
-        if ($skippedCount -gt 0) {
-            Write-Warning "$skippedCount operation(s) were skipped because Create/Update restore is not yet implemented. Review the Results for details."
         }
 
         Write-SLAuditEntry -Action 'Restore-SLSnapshot' -Target $Name -Detail @{
             Succeeded  = $successCount
             Failed     = $failCount
-            Skipped    = $skippedCount
             PreRestore = $preRestoreName
         }
 

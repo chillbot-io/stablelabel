@@ -31,9 +31,10 @@ export default function AutoLabelList({ onOpenAutoLabel, onNewAutoLabel }: AutoL
     setLoading(false);
   };
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- invoke is stable (useCallback with [])
   useEffect(() => {
     fetchPolicies();
-  }, []);
+  }, [invoke]);
 
   const filtered = search.trim()
     ? policies.filter((p) => p.Name.toLowerCase().includes(search.toLowerCase()))
@@ -81,6 +82,7 @@ export default function AutoLabelList({ onOpenAutoLabel, onNewAutoLabel }: AutoL
       <div className="p-2 border-b border-white/[0.06]">
         <input
           type="text"
+          aria-label="Search auto-label policies"
           placeholder="Search auto-label policies..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}

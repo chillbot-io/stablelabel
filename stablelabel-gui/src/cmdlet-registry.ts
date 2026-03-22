@@ -61,7 +61,7 @@ function validatePath(value: string): void {
   }
   // Normalise separators for traversal check
   const normalised = value.replace(/\\/g, '/');
-  if (normalised.includes('/../') || normalised.endsWith('/..') || normalised.startsWith('../')) {
+  if (normalised === '..' || normalised.includes('/../') || normalised.endsWith('/..') || normalised.startsWith('../')) {
     throw new Error('Path traversal detected');
   }
 }
@@ -155,9 +155,16 @@ export function buildCommand(
       case 'items': {
         // Special: array of {DriveId, ItemId} → PowerShell hashtable array
         if (!Array.isArray(value)) throw new Error(`Parameter "-${key}" must be an array`);
-        const entries = value.map((item: unknown) => {
-          const obj = item as Record<string, string>;
-          if (!obj.DriveId || !obj.ItemId) throw new Error('Each item must have DriveId and ItemId');
+        const entries = value.map((item: unknown, idx: number) => {
+          if (typeof item !== 'object' || item === null) throw new Error(`Item ${idx} must be an object`);
+          const obj = item as Record<string, unknown>;
+          const objKeys = Object.keys(obj);
+          if (objKeys.length !== 2 || !objKeys.includes('DriveId') || !objKeys.includes('ItemId')) {
+            throw new Error('Each item must have exactly DriveId and ItemId');
+          }
+          if (typeof obj.DriveId !== 'string' || typeof obj.ItemId !== 'string') {
+            throw new Error('DriveId and ItemId must be strings');
+          }
           return `@{DriveId='${escapePS(obj.DriveId)}';ItemId='${escapePS(obj.ItemId)}'}`;
         });
         parts.push(`-${key} @(${entries.join(',')})`);
@@ -184,6 +191,21 @@ export const CMDLET_REGISTRY: Record<string, CmdletDef> = {
       UseDeviceCode: { type: 'switch' },
     },
   },
+  'Connect-SLGraph': {
+    params: {
+      TenantId: { type: 'string' },
+      UseDeviceCode: { type: 'switch' },
+    },
+  },
+  'Connect-SLCompliance': {
+    params: {
+      UseDeviceCode: { type: 'switch' },
+    },
+  },
+  'Connect-SLProtection': {},
+  'Disconnect-SLGraph': {},
+  'Disconnect-SLCompliance': {},
+  'Disconnect-SLProtection': {},
   'Get-SLConnectionStatus': {},
 
   // ── Labels ────────────────────────────────────────────────────────────
@@ -203,7 +225,7 @@ export const CMDLET_REGISTRY: Record<string, CmdletDef> = {
   'New-SLLabelPolicy': {
     confirm: true,
     params: {
-      Name: { type: 'string', required: true },
+      Name: { type: 'string', required: true, maxLength: 1024 },
       Labels: { type: 'string[]' },
       Comment: { type: 'string', maxLength: 1024 },
     },
@@ -255,144 +277,40 @@ export const CMDLET_REGISTRY: Record<string, CmdletDef> = {
       Identity: { type: 'string', required: true },
     },
   },
-
-  // ── DLP Policies ──────────────────────────────────────────────────────
-  'Get-SLDlpPolicy': {
-    params: {
-      Identity: { type: 'string' },
-    },
-  },
-  'New-SLDlpPolicy': {
-    confirm: true,
-    params: {
-      Name: { type: 'string', required: true, maxLength: 1024 },
-      Comment: { type: 'string', maxLength: 1024 },
-      Mode: { type: 'enum', allowedValues: ['Enable', 'Disable', 'TestWithNotifications', 'TestWithoutNotifications'] },
-      ExchangeLocation: { type: 'string[]' },
-      SharePointLocation: { type: 'string[]' },
-      OneDriveLocation: { type: 'string[]' },
-      TeamsLocation: { type: 'string[]' },
-    },
-  },
-  'Set-SLDlpPolicy': {
-    confirm: true,
-    guiConfirm: true,
-    params: {
-      Identity: { type: 'string', required: true },
-      Comment: { type: 'string', maxLength: 1024 },
-      Mode: { type: 'enum', allowedValues: ['Enable', 'Disable', 'TestWithNotifications', 'TestWithoutNotifications'] },
-    },
-  },
-  'Remove-SLDlpPolicy': {
-    confirm: true,
-    guiConfirm: true,
-    params: {
-      Identity: { type: 'string', required: true },
-    },
-  },
-
-  // ── DLP Rules ─────────────────────────────────────────────────────────
-  'Get-SLDlpRule': {
-    params: {
-      Identity: { type: 'string' },
-    },
-  },
-  'New-SLDlpRule': {
-    confirm: true,
-    params: {
-      Name: { type: 'string', required: true, maxLength: 1024 },
-      Policy: { type: 'string', required: true },
-      Comment: { type: 'string', maxLength: 1024 },
-      BlockAccess: { type: 'boolean' },
-      NotifyUser: { type: 'string[]' },
-      GenerateAlert: { type: 'string[]' },
-    },
-  },
-  'Set-SLDlpRule': {
-    confirm: true,
-    params: {
-      Identity: { type: 'string', required: true },
-      Comment: { type: 'string', maxLength: 1024 },
-      BlockAccess: { type: 'boolean' },
-    },
-  },
-  'Remove-SLDlpRule': {
-    confirm: true,
-    params: {
-      Identity: { type: 'string', required: true },
-    },
-  },
-
-  // ── Sensitive Info Types ──────────────────────────────────────────────
   'Get-SLSensitiveInfoType': {
     params: {
       Identity: { type: 'string' },
+      Search: { type: 'string' },
     },
   },
-
-  // ── Retention Policies ────────────────────────────────────────────────
-  'Get-SLRetentionPolicy': {
-    params: {
-      Identity: { type: 'string' },
-    },
-  },
-  'New-SLRetentionPolicy': {
+  'Invoke-SLAutoLabelScan': {
     confirm: true,
     params: {
-      Name: { type: 'string', required: true, maxLength: 1024 },
-      Comment: { type: 'string', maxLength: 1024 },
-      Enabled: { type: 'boolean' },
-      ExchangeLocation: { type: 'string[]' },
-      SharePointLocation: { type: 'string[]' },
-      OneDriveLocation: { type: 'string[]' },
-      ModernGroupLocation: { type: 'string[]' },
+      SiteId: { type: 'string' },
+      DriveId: { type: 'string' },
+      FolderId: { type: 'string' },
+      Recursive: { type: 'switch' },
+      LabelId: { type: 'guid' },
+      LabelName: { type: 'string' },
+      Extensions: { type: 'string[]' },
+      MinSizeBytes: { type: 'number' },
+      MaxSizeBytes: { type: 'number' },
+      FilenamePatterns: { type: 'string[]' },
+      ContentKeywords: { type: 'string[]' },
+      SkipAlreadyLabeled: { type: 'switch' },
+      Justification: { type: 'string' },
+      BatchSize: { type: 'number' },
+      DryRun: { type: 'switch' },
     },
   },
-  'Set-SLRetentionPolicy': {
+  'Register-SLAutoLabelSchedule': {
     confirm: true,
     params: {
-      Identity: { type: 'string', required: true },
-      Comment: { type: 'string', maxLength: 1024 },
-      Enabled: { type: 'boolean' },
-    },
-  },
-  'Remove-SLRetentionPolicy': {
-    confirm: true,
-    guiConfirm: true,
-    params: {
-      Identity: { type: 'string', required: true },
-    },
-  },
-
-  // ── Retention Labels ──────────────────────────────────────────────────
-  'Get-SLRetentionLabel': {
-    params: {
-      Identity: { type: 'string' },
-    },
-  },
-  'New-SLRetentionLabel': {
-    confirm: true,
-    params: {
-      Name: { type: 'string', required: true, maxLength: 1024 },
-      Comment: { type: 'string', maxLength: 1024 },
-      RetentionDuration: { type: 'number' },
-      RetentionAction: { type: 'enum', allowedValues: ['Keep', 'Delete', 'KeepAndDelete'] },
-      RetentionType: { type: 'enum', allowedValues: ['CreationAgeInDays', 'ModificationAgeInDays', 'TaggedAgeInDays'] },
-    },
-  },
-  'Set-SLRetentionLabel': {
-    confirm: true,
-    params: {
-      Identity: { type: 'string', required: true },
-      Comment: { type: 'string', maxLength: 1024 },
-      RetentionDuration: { type: 'number' },
-    },
-  },
-  'Remove-SLRetentionLabel': {
-    confirm: true,
-    guiConfirm: true,
-    params: {
-      Identity: { type: 'string', required: true },
+      TaskName: { type: 'string' },
+      RuleFile: { type: 'path', required: true },
+      Schedule: { type: 'string', required: true },
+      RunAsUser: { type: 'string' },
+      DryRun: { type: 'switch' },
     },
   },
 
@@ -434,222 +352,53 @@ export const CMDLET_REGISTRY: Record<string, CmdletDef> = {
     },
   },
 
-  // ── File Shares ───────────────────────────────────────────────────────
-  'Connect-SLFileShare': {
+  'Import-SLLabelCsv': {
     params: {
-      Path: { type: 'path', required: true },
-      DriveLetter: { type: 'string' },
-      Name: { type: 'string' },
+      CsvText: { type: 'string', required: true },
     },
   },
-  'Disconnect-SLFileShare': {
-    params: {
-      Path: { type: 'path' },
-      All: { type: 'switch' },
-    },
-  },
-  'Get-SLFileShareLabel': {
-    params: {
-      Path: { type: 'string', required: true },
-    },
-  },
-  'Get-SLFileShareScan': {
-    params: {
-      Path: { type: 'path', required: true },
-      Filter: { type: 'string' },
-      Recurse: { type: 'switch' },
-      ReportOnly: { type: 'switch' },
-    },
-  },
-  'Get-SLFileShareInventory': {
-    params: {
-      Path: { type: 'path', required: true },
-      Recurse: { type: 'switch' },
-      ExportPath: { type: 'path' },
-    },
-  },
-  'Set-SLFileShareLabel': {
+  'Remove-SLDocumentLabelBulk': {
     confirm: true,
+    guiConfirm: true,
     params: {
-      Path: { type: 'path', required: true },
-      LabelId: { type: 'string' },
-      LabelName: { type: 'string' },
-      Justification: { type: 'string', maxLength: 1024 },
-      Owner: { type: 'string' },
-      DryRun: { type: 'switch' },
-    },
-  },
-  'Set-SLFileShareLabelBulk': {
-    confirm: true,
-    params: {
-      Path: { type: 'path', required: true },
-      LabelId: { type: 'string' },
-      LabelName: { type: 'string' },
-      Justification: { type: 'string' },
-      Filter: { type: 'string' },
-      Recurse: { type: 'switch' },
-      DryRun: { type: 'switch' },
-    },
-  },
-  'Remove-SLFileShareLabel': {
-    confirm: true,
-    params: {
-      Path: { type: 'path', required: true },
+      Items: { type: 'items', required: true },
+      Mode: { type: 'enum', required: true, allowedValues: ['LabelOnly', 'EncryptionOnly', 'Both'] },
       Justification: { type: 'string', maxLength: 1024 },
       DryRun: { type: 'switch' },
+    },
+  },
+
+  // ── Explorer ────────────────────────────────────────────────────────
+  'Get-SLSiteList': {
+    params: {
+      Search: { type: 'string' },
+    },
+  },
+  'Get-SLDriveChildren': {
+    params: {
+      SiteId: { type: 'string' },
+      DriveId: { type: 'string' },
+      ItemId: { type: 'string' },
+      Path: { type: 'string' },
+    },
+  },
+  'Get-SLDocumentDetail': {
+    params: {
+      DriveId: { type: 'string', required: true },
+      ItemId: { type: 'string', required: true },
     },
   },
 
   // ── Protection / AIP ──────────────────────────────────────────────────
   'Get-SLProtectionConfig': {},
-  'Get-SLProtectionTemplate': {},
-  'Get-SLProtectionAdmin': {},
-  'Get-SLProtectionKey': {},
-  'Get-SLProtectionLog': {
-    params: {
-      UserEmail: { type: 'string' },
-      FromTime: { type: 'string' },
-      ToTime: { type: 'string' },
-    },
-  },
-  'Get-SLOnboardingPolicy': {},
-  'Set-SLOnboardingPolicy': {
-    confirm: true,
-    params: {
-      UseRmsUserLicense: { type: 'boolean' },
-      Scope: { type: 'enum', allowedValues: ['All', 'Department'] },
-      SecurityGroupObjectId: { type: 'string' },
-    },
-  },
-  'Remove-SLProtectionTemplate': {
-    confirm: true,
-    params: {
-      TemplateId: { type: 'guid', required: true },
-    },
-  },
-  'Export-SLProtectionTemplate': {
-    confirm: true,
-    params: {
-      TemplateId: { type: 'guid', required: true },
-      Path: { type: 'path', required: true },
-    },
-  },
-  'Import-SLProtectionTemplate': {
-    confirm: true,
-    params: {
-      Path: { type: 'path', required: true },
-    },
-  },
-  'Get-SLDocumentTrack': {
-    params: {
-      UserEmail: { type: 'string' },
-      FromTime: { type: 'string' },
-      ToTime: { type: 'string' },
-    },
-  },
-  'Revoke-SLDocumentAccess': {
-    confirm: true,
-    params: {
-      ContentId: { type: 'string', required: true },
-      IssuerEmail: { type: 'string', required: true },
-    },
-  },
-  'Restore-SLDocumentAccess': {
-    confirm: true,
-    params: {
-      ContentId: { type: 'string', required: true },
-      IssuerEmail: { type: 'string', required: true },
-    },
-  },
-
-  // ── Elevation ─────────────────────────────────────────────────────────
-  'Get-SLElevationStatus': {},
-  'Get-SLSuperUserStatus': {},
-  'Enable-SLSuperUser': {
-    confirm: true,
-    guiConfirm: true,
-    params: {
-      DryRun: { type: 'switch' },
-    },
-  },
-  'Disable-SLSuperUser': {
-    confirm: true,
-    params: {
-      UserPrincipalName: { type: 'string' },
-      DryRun: { type: 'switch' },
-    },
-  },
-  'Grant-SLSiteAdmin': {
-    confirm: true,
-    params: {
-      SiteUrl: { type: 'string', required: true },
-      UserPrincipalName: { type: 'string', required: true },
-      Role: { type: 'string' },
-      DryRun: { type: 'switch' },
-    },
-  },
-  'Revoke-SLSiteAdmin': {
-    confirm: true,
-    params: {
-      SiteUrl: { type: 'string', required: true },
-      UserPrincipalName: { type: 'string', required: true },
-      DryRun: { type: 'switch' },
-    },
-  },
-  'Grant-SLMailboxAccess': {
-    confirm: true,
-    params: {
-      Identity: { type: 'string', required: true },
-      User: { type: 'string', required: true },
-      AccessRights: { type: 'enum', allowedValues: ['FullAccess', 'ReadPermission', 'ChangePermission'] },
-      DryRun: { type: 'switch' },
-    },
-  },
-  'Revoke-SLMailboxAccess': {
-    confirm: true,
-    params: {
-      Identity: { type: 'string', required: true },
-      User: { type: 'string', required: true },
-      AccessRights: { type: 'enum', allowedValues: ['FullAccess', 'ReadPermission', 'ChangePermission'] },
-      DryRun: { type: 'switch' },
-    },
-  },
-  'Start-SLElevatedJob': {
-    confirm: true,
-    params: {
-      UserPrincipalName: { type: 'string', required: true },
-      TenantId: { type: 'string' },
-      SiteUrls: { type: 'string[]' },
-      FileSharePaths: { type: 'string[]' },
-      SkipSuperUser: { type: 'switch' },
-      SkipSiteAdmin: { type: 'switch' },
-      DryRun: { type: 'switch' },
-    },
-  },
-  'Stop-SLElevatedJob': {
-    params: {
-      JobId: { type: 'string' },
-      Force: { type: 'switch' },
-      ReconnectOriginal: { type: 'switch' },
-    },
-  },
-  'Request-SLPimRole': {
-    confirm: true,
-    params: {
-      RoleDefinitionId: { type: 'string', required: true },
-      Justification: { type: 'string', required: true },
-      DurationHours: { type: 'number', required: true },
-      DryRun: { type: 'switch' },
-    },
-  },
 
   // ── Snapshots ─────────────────────────────────────────────────────────
   'Get-SLSnapshot': {},
   'New-SLSnapshot': {
     confirm: true,
     params: {
-      Name: { type: 'string', required: true },
-      Scope: { type: 'enum', allowedValues: ['All', 'Labels', 'DLP', 'Retention', 'AutoLabel'] },
+      Name: { type: 'string', required: true, maxLength: 128 },
+      Scope: { type: 'enum', allowedValues: ['All', 'Labels', 'AutoLabel'] },
     },
   },
   'Remove-SLSnapshot': {
@@ -664,6 +413,15 @@ export const CMDLET_REGISTRY: Record<string, CmdletDef> = {
       Live: { type: 'switch' },
     },
   },
+  'Restore-SLSnapshot': {
+    confirm: true,
+    guiConfirm: true,
+    params: {
+      Name: { type: 'string', required: true },
+      DryRun: { type: 'switch' },
+      Path: { type: 'path' },
+    },
+  },
 
   // ── Analysis ──────────────────────────────────────────────────────────
   'Get-SLAuditLog': {
@@ -671,31 +429,6 @@ export const CMDLET_REGISTRY: Record<string, CmdletDef> = {
       Last: { type: 'number' },
     },
   },
-  'Get-SLPolicyHealth': {
-    params: {
-      PolicyType: { type: 'enum', allowedValues: ['All', 'DLP', 'Retention', 'AutoLabel', 'Label'] },
-    },
-  },
   'Get-SLLabelReport': {},
   'Get-SLLabelMismatch': {},
-  'Test-SLPolicyConflict': {
-    params: {
-      PolicyType: { type: 'enum', allowedValues: ['All', 'DLP', 'Retention', 'AutoLabel', 'Label'] },
-    },
-  },
-  'Test-SLPermission': {
-    params: {
-      Scope: { type: 'enum', allowedValues: ['All', 'Graph', 'Compliance', 'Protection'] },
-    },
-  },
-
-  // ── Templates ─────────────────────────────────────────────────────────
-  'Get-SLTemplate': {},
-  'Deploy-SLTemplate': {
-    confirm: true,
-    params: {
-      Name: { type: 'string', required: true },
-      DryRun: { type: 'switch' },
-    },
-  },
 };

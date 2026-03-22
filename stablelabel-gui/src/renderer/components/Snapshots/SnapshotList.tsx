@@ -26,7 +26,8 @@ export default function SnapshotList({ onSelect, selectedName, refreshKey }: Pro
     setLoading(false);
   };
 
-  useEffect(() => { fetch(); }, [refreshKey]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- invoke is stable
+  useEffect(() => { fetch(); }, [refreshKey, invoke]);
 
   const filtered = search.trim()
     ? items.filter(s => s.Name.toLowerCase().includes(search.toLowerCase()) || s.Scope?.toLowerCase().includes(search.toLowerCase()))
@@ -39,7 +40,7 @@ export default function SnapshotList({ onSelect, selectedName, refreshKey }: Pro
   return (
     <div className="flex flex-col h-full">
       <div className="p-2 border-b border-white/[0.06]">
-        <input type="text" placeholder="Search snapshots..." value={search} onChange={e => setSearch(e.target.value)} className="w-full px-2.5 py-1.5 text-xs bg-white/[0.06] border border-white/[0.08] rounded-lg text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-blue-500" />
+        <input type="text" aria-label="Search snapshots" placeholder="Search snapshots..." value={search} onChange={e => setSearch(e.target.value)} className="w-full px-2.5 py-1.5 text-xs bg-white/[0.06] border border-white/[0.08] rounded-lg text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-blue-500" />
       </div>
       <div className="px-3 py-1.5 text-xs text-zinc-500 border-b border-white/[0.04]">{items.length} {items.length === 1 ? 'snapshot' : 'snapshots'}</div>
       <div className="flex-1 overflow-y-auto py-1">

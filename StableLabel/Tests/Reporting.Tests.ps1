@@ -2,7 +2,7 @@
 
 <#
 .SYNOPSIS
-    Tests for StableLabel reporting functions: Get-SLActivityReport, Get-SLAuditLog.
+    Tests for StableLabel reporting functions: Get-SLAuditLog.
 #>
 
 BeforeAll {
@@ -11,21 +11,17 @@ BeforeAll {
     $script:SLConnection = @{
         GraphConnected      = $false
         ComplianceConnected = $false
-        ProtectionConnected = $false
         UserPrincipalName   = 'admin@contoso.com'
         TenantId            = 'tenant-123'
-        ConnectedAt         = @{ Graph = $null; Compliance = $null; Protection = $null }
+        ConnectedAt         = @{ Graph = $null; Compliance = $null }
         ComplianceCommandCount = 0
         ComplianceSessionStart = $null
     }
     $script:SLLabelCache = @{ Labels = @(); CachedAt = $null; TenantId = $null }
     $script:SLActiveJob = $null
-    $script:SLFileShares = [System.Collections.Generic.List[hashtable]]::new()
-    $script:SLAipClientType = $null
     $script:SLConfig = @{
         SnapshotPath     = Join-Path $HOME '.stablelabel' 'snapshots'
         AuditLogPath     = Join-Path $TestDrive 'audit.jsonl'
-        ElevationState   = Join-Path $TestDrive 'elevation-state.json'
         GraphApiVersion  = 'v1.0'
         GraphBetaVersion = 'beta'
         GraphBaseUrl     = 'https://graph.microsoft.com'
@@ -42,64 +38,6 @@ BeforeAll {
     foreach ($file in $privateFiles) { . $file.FullName }
     $publicFiles = Get-ChildItem -Path (Join-Path $moduleRoot 'Public') -Filter '*.ps1' -Recurse -ErrorAction SilentlyContinue
     foreach ($file in $publicFiles) { . $file.FullName }
-}
-
-# =============================================================================
-# Get-SLActivityReport
-# =============================================================================
-Describe 'Get-SLActivityReport' {
-    BeforeEach {
-        $script:SLConnection.ComplianceConnected = $true
-        $script:SLConnection.ComplianceSessionStart = [datetime]::UtcNow
-        $script:SLConnection.ComplianceCommandCount = 0
-    }
-
-    It 'Requires Compliance connection' {
-        $script:SLConnection.ComplianceConnected = $false
-        { Get-SLActivityReport -ReportType LabelActivity } | Should -Throw '*Not connected to Compliance*'
-    }
-
-    It 'Returns LabelActivity report' {
-        Mock Invoke-SLComplianceCommand {
-            @(
-                [PSCustomObject]@{ RecordType = 'SensitivityLabelAction'; CreationDate = (Get-Date); UserIds = 'user@contoso.com'; Operations = 'LabelApplied' }
-                [PSCustomObject]@{ RecordType = 'SensitivityLabelAction'; CreationDate = (Get-Date).AddHours(-1); UserIds = 'admin@contoso.com'; Operations = 'LabelRemoved' }
-            )
-        }
-        $result = Get-SLActivityReport -ReportType LabelActivity
-        $result | Should -Not -BeNullOrEmpty
-        @($result).Count | Should -Be 2
-    }
-
-    It 'Returns DlpIncidents report' {
-        Mock Invoke-SLComplianceCommand {
-            @([PSCustomObject]@{ RecordType = 'DLP'; CreationDate = (Get-Date); UserIds = 'user@contoso.com'; Operations = 'DlpRuleMatch' })
-        }
-        $result = Get-SLActivityReport -ReportType DlpIncidents
-        $result | Should -Not -BeNullOrEmpty
-    }
-
-    It 'Returns RetentionActions report' {
-        Mock Invoke-SLComplianceCommand {
-            @([PSCustomObject]@{ RecordType = 'MIPLabel'; CreationDate = (Get-Date); UserIds = 'user@contoso.com' })
-        }
-        $result = Get-SLActivityReport -ReportType RetentionActions
-        $result | Should -Not -BeNullOrEmpty
-    }
-
-    It 'Accepts custom date range' {
-        Mock Invoke-SLComplianceCommand { @() }
-        $result = Get-SLActivityReport -ReportType LabelActivity -StartDate (Get-Date).AddDays(-7) -EndDate (Get-Date)
-        $result | Should -Not -BeNull
-    }
-
-    It 'Returns JSON with -AsJson' {
-        Mock Invoke-SLComplianceCommand {
-            @([PSCustomObject]@{ RecordType = 'SensitivityLabelAction'; CreationDate = (Get-Date); UserIds = 'user@contoso.com' })
-        }
-        $json = Get-SLActivityReport -ReportType LabelActivity -AsJson
-        { $json | ConvertFrom-Json } | Should -Not -Throw
-    }
 }
 
 # =============================================================================

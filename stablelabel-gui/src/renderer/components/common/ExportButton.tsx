@@ -46,6 +46,7 @@ export default function ExportButton({ data, filename, csvHeaders, csvRowMapper,
         <select
           value={format}
           onChange={(e) => setFormat(e.target.value as Format)}
+          aria-label="Export format"
           className="px-1.5 py-1 text-[10px] bg-white/[0.05] border border-white/[0.08] rounded-md text-zinc-300 focus:outline-none"
         >
           <option value="json">JSON</option>

@@ -33,7 +33,7 @@ function Get-SLLabelPolicy {
                 Write-Verbose "Retrieving label policy: $Identity"
                 $result = Invoke-SLComplianceCommand -OperationName "Get-LabelPolicy '$Identity'" -ScriptBlock {
                     Get-LabelPolicy -Identity $Identity
-                }
+                }.GetNewClosure()
             }
             else {
                 Write-Verbose 'Retrieving all label policies.'

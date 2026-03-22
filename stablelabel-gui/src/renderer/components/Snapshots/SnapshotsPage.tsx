@@ -3,9 +3,10 @@ import SnapshotList from './SnapshotList';
 import SnapshotDetail from './SnapshotDetail';
 import SnapshotCreate from './SnapshotCreate';
 import SnapshotDiffView from './SnapshotDiffView';
+import SnapshotRestore from './SnapshotRestore';
 import type { SnapshotDiff } from '../../lib/types';
 
-type View = { type: 'empty' } | { type: 'detail'; name: string } | { type: 'create' } | { type: 'diff'; diff: SnapshotDiff };
+type View = { type: 'empty' } | { type: 'detail'; name: string } | { type: 'create' } | { type: 'diff'; diff: SnapshotDiff } | { type: 'restore'; name: string };
 
 export default function SnapshotsPage() {
   const [view, setView] = useState<View>({ type: 'empty' });
@@ -29,6 +30,14 @@ export default function SnapshotsPage() {
 
   const handleCompare = useCallback((diff: SnapshotDiff) => {
     setView({ type: 'diff', diff });
+  }, []);
+
+  const handleRestore = useCallback((name: string) => {
+    setView({ type: 'restore', name });
+  }, []);
+
+  const handleRestored = useCallback(() => {
+    setRefreshKey(k => k + 1);
   }, []);
 
   return (
@@ -65,13 +74,16 @@ export default function SnapshotsPage() {
           </div>
         )}
         {view.type === 'detail' && (
-          <SnapshotDetail snapshotName={view.name} onDeleted={handleDeleted} onCompare={handleCompare} />
+          <SnapshotDetail snapshotName={view.name} onDeleted={handleDeleted} onCompare={handleCompare} onRestore={() => handleRestore(view.name)} />
         )}
         {view.type === 'create' && (
           <SnapshotCreate onCreated={handleCreated} />
         )}
         {view.type === 'diff' && (
           <SnapshotDiffView diff={view.diff} onClose={() => setView({ type: 'empty' })} />
+        )}
+        {view.type === 'restore' && (
+          <SnapshotRestore snapshotName={view.name} onClose={() => setView({ type: 'detail', name: view.name })} onRestored={handleRestored} />
         )}
       </div>
     </div>

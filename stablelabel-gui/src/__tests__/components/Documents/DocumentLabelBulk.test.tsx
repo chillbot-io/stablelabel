@@ -212,6 +212,9 @@ describe('DocumentLabelBulk', () => {
 
     await user.click(screen.getByRole('button', { name: 'Bulk Apply Labels' }));
 
+    // Confirmation dialog appears — click through it
+    await user.click(screen.getByRole('button', { name: 'Apply Labels' }));
+
     await waitFor(() => {
       expect(mockInvoke).toHaveBeenCalledWith(
         'Set-SLDocumentLabelBulk', expect.objectContaining({
@@ -356,6 +359,7 @@ describe('DocumentLabelBulk', () => {
       // Toggle dry run off
       await user.click(screen.getByRole('switch'));
       await user.click(screen.getByRole('button', { name: 'Bulk Apply Labels' }));
+      await user.click(screen.getByRole('button', { name: 'Apply Labels' }));
 
       await waitFor(() => {
         expect(screen.getByText('Results')).toBeInTheDocument();
@@ -396,6 +400,7 @@ describe('DocumentLabelBulk', () => {
       await user.type(screen.getByPlaceholderText('e.g., Confidential'), 'Secret');
       await user.click(screen.getByRole('switch'));
       await user.click(screen.getByRole('button', { name: 'Bulk Apply Labels' }));
+      await user.click(screen.getByRole('button', { name: 'Apply Labels' }));
 
       await waitFor(() => {
         expect(screen.getByText(/Show item details/)).toBeInTheDocument();
@@ -454,6 +459,7 @@ describe('DocumentLabelBulk', () => {
       await user.type(screen.getByPlaceholderText('e.g., Confidential'), 'Secret');
       await user.click(screen.getByRole('switch'));
       await user.click(screen.getByRole('button', { name: 'Bulk Apply Labels' }));
+      await user.click(screen.getByRole('button', { name: 'Apply Labels' }));
 
       await waitFor(() => {
         expect(screen.getByText('Total')).toBeInTheDocument();
@@ -472,6 +478,7 @@ describe('DocumentLabelBulk', () => {
       await user.type(screen.getByPlaceholderText('e.g., Confidential'), 'Secret');
       await user.click(screen.getByRole('switch'));
       await user.click(screen.getByRole('button', { name: 'Bulk Apply Labels' }));
+      await user.click(screen.getByRole('button', { name: 'Apply Labels' }));
 
       await waitFor(() => {
         const failedDt = screen.getByText('Failed', { selector: 'dt' });
@@ -491,6 +498,7 @@ describe('DocumentLabelBulk', () => {
       await user.type(screen.getByPlaceholderText('e.g., Confidential'), 'Secret');
       await user.click(screen.getByRole('switch'));
       await user.click(screen.getByRole('button', { name: 'Bulk Apply Labels' }));
+      await user.click(screen.getByRole('button', { name: 'Apply Labels' }));
 
       await waitFor(() => {
         const failedDt = screen.getByText('Failed', { selector: 'dt' });

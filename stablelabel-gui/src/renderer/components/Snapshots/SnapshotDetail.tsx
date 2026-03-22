@@ -8,9 +8,10 @@ interface Props {
   snapshotName: string;
   onDeleted: () => void;
   onCompare: (diff: SnapshotDiff) => void;
+  onRestore?: () => void;
 }
 
-export default function SnapshotDetail({ snapshotName, onDeleted, onCompare }: Props) {
+export default function SnapshotDetail({ snapshotName, onDeleted, onCompare, onRestore }: Props) {
   const { invoke } = usePowerShell();
   const [snap, setSnap] = useState<SnapshotSummary | null>(null);
   const [loading, setLoading] = useState(true);
@@ -30,7 +31,7 @@ export default function SnapshotDetail({ snapshotName, onDeleted, onCompare }: P
       } else { setError(r.error ?? 'Failed'); }
       setLoading(false);
     });
-  }, [snapshotName]);
+  }, [snapshotName, invoke]);
 
   const handleDelete = async () => {
     setDeleting(true);
@@ -97,6 +98,11 @@ export default function SnapshotDetail({ snapshotName, onDeleted, onCompare }: P
             <span className="inline-block w-3 h-3 border-2 border-blue-400 border-t-transparent rounded-full animate-spin" />
             {compareElapsed}
           </span>
+        )}
+        {onRestore && (
+          <button onClick={onRestore} className="px-4 py-2 text-xs font-medium text-amber-300 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/20 rounded-lg transition-colors">
+            Restore
+          </button>
         )}
         <button onClick={() => setShowDelete(true)} className="px-4 py-2 text-xs font-medium text-red-300 bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 rounded-lg transition-colors">
           Delete

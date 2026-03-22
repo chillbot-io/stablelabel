@@ -252,8 +252,7 @@ describe('PolicyForm', () => {
       await user.click(screen.getByText('Delete'));
 
       expect(screen.getByText('Delete Label Policy')).toBeInTheDocument();
-      expect(screen.getByText(/Permanently delete/)).toBeInTheDocument();
-      expect(screen.getByText('Global Policy')).toBeInTheDocument();
+      expect(screen.getByText(/Permanently delete "Global Policy"/)).toBeInTheDocument();
       expect(screen.getByText(/This will unpublish all labels/)).toBeInTheDocument();
     });
 

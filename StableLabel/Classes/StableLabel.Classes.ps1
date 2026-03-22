@@ -9,13 +9,4 @@ enum SLBackend {
 enum SLSnapshotScope {
     All
     Labels
-    Dlp
-    Retention
-}
-
-enum SLElevationType {
-    SuperUser
-    SiteAdmin
-    MailboxAccess
-    PimRole
 }

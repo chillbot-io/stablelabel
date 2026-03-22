@@ -2,36 +2,19 @@
 
 **Date**: 2026-03-19
 **Scope**: Full codebase audit — Security, AI Slop, E2E/Tests, Application Logic, Electron Architecture
+**Updated**: 2026-03-22 — Removed findings referencing deleted components (DLP, Retention, FileShare, SuperUser)
 
 ---
 
 ## Executive Summary
 
-32 issues found across 5 audit categories. The app has strong security foundations (cmdlet allowlist, Electron sandboxing, OS-level credential encryption) but suffers from AI-generated code duplication, silent error swallowing, tautological tests, and two command injection vulnerabilities that bypass the otherwise excellent input validation.
+31 issues found across 5 audit categories. The app has strong security foundations (cmdlet allowlist, Electron sandboxing, OS-level credential encryption) but suffers from tautological tests, and needs attention on PowerShell bridge reliability and snapshot restore correctness.
 
 ---
 
 ## CRITICAL & HIGH SEVERITY
 
-### 1. Command Injection in Retention Detail Components
-
-**Severity**: CRITICAL
-**Files**: `stablelabel-gui/src/renderer/components/Retention/RetentionLabelDetail.tsx:19`, `RetentionPolicyDetail.tsx:19`
-
-Uses string interpolation instead of parameterized invoke:
-```typescript
-// VULNERABLE — user input can break out of quotes
-invoke<RetentionLabel>(`Get-SLRetentionLabel -Identity '${labelName}'`)
-
-// SAFE — rest of codebase uses this pattern
-invoke<RetentionLabel>('Get-SLRetentionLabel', { Identity: labelName })
-```
-
-**Fix**: Switch to parameterized invoke like every other detail component.
-
----
-
-### 2. Restore-SLSnapshot Silently Skips Create/Update Operations
+### 1. Restore-SLSnapshot Silently Skips Create/Update Operations
 
 **Severity**: CRITICAL
 **File**: `StableLabel/Public/Snapshot/Restore-SLSnapshot.ps1:204-210`
@@ -42,7 +25,7 @@ The restore function emits `Write-Warning` for Create/Update operations but sets
 
 ---
 
-### 3. npm Dependency Vulnerabilities (32 total)
+### 2. npm Dependency Vulnerabilities (32 total)
 
 **Severity**: HIGH
 **File**: `stablelabel-gui/package.json`
@@ -56,7 +39,7 @@ The restore function emits `Write-Warning` for Create/Update operations but sets
 
 ---
 
-### 4. PowerShell Bridge — No Spawn Error Handler
+### 3. PowerShell Bridge — No Spawn Error Handler
 
 **Severity**: HIGH
 **File**: `stablelabel-gui/src/powershell-bridge.ts:160-168`
@@ -67,7 +50,7 @@ No `.on('error')` handler for the persistent PowerShell process. If the process 
 
 ---
 
-### 5. PowerShell Bridge — Unbounded Buffer Growth
+### 4. PowerShell Bridge — Unbounded Buffer Growth
 
 **Severity**: HIGH
 **File**: `stablelabel-gui/src/powershell-bridge.ts:170-194`
@@ -78,7 +61,7 @@ No `.on('error')` handler for the persistent PowerShell process. If the process 
 
 ---
 
-### 6. PowerShell Bridge — Zombie Process Risk
+### 5. PowerShell Bridge — Zombie Process Risk
 
 **Severity**: HIGH
 **File**: `stablelabel-gui/src/powershell-bridge.ts:345-348`
@@ -89,7 +72,7 @@ No `SIGKILL` escalation if graceful kill fails during dispose.
 
 ---
 
-### 7. Connect-SLAll Partial Connection State
+### 6. Connect-SLAll Partial Connection State
 
 **Severity**: HIGH
 **File**: `StableLabel/Public/Connection/Connect-SLAll.ps1:174-188`
@@ -100,7 +83,7 @@ If Graph succeeds but Compliance fails, returns `PartiallyConnected` but stale c
 
 ---
 
-### 8. Pre-Restore Backup Not Validated
+### 7. Pre-Restore Backup Not Validated
 
 **Severity**: HIGH
 **File**: `StableLabel/Public/Snapshot/Restore-SLSnapshot.ps1:188-189`
@@ -111,41 +94,14 @@ If Graph succeeds but Compliance fails, returns `PartiallyConnected` but stale c
 
 ---
 
-### 9. State Updates After Unmount
+### 8. State Updates After Unmount
 
 **Severity**: HIGH
-**Files**: `DocumentLabelBulk.tsx`, `FileShareLabelBulk.tsx`, `SnapshotDetail.tsx`, `SnapshotList.tsx`
+**Files**: `DocumentLabelBulk.tsx`, `SnapshotDetail.tsx`, `SnapshotList.tsx`
 
 Async callbacks call `setState` without checking if component is still mounted. Causes React memory leak warnings.
 
 **Fix**: Use cleanup flag or AbortController pattern.
-
----
-
-### 10. Massive Code Duplication (AI Slop)
-
-**Severity**: HIGH
-**Files**: 6+ detail components across DLP, Retention, Labels, Snapshots, Protection
-
-`Card`, `RawJson`, `fmt`/`formatDate`, `LocationRow` helper components are copy-pasted identically. Should be in `common/`.
-
----
-
-### 11. Triple `setActiveTabId` Calls (AI Slop)
-
-**Severity**: HIGH
-**Files**: `DlpPage.tsx:34-41`, `LabelsPage.tsx:34-41`, `RetentionPage.tsx:29-33`
-
-`setActiveTabId(tabId)` called 3 times in same callback — redundant, causes unnecessary re-renders.
-
----
-
-### 12. Silent Error Swallowing
-
-**Severity**: HIGH
-**Files**: `DashboardPage.tsx` (6 instances), `ProtectionConfigPanel.tsx:49`, `LabelDetail.tsx:44`
-
-`.catch(() => {})` and `catch { /* ignore */ }` throughout. Users get no feedback when operations fail.
 
 ---
 
@@ -155,32 +111,28 @@ Async callbacks call `setState` without checking if component is still mounted. 
 
 | # | File | Issue |
 |---|------|-------|
-| 13 | `ConnectionDialog.tsx`, `SettingsPage.tsx` | localStorage stores UPN & tenant ID — should use `safeStorage` |
-| 14 | `Enable-SLSuperUser.ps1:79` | `elevation-state.json` created with default permissions (world-readable on Linux) |
-| 15 | `powershell-bridge.ts:231-270` | No command queue size limit — unbounded growth possible |
-| 16 | `main.ts:136-148` | File dialog `defaultPath` not validated — potential directory traversal |
-| 17 | `cmdlet-registry.ts:58-67` | UNC path traversal not fully validated |
-| 18 | `credential-store.ts:37` | Silent fallback if encryption unavailable — tokens may be stored unencrypted |
+| 9 | `ConnectionDialog.tsx`, `SettingsPage.tsx` | localStorage stores UPN & tenant ID — should use `safeStorage` |
+| 10 | `powershell-bridge.ts:231-270` | No command queue size limit — unbounded growth possible |
+| 11 | `main.ts:136-148` | File dialog `defaultPath` not validated — potential directory traversal |
+| 12 | `cmdlet-registry.ts:58-67` | UNC path traversal not fully validated |
+| 13 | `credential-store.ts:37` | Silent fallback if encryption unavailable — tokens may be stored unencrypted |
 
 ### Application Logic
 
 | # | File | Issue |
 |---|------|-------|
-| 19 | `usePagination.ts:5-16` | Pagination doesn't reset on items change — filtered lists show empty |
-| 20 | `Invoke-SLComplianceCommand.ps1:53-56` | Session recycle resets timestamp — idle timeout miscalculated |
-| 21 | `StableLabel.psm1:54-60` | Module init doesn't validate writable directories |
-| 22 | `SettingsPage.tsx:36-40` | `useEffect` overwrites user-set `modulePath` on reconnect |
-| 23 | `SettingsPage.tsx:25-34` | No validation of localStorage settings shape |
-| 24 | `main.ts:163-165` | macOS: PowerShell bridge not cleaned up when all windows close |
-| 25 | `Set-SLFileShareLabelBulk.ps1:86-93` | Filter parameter not validated — invalid globs silently produce no results |
+| 14 | `usePagination.ts:5-16` | Pagination doesn't reset on items change — filtered lists show empty |
+| 15 | `Invoke-SLComplianceCommand.ps1:53-56` | Session recycle resets timestamp — idle timeout miscalculated |
+| 16 | `StableLabel.psm1:54-60` | Module init doesn't validate writable directories |
+| 17 | `SettingsPage.tsx:36-40` | `useEffect` overwrites user-set `modulePath` on reconnect |
+| 18 | `SettingsPage.tsx:25-34` | No validation of localStorage settings shape |
+| 19 | `main.ts:163-165` | macOS: PowerShell bridge not cleaned up when all windows close |
 
 ### AI Slop
 
 | # | File | Issue |
 |---|------|-------|
-| 26 | `DlpPage.tsx:21`, `LabelsPage.tsx:21`, `RetentionPage.tsx:18` | Module-level mutable `let formCounter` — should use `useRef` |
-| 27 | Multiple detail components | Unsafe type assertions (`as Record<string, unknown>`, `as unknown as T`) |
-| 28 | Across codebase | Inconsistent error handling patterns across similar components |
+| 20 | Across codebase | Inconsistent error handling patterns across similar components |
 
 ---
 
@@ -188,13 +140,13 @@ Async callbacks call `setState` without checking if component is still mounted. 
 
 | # | Severity | Issue |
 |---|----------|-------|
-| 29 | CRITICAL | **No E2E tests exist** — zero integration tests for any user flow |
-| 30 | HIGH | **Tautological tests** — ~30% of assertions verify mock returns equal mock returns |
-| 31 | HIGH | **Only dry-run tested** — all mutation operations only tested with `-WhatIf` |
-| 32 | HIGH | **GUI tests only verify rendering** — no IPC, data flow, or interaction testing |
-| 33 | MEDIUM | **Shared test state** — snapshot/audit tests share `TestDrive` dirs without isolation |
-| 34 | MEDIUM | **Unrealistic mocks** — mock objects missing critical real API properties |
-| 35 | MEDIUM | **Zero tests for**: auth failure recovery, credential persistence, token refresh, concurrency, injection |
+| 21 | CRITICAL | **No E2E tests exist** — zero integration tests for any user flow |
+| 22 | HIGH | **Tautological tests** — ~30% of assertions verify mock returns equal mock returns |
+| 23 | HIGH | **Only dry-run tested** — all mutation operations only tested with `-WhatIf` |
+| 24 | HIGH | **GUI tests only verify rendering** — no IPC, data flow, or interaction testing |
+| 25 | MEDIUM | **Shared test state** — snapshot/audit tests share `TestDrive` dirs without isolation |
+| 26 | MEDIUM | **Unrealistic mocks** — mock objects missing critical real API properties |
+| 27 | MEDIUM | **Zero tests for**: auth failure recovery, credential persistence, token refresh, concurrency, injection |
 
 ---
 
@@ -202,16 +154,16 @@ Async callbacks call `setState` without checking if component is still mounted. 
 
 | # | File | Issue |
 |---|------|-------|
-| 36 | `index.html:6` | CSP allows `style-src 'unsafe-inline'` |
-| 37 | `App.tsx:20-51` | No code splitting — all pages imported eagerly |
-| 38 | `main.ts:109-120` | IPC handlers don't catch exceptions from bridge calls |
-| 39 | Multiple files | Meaningless comments: `/* ignore */`, `// Non-critical` |
+| 28 | `index.html:6` | CSP allows `style-src 'unsafe-inline'` |
+| 29 | `App.tsx:20-51` | No code splitting — all pages imported eagerly |
+| 30 | `main.ts:109-120` | IPC handlers don't catch exceptions from bridge calls |
+| 31 | Multiple files | Meaningless comments: `/* ignore */`, `// Non-critical` |
 
 ---
 
 ## What's Working Well
 
-- **Cmdlet registry allowlist** — excellent command injection prevention (except 2 Retention files)
+- **Cmdlet registry allowlist** — excellent command injection prevention
 - **Electron sandboxing** — `contextIsolation: true`, `nodeIntegration: false`, `sandbox: true`
 - **Credential storage** — OS-level encryption via `safeStorage` with `0o600` permissions
 - **Navigation guards** — external URLs validated against trusted host allowlist
@@ -225,11 +177,8 @@ Async callbacks call `setState` without checking if component is still mounted. 
 
 ## Priority Fix Order
 
-1. **Immediate**: Fix command injection in `RetentionLabelDetail.tsx` and `RetentionPolicyDetail.tsx`
-2. **Immediate**: Fix `Restore-SLSnapshot.ps1` — don't report Success when ops are skipped
-3. **This week**: `npm audit fix`, upgrade Electron
-4. **This week**: Add spawn error handler + buffer limits to `powershell-bridge.ts`
-5. **This week**: Extract duplicated helper components to `common/`
-6. **Soon**: Fix silent error swallowing across Dashboard and detail pages
-7. **Soon**: Add E2E test coverage for critical paths (auth, labels, snapshots, elevation)
-8. **Ongoing**: Replace tautological tests with meaningful assertions
+1. **Immediate**: Fix `Restore-SLSnapshot.ps1` — don't report Success when ops are skipped
+2. **This week**: `npm audit fix`, upgrade Electron
+3. **This week**: Add spawn error handler + buffer limits to `powershell-bridge.ts`
+4. **Soon**: Add E2E test coverage for critical paths (auth, labels, snapshots)
+5. **Ongoing**: Replace tautological tests with meaningful assertions

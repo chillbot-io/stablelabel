@@ -35,6 +35,8 @@ function Compare-SLSnapshot {
     )
 
     begin {
+        Assert-SLSnapshotName -Name $Name
+        if ($CompareTo) { Assert-SLSnapshotName -Name $CompareTo }
         if (-not $Live -and -not $CompareTo) {
             throw "Specify either -Live to compare against current tenant state, or -CompareTo <snapshot-name> to compare two snapshots."
         }
@@ -74,9 +76,7 @@ function Compare-SLSnapshot {
 
         # Compare each data category
         $categories = @(
-            'SensitivityLabels', 'LabelPolicies', 'AutoLabelPolicies',
-            'DlpPolicies', 'DlpRules', 'SensitiveInfoTypes',
-            'RetentionLabels', 'RetentionPolicies'
+            'SensitivityLabels', 'LabelPolicies', 'AutoLabelPolicies'
         )
 
         $diffs = [ordered]@{}
@@ -97,11 +97,6 @@ function Compare-SLSnapshot {
                 'SensitivityLabels'  { 'id' }
                 'LabelPolicies'      { 'Name' }
                 'AutoLabelPolicies'  { 'Name' }
-                'DlpPolicies'        { 'Name' }
-                'DlpRules'           { 'Name' }
-                'SensitiveInfoTypes' { 'Name' }
-                'RetentionLabels'    { 'Name' }
-                'RetentionPolicies'  { 'Name' }
                 default              { 'Name' }
             }
 

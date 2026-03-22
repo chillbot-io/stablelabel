@@ -4,10 +4,7 @@ import type {
   ConnectionStatus,
   SensitivityLabel,
   LabelPolicy,
-  DlpPolicy,
-  RetentionLabel,
   SnapshotSummary,
-  ElevatedJob,
   Page,
 } from '../renderer/lib/types';
 
@@ -70,11 +67,11 @@ describe('TypeScript types', () => {
 
   it('Page type contains all expected pages', () => {
     const pages: Page[] = [
-      'dashboard', 'labels', 'retention', 'dlp', 'documents',
-      'fileshares', 'protection', 'elevation', 'snapshots', 'analysis',
-      'templates', 'settings',
+      'dashboard', 'labels', 'documents', 'manual-label', 'bulk-ops',
+      'explorer', 'snapshots', 'analysis', 'classification', 'audit-log',
+      'settings',
     ];
-    expect(pages).toHaveLength(12);
+    expect(pages).toHaveLength(11);
   });
 
   it('SnapshotSummary shape is valid', () => {
@@ -91,20 +88,5 @@ describe('TypeScript types', () => {
     };
     expect(snapshot.Name).toBe('test-snapshot');
     expect(snapshot.Items.Labels).toBe(10);
-  });
-
-  it('ElevatedJob shape is valid', () => {
-    const job: ElevatedJob = {
-      JobId: 'job-1',
-      UserPrincipalName: 'admin@example.com',
-      StartedAt: '2024-01-01T00:00:00Z',
-      CompletedAt: null,
-      Status: 'Active',
-      Elevations: [
-        { Type: 'SuperUser', Target: 'tenant', Status: 'Granted', Timestamp: '2024-01-01T00:00:00Z' },
-      ],
-    };
-    expect(job.Status).toBe('Active');
-    expect(job.Elevations).toHaveLength(1);
   });
 });

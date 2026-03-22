@@ -7,5 +7,11 @@ dist/
 stablelabel-gui/node_modules/
 stablelabel-gui/out/
 stablelabel-gui/.vite/
+stablelabel-gui/dist/
 coverage/
 stablelabel-gui/coverage/
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+*.egg-info/

@@ -16,7 +16,7 @@ describe('SnapshotCreate', () => {
   it('renders the form title and description', () => {
     render(<SnapshotCreate {...defaultProps} />);
     expect(screen.getByText('New Snapshot')).toBeInTheDocument();
-    expect(screen.getByText(/Capture current tenant configuration/)).toBeInTheDocument();
+    expect(screen.getByText(/Capture current label configuration/)).toBeInTheDocument();
   });
 
   it('renders name input field', () => {
@@ -28,10 +28,9 @@ describe('SnapshotCreate', () => {
   it('renders scope selector with all options', () => {
     render(<SnapshotCreate {...defaultProps} />);
     expect(screen.getByText('Scope')).toBeInTheDocument();
-    expect(screen.getByText('All (Labels + DLP + Retention)')).toBeInTheDocument();
+    expect(screen.getByText('All (Labels + Auto-Label Policies)')).toBeInTheDocument();
     expect(screen.getByText('Labels Only')).toBeInTheDocument();
-    expect(screen.getByText('DLP Only')).toBeInTheDocument();
-    expect(screen.getByText('Retention Only')).toBeInTheDocument();
+    expect(screen.getByText('Auto-Label Policies Only')).toBeInTheDocument();
   });
 
   it('renders the Create Snapshot button', () => {
@@ -84,7 +83,7 @@ describe('SnapshotCreate', () => {
     const input = screen.getByPlaceholderText('e.g., pre-migration-2024');
     await user.type(input, 'labels-only');
 
-    const select = screen.getByDisplayValue('All (Labels + DLP + Retention)');
+    const select = screen.getByDisplayValue('All (Labels + Auto-Label Policies)');
     await user.selectOptions(select, 'Labels');
 
     await user.click(screen.getByText('Create Snapshot'));

@@ -11,21 +11,17 @@ BeforeAll {
     $script:SLConnection = @{
         GraphConnected      = $false
         ComplianceConnected = $false
-        ProtectionConnected = $false
         UserPrincipalName   = $null
         TenantId            = $null
-        ConnectedAt         = @{ Graph = $null; Compliance = $null; Protection = $null }
+        ConnectedAt         = @{ Graph = $null; Compliance = $null }
         ComplianceCommandCount = 0
         ComplianceSessionStart = $null
     }
     $script:SLLabelCache = @{ Labels = @(); CachedAt = $null; TenantId = $null }
     $script:SLActiveJob = $null
-    $script:SLFileShares = [System.Collections.Generic.List[hashtable]]::new()
-    $script:SLAipClientType = $null
     $script:SLConfig = @{
         SnapshotPath     = Join-Path $HOME '.stablelabel' 'snapshots'
         AuditLogPath     = Join-Path $HOME '.stablelabel' 'audit.jsonl'
-        ElevationState   = Join-Path $HOME '.stablelabel' 'elevation-state.json'
         GraphApiVersion  = 'v1.0'
         GraphBetaVersion = 'beta'
         GraphBaseUrl     = 'https://graph.microsoft.com'
@@ -375,140 +371,6 @@ Describe 'Build-SLLabelTree' {
 }
 
 # =============================================================================
-# DLP
-# =============================================================================
-Describe 'Get-SLDlpPolicy' {
-    BeforeEach {
-        $script:SLConnection.ComplianceConnected = $true
-        $script:SLConnection.ComplianceSessionStart = [datetime]::UtcNow
-        $script:SLConnection.ComplianceCommandCount = 0
-    }
-
-    It 'Requires Compliance connection' {
-        $script:SLConnection.ComplianceConnected = $false
-        { Get-SLDlpPolicy } | Should -Throw '*Not connected to Compliance*'
-    }
-
-    It 'Returns all DLP policies' {
-        Mock Get-DlpCompliancePolicy {
-            @(
-                [PSCustomObject]@{ Name = 'Policy1'; Enabled = $true }
-                [PSCustomObject]@{ Name = 'Policy2'; Enabled = $false }
-            )
-        }
-        $result = Get-SLDlpPolicy
-        $result | Should -HaveCount 2
-    }
-
-    It 'Returns specific policy by Identity' {
-        Mock Get-DlpCompliancePolicy {
-            [PSCustomObject]@{ Name = 'Credit Card Policy'; Enabled = $true }
-        }
-        $result = Get-SLDlpPolicy -Identity 'Credit Card Policy'
-        $result.Name | Should -Be 'Credit Card Policy'
-    }
-
-    It 'Returns JSON with -AsJson' {
-        Mock Get-DlpCompliancePolicy {
-            @([PSCustomObject]@{ Name = 'Test'; Enabled = $true })
-        }
-        $json = Get-SLDlpPolicy -AsJson
-        { $json | ConvertFrom-Json } | Should -Not -Throw
-    }
-}
-
-# =============================================================================
-# Retention
-# =============================================================================
-Describe 'Get-SLRetentionLabel' {
-    BeforeEach {
-        $script:SLConnection.ComplianceConnected = $true
-        $script:SLConnection.ComplianceSessionStart = [datetime]::UtcNow
-        $script:SLConnection.ComplianceCommandCount = 0
-    }
-
-    It 'Requires Compliance connection' {
-        $script:SLConnection.ComplianceConnected = $false
-        { Get-SLRetentionLabel } | Should -Throw '*Not connected to Compliance*'
-    }
-
-    It 'Returns all retention labels' {
-        Mock Get-ComplianceTag {
-            @(
-                [PSCustomObject]@{ Name = 'FinancialRecords'; RetentionDuration = 2555 }
-                [PSCustomObject]@{ Name = 'LegalHold'; RetentionDuration = 0 }
-            )
-        }
-        $result = Get-SLRetentionLabel
-        $result | Should -HaveCount 2
-    }
-
-    It 'Returns specific label by Identity' {
-        Mock Get-ComplianceTag {
-            [PSCustomObject]@{ Name = 'FinancialRecords'; RetentionDuration = 2555 }
-        }
-        $result = Get-SLRetentionLabel -Identity 'FinancialRecords'
-        $result.Name | Should -Be 'FinancialRecords'
-    }
-}
-
-# =============================================================================
-# Templates
-# =============================================================================
-Describe 'Get-SLTemplate' {
-    It 'Returns all built-in templates' {
-        $result = Get-SLTemplate
-        $result.Count | Should -BeGreaterOrEqual 5
-    }
-
-    It 'Returns Standard-Labels template by name' {
-        $result = Get-SLTemplate -Name 'Standard-Labels'
-        $result.Name | Should -Be 'Standard-Labels'
-        $result.Type | Should -Be 'Labels'
-    }
-
-    It 'Returns GDPR-DLP template by name' {
-        $result = Get-SLTemplate -Name 'GDPR-DLP'
-        $result.Name | Should -Be 'GDPR-DLP'
-        $result.Type | Should -Be 'DLP'
-    }
-
-    It 'Returns Healthcare-HIPAA template' {
-        $result = Get-SLTemplate -Name 'Healthcare-HIPAA'
-        $result.SensitiveInfoTypes | Should -Contain 'U.S. Social Security Number'
-    }
-
-    It 'Returns PCI-DSS template' {
-        $result = Get-SLTemplate -Name 'PCI-DSS'
-        $result.SensitiveInfoTypes | Should -Contain 'Credit Card Number'
-    }
-
-    It 'Returns PII-Protection template' {
-        $result = Get-SLTemplate -Name 'PII-Protection'
-        $result.Type | Should -Be 'DLP'
-    }
-
-    It 'Warns when template not found' {
-        $result = Get-SLTemplate -Name 'NonExistent' -WarningAction SilentlyContinue
-        $result | Should -BeNullOrEmpty
-    }
-
-    It 'Returns JSON with -AsJson' {
-        $json = Get-SLTemplate -AsJson
-        { $json | ConvertFrom-Json } | Should -Not -Throw
-    }
-
-    It 'Each template has Name, Description, and Type' {
-        $templates = Get-SLTemplate
-        foreach ($t in $templates) {
-            $t.Name | Should -Not -BeNullOrEmpty
-            $t.Description | Should -Not -BeNullOrEmpty
-            $t.Type | Should -Not -BeNullOrEmpty
-        }
-    }
-}
-
-# =============================================================================
 # Snapshots
 # =============================================================================
 Describe 'Get-SLSnapshot' {
@@ -591,34 +453,6 @@ Describe 'Remove-SLSnapshot' {
         $result = Remove-SLSnapshot -Name 'to-remove' -Path $testSnapDir -Confirm:$false
         $result.Removed | Should -BeTrue
         Test-Path $snapFile | Should -BeFalse
-    }
-}
-
-# =============================================================================
-# Elevation
-# =============================================================================
-Describe 'Get-SLElevationStatus' {
-    It 'Returns empty state when file does not exist' {
-        $script:SLConfig.ElevationState = Join-Path $TestDrive 'nonexistent-elevation.json'
-
-        $result = Get-SLElevationStatus
-        $result.Exists | Should -BeFalse
-        $result.StatePath | Should -Be (Join-Path $TestDrive 'nonexistent-elevation.json')
-    }
-
-    It 'Reads existing elevation state file' {
-        $statePath = Join-Path $TestDrive 'elevation-state.json'
-        @{ ActiveJobs = @() } | ConvertTo-Json | Out-File $statePath -Encoding utf8
-        $script:SLConfig.ElevationState = $statePath
-
-        $result = Get-SLElevationStatus
-        $result.Exists | Should -BeTrue
-    }
-
-    It 'Returns JSON with -AsJson' {
-        $script:SLConfig.ElevationState = Join-Path $TestDrive 'nonexistent-elevation2.json'
-        $json = Get-SLElevationStatus -AsJson
-        { $json | ConvertFrom-Json } | Should -Not -Throw
     }
 }
 
@@ -785,7 +619,6 @@ Describe 'Compare-SLSnapshot' {
     It 'Detects no changes between identical snapshots' {
         $data = @{
             SensitivityLabels = @([PSCustomObject]@{ id = 'l1'; name = 'Label1' })
-            DlpPolicies = @()
         }
         $snap = [ordered]@{ SnapshotId = 'snap-a'; Scope = 'All'; Data = $data }
         $snapJson = $snap | ConvertTo-Json -Depth 20

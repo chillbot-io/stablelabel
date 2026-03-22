@@ -24,7 +24,12 @@ declare global {
         filters?: Array<{ name: string; extensions: string[] }>;
       }) => Promise<string | null>;
       clearCredentials: () => Promise<void>;
+      updateSettings: (settings: { timeout?: number; logLevel?: string }) => Promise<void>;
       platform: string;
+      /** Classifier (Presidio) methods */
+      classifierInvoke: (action: string, params?: Record<string, unknown>) => Promise<PsResult>;
+      checkClassifier: () => Promise<{ available: boolean; mode?: string; error?: string }>;
+      getClassifierStatus: () => Promise<{ initialized: boolean }>;
     };
   }
 }

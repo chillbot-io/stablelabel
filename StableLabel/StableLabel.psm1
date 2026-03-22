@@ -1,6 +1,6 @@
 #Requires -Version 7.0
 
-# StableLabel - Unified Microsoft Purview Compliance Management Module
+# StableLabel - Sensitivity Label Management for Microsoft 365
 
 # Module-scoped connection state
 $script:SLConnection = @{
@@ -26,12 +26,6 @@ $script:SLLabelCache = @{
     TenantId  = $null
 }
 
-# Module-scoped active elevated job (used by Start/Invoke/Stop-SLElevatedJob)
-$script:SLActiveJob = $null
-
-# Module-scoped file share connections (used by Connect/Disconnect-SLFileShare)
-$script:SLFileShares = [System.Collections.Generic.List[hashtable]]::new()
-
 # Module-scoped AIP client type (set by Assert-SLAipClient: 'UnifiedLabeling' or 'Legacy')
 $script:SLAipClientType = $null
 
@@ -39,7 +33,6 @@ $script:SLAipClientType = $null
 $script:SLConfig = @{
     SnapshotPath    = Join-Path $HOME '.stablelabel' 'snapshots'
     AuditLogPath    = Join-Path $HOME '.stablelabel' 'audit.jsonl'
-    ElevationState  = Join-Path $HOME '.stablelabel' 'elevation-state.json'
     GraphApiVersion = 'v1.0'
     GraphBetaVersion = 'beta'
     GraphBaseUrl    = 'https://graph.microsoft.com'

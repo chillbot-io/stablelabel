@@ -3,6 +3,9 @@ import { usePowerShell } from '../../hooks/usePowerShell';
 import { useElapsedTime } from '../../hooks/useElapsedTime';
 import { TextField, TextArea, ToggleField } from '../common/FormFields';
 import type { BulkLabelResult } from '../../lib/types';
+import BulkResultSummary from '../common/BulkResultSummary';
+import ConfirmDialog from '../common/ConfirmDialog';
+import ShowPowerShell from '../common/ShowPowerShell';
 
 export default function DocumentLabelBulk() {
   const { invoke } = usePowerShell();
@@ -15,6 +18,7 @@ export default function DocumentLabelBulk() {
   const elapsed = useElapsedTime(loading);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<BulkLabelResult | null>(null);
+  const [showConfirm, setShowConfirm] = useState(false);
 
   const parseItems = (): Array<{ DriveId: string; ItemId: string }> | null => {
     try {
@@ -29,7 +33,15 @@ export default function DocumentLabelBulk() {
     }
   };
 
+  const handleClick = () => {
+    if (!labelName.trim() && !labelId.trim()) { setError('Either Label Name or Label ID is required.'); return; }
+    const items = parseItems();
+    if (!items || items.length === 0) { setError('Items must be a JSON array of objects with DriveId and ItemId.'); return; }
+    if (!dryRun) { setShowConfirm(true); } else { handleBulk(); }
+  };
+
   const handleBulk = async () => {
+    setShowConfirm(false);
     if (!labelName.trim() && !labelId.trim()) { setError('Either Label Name or Label ID is required.'); return; }
     const items = parseItems();
     if (!items || items.length === 0) { setError('Items must be a JSON array of objects with DriveId and ItemId.'); return; }
@@ -72,10 +84,15 @@ export default function DocumentLabelBulk() {
       <TextField label="Justification" value={justification} onChange={setJustification} placeholder="Reason for bulk label assignment..." />
       <ToggleField label="Dry Run" checked={dryRun} onChange={setDryRun} helpText="Simulate the operation. Recommended before running for real." />
 
+      <ShowPowerShell
+        cmdlet="Set-SLDocumentLabelBulk"
+        params={{ Items: parseItems() ?? [], LabelId: labelId.trim() || undefined, LabelName: labelName.trim() || undefined, Justification: justification.trim() || undefined, DryRun: dryRun || undefined }}
+      />
+
       {error && <div className="p-3 bg-red-900/20 border border-red-800 rounded-lg text-sm text-red-300">{error}</div>}
 
       <div className="flex items-center gap-3">
-        <button onClick={handleBulk} disabled={loading} className="px-4 py-2 text-xs font-medium text-white bg-blue-600 hover:bg-blue-500 disabled:bg-blue-600/50 rounded-lg transition-colors">
+        <button onClick={handleClick} disabled={loading} className={`px-4 py-2 text-xs font-medium text-white rounded-lg transition-colors disabled:opacity-50 ${dryRun ? 'bg-blue-600 hover:bg-blue-500' : 'bg-amber-600 hover:bg-amber-500'}`}>
           {loading ? 'Processing...' : dryRun ? 'Dry Run — Bulk Apply' : 'Bulk Apply Labels'}
         </button>
         {loading && (
@@ -86,54 +103,19 @@ export default function DocumentLabelBulk() {
         )}
       </div>
 
-      {result && <BulkResult result={result} />}
-    </div>
-  );
-}
+      {result && <BulkResultSummary result={result} />}
 
-function BulkResult({ result }: { result: BulkLabelResult }) {
-  const [showDetails, setShowDetails] = useState(false);
-
-  return (
-    <div className="bg-white/[0.03] rounded-xl p-4 space-y-3">
-      <h4 className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">
-        {result.DryRun ? 'Dry Run Results' : 'Results'}
-      </h4>
-
-      <div className="grid grid-cols-3 gap-3">
-        <div className="bg-white/[0.06] rounded-lg p-2.5">
-          <dt className="text-xs text-zinc-500">Total</dt>
-          <dd className="text-lg font-bold text-zinc-200">{result.TotalItems}</dd>
-        </div>
-        <div className="bg-white/[0.06] rounded-lg p-2.5">
-          <dt className="text-xs text-zinc-500">Succeeded</dt>
-          <dd className="text-lg font-bold text-emerald-400">{result.SuccessCount}</dd>
-        </div>
-        <div className="bg-white/[0.06] rounded-lg p-2.5">
-          <dt className="text-xs text-zinc-500">Failed</dt>
-          <dd className={`text-lg font-bold ${result.FailedCount > 0 ? 'text-red-400' : 'text-zinc-400'}`}>{result.FailedCount}</dd>
-        </div>
-      </div>
-
-      {result.Results && result.Results.length > 0 && (
-        <div>
-          <button onClick={() => setShowDetails(!showDetails)} className="text-xs text-zinc-500 hover:text-zinc-300">
-            {showDetails ? '▾ Hide' : '▸ Show'} item details
-          </button>
-          {showDetails && (
-            <div className="mt-2 space-y-1 max-h-48 overflow-auto">
-              {result.Results.map((item, i) => (
-                <div key={i} className="flex items-center justify-between px-2.5 py-1.5 bg-white/[0.06] rounded-lg text-xs">
-                  <span className="text-zinc-400 font-mono truncate">{item.DriveId}/{item.ItemId}</span>
-                  <span className={`px-1.5 py-0.5 rounded-lg ${item.Status === 'Failed' ? 'bg-red-500/10 text-red-400' : item.Status === 'DryRun' ? 'bg-yellow-500/10 text-yellow-400' : 'bg-emerald-400/10 text-emerald-400'}`}>
-                    {item.Status}
-                  </span>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
+      {showConfirm && (
+        <ConfirmDialog
+          title="Confirm Bulk Label Apply"
+          message={`This will apply label "${labelName.trim() || labelId.trim()}" to ${parseItems()?.length ?? 0} documents. Run a dry run first if you haven't already.`}
+          confirmLabel="Apply Labels"
+          variant="warning"
+          onConfirm={handleBulk}
+          onCancel={() => setShowConfirm(false)}
+        />
       )}
     </div>
   );
 }
+

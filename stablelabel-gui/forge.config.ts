@@ -12,9 +12,24 @@ const config: ForgeConfig = {
     name: 'StableLabel',
     executableName: 'stablelabel',
     icon: './assets/icon',
+    // Code signing — set via environment variables in CI/CD:
+    //   Windows: WINDOWS_CERTIFICATE_FILE, WINDOWS_CERTIFICATE_PASSWORD
+    //   macOS: APPLE_IDENTITY (e.g., "Developer ID Application: ...")
+    ...(process.env.APPLE_IDENTITY ? {
+      osxSign: {
+        identity: process.env.APPLE_IDENTITY,
+      },
+      osxNotarize: process.env.APPLE_TEAM_ID ? {
+        teamId: process.env.APPLE_TEAM_ID,
+      } : undefined,
+    } : {}),
     extraResource: [
       // Bundle the PowerShell module inside the app
       '../StableLabel',
+      // Bundle the Presidio classifier directory (built via PyInstaller --onedir)
+      // Run: cd stablelabel-classifier && python build_exe.py
+      // This bundles the entire dist/stablelabel-classifier/ directory
+      '../stablelabel-classifier/dist/stablelabel-classifier',
     ],
   },
   rebuildConfig: {},
@@ -22,6 +37,11 @@ const config: ForgeConfig = {
     new MakerSquirrel({
       name: 'StableLabel',
       setupIcon: './assets/icon.ico',
+      // Windows code signing — set WINDOWS_CERTIFICATE_FILE and WINDOWS_CERTIFICATE_PASSWORD in CI
+      ...(process.env.WINDOWS_CERTIFICATE_FILE ? {
+        certificateFile: process.env.WINDOWS_CERTIFICATE_FILE,
+        certificatePassword: process.env.WINDOWS_CERTIFICATE_PASSWORD,
+      } : {}),
     }),
     new MakerZIP({}, ['darwin']),
     new MakerDeb({

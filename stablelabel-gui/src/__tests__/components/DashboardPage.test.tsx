@@ -21,7 +21,6 @@ const connectedStatus = {
 };
 
 function setupConnected() {
-  // First call = connection status check, subsequent = data fetches
   mockInvoke
     .mockResolvedValueOnce({ success: true, data: connectedStatus })
     .mockResolvedValue({ success: true, data: [] });
@@ -32,16 +31,12 @@ function setupConnectedWithStats() {
     .mockResolvedValueOnce({ success: true, data: connectedStatus })
     // Get-SLLabel
     .mockResolvedValueOnce({ success: true, data: [{ Name: 'Confidential' }, { Name: 'Public' }, { Name: 'Secret' }] })
-    // Get-SLDlpPolicy
-    .mockResolvedValueOnce({ success: true, data: [{ Name: 'DLP-1' }] })
-    // Get-SLRetentionPolicy
-    .mockResolvedValueOnce({ success: true, data: [{ Name: 'Ret-1' }, { Name: 'Ret-2' }] })
+    // Get-SLLabelPolicy
+    .mockResolvedValueOnce({ success: true, data: [{ Name: 'Policy-1' }] })
     // Get-SLAutoLabelPolicy
     .mockResolvedValueOnce({ success: true, data: [{ Name: 'Auto-1' }] })
     // Get-SLSnapshot
     .mockResolvedValueOnce({ success: true, data: [{ Name: 'snap-1' }] })
-    // Get-SLElevationStatus
-    .mockResolvedValueOnce({ success: true, data: { State: { ActiveJob: null } } })
     // Get-SLAuditLog
     .mockResolvedValueOnce({
       success: true,
@@ -67,14 +62,14 @@ describe('DashboardPage', () => {
     mockInvoke.mockResolvedValue({ success: true, data: disconnectedStatus });
     render(<DashboardPage />);
     expect(screen.getByText('Not Connected')).toBeInTheDocument();
-    expect(screen.getByText(/Connect to Microsoft Purview/)).toBeInTheDocument();
+    expect(screen.getByText(/Connect to Microsoft 365/)).toBeInTheDocument();
   });
 
   it('renders page header when disconnected', () => {
     mockInvoke.mockResolvedValue({ success: true, data: disconnectedStatus });
     render(<DashboardPage />);
     expect(screen.getByText('Dashboard')).toBeInTheDocument();
-    expect(screen.getByText('Tenant compliance overview')).toBeInTheDocument();
+    expect(screen.getByText('Sensitivity label overview')).toBeInTheDocument();
   });
 
   it('shows connect button in welcome card', () => {
@@ -89,11 +84,9 @@ describe('DashboardPage', () => {
     render(<DashboardPage />);
     await waitFor(() => {
       expect(screen.getByText('Sensitivity Labels')).toBeInTheDocument();
-      expect(screen.getByText('DLP Policies')).toBeInTheDocument();
-      expect(screen.getByText('Retention Policies')).toBeInTheDocument();
+      expect(screen.getByText('Label Policies')).toBeInTheDocument();
       expect(screen.getByText('Auto-Label Policies')).toBeInTheDocument();
       expect(screen.getByText('Snapshots')).toBeInTheDocument();
-      expect(screen.getByText('Active Elevations')).toBeInTheDocument();
     });
   });
 
@@ -103,17 +96,6 @@ describe('DashboardPage', () => {
     await waitFor(() => {
       expect(screen.getByText('3')).toBeInTheDocument(); // labels
     });
-  });
-
-  it('shows placeholder for null stat values', async () => {
-    setupConnected();
-    render(<DashboardPage />);
-    await waitFor(() => {
-      expect(screen.getByText('Sensitivity Labels')).toBeInTheDocument();
-    });
-    // Stats that haven't loaded show -- as placeholder
-    const statCards = screen.getAllByText('Sensitivity Labels')[0].closest('button');
-    expect(statCards).toBeInTheDocument();
   });
 
   // === Connection strip ===
@@ -144,17 +126,6 @@ describe('DashboardPage', () => {
   });
 
   // === Navigation ===
-  it('calls onNavigate when DLP stat card is clicked', async () => {
-    const onNavigate = vi.fn();
-    setupConnected();
-    render(<DashboardPage onNavigate={onNavigate} />);
-    await waitFor(() => {
-      expect(screen.getByText('DLP Policies')).toBeInTheDocument();
-    });
-    screen.getByText('DLP Policies').closest('button')?.click();
-    expect(onNavigate).toHaveBeenCalledWith('dlp');
-  });
-
   it('calls onNavigate for labels card', async () => {
     const onNavigate = vi.fn();
     setupConnected();
@@ -166,17 +137,6 @@ describe('DashboardPage', () => {
     expect(onNavigate).toHaveBeenCalledWith('labels');
   });
 
-  it('calls onNavigate for retention card', async () => {
-    const onNavigate = vi.fn();
-    setupConnected();
-    render(<DashboardPage onNavigate={onNavigate} />);
-    await waitFor(() => {
-      expect(screen.getByText('Retention Policies')).toBeInTheDocument();
-    });
-    screen.getByText('Retention Policies').closest('button')?.click();
-    expect(onNavigate).toHaveBeenCalledWith('retention');
-  });
-
   it('calls onNavigate for snapshots card', async () => {
     const onNavigate = vi.fn();
     setupConnected();
@@ -186,17 +146,6 @@ describe('DashboardPage', () => {
     });
     screen.getByText('Snapshots').closest('button')?.click();
     expect(onNavigate).toHaveBeenCalledWith('snapshots');
-  });
-
-  it('calls onNavigate for elevation card', async () => {
-    const onNavigate = vi.fn();
-    setupConnected();
-    render(<DashboardPage onNavigate={onNavigate} />);
-    await waitFor(() => {
-      expect(screen.getByText('Active Elevations')).toBeInTheDocument();
-    });
-    screen.getByText('Active Elevations').closest('button')?.click();
-    expect(onNavigate).toHaveBeenCalledWith('elevation');
   });
 
   // === Recent Activity ===
@@ -235,32 +184,32 @@ describe('DashboardPage', () => {
       expect(screen.getByText('Quick Actions')).toBeInTheDocument();
     });
     expect(screen.getByText('Take Snapshot')).toBeInTheDocument();
-    expect(screen.getByText('Run Health Check')).toBeInTheDocument();
-    expect(screen.getByText('View Templates')).toBeInTheDocument();
+    expect(screen.getByText('Label Report')).toBeInTheDocument();
+    expect(screen.getByText('Manage Documents')).toBeInTheDocument();
   });
 
-  it('navigates to analysis on Run Health Check click', async () => {
+  it('navigates to analysis on Label Report click', async () => {
     const onNavigate = vi.fn();
     setupConnected();
     const user = userEvent.setup();
     render(<DashboardPage onNavigate={onNavigate} />);
     await waitFor(() => {
-      expect(screen.getByText('Run Health Check')).toBeInTheDocument();
+      expect(screen.getByText('Label Report')).toBeInTheDocument();
     });
-    await user.click(screen.getByText('Run Health Check'));
+    await user.click(screen.getByText('Label Report'));
     expect(onNavigate).toHaveBeenCalledWith('analysis');
   });
 
-  it('navigates to templates on View Templates click', async () => {
+  it('navigates to documents on Manage Documents click', async () => {
     const onNavigate = vi.fn();
     setupConnected();
     const user = userEvent.setup();
     render(<DashboardPage onNavigate={onNavigate} />);
     await waitFor(() => {
-      expect(screen.getByText('View Templates')).toBeInTheDocument();
+      expect(screen.getByText('Manage Documents')).toBeInTheDocument();
     });
-    await user.click(screen.getByText('View Templates'));
-    expect(onNavigate).toHaveBeenCalledWith('templates');
+    await user.click(screen.getByText('Manage Documents'));
+    expect(onNavigate).toHaveBeenCalledWith('documents');
   });
 
   it('calls invoke on Take Snapshot click', async () => {
@@ -271,7 +220,6 @@ describe('DashboardPage', () => {
       expect(screen.getByText('Take Snapshot')).toBeInTheDocument();
     });
 
-    // Setup mock for the snapshot call
     mockInvoke.mockResolvedValue({ success: true, data: { Name: 'Dashboard-Quick' } });
 
     await user.click(screen.getByText('Take Snapshot'));
@@ -335,29 +283,8 @@ describe('DashboardPage', () => {
     mockInvoke.mockResolvedValue({ success: true, data: [] });
     await user.click(screen.getByText('Refresh'));
 
-    // Should re-fetch data
     await waitFor(() => {
       expect(mockInvoke).toHaveBeenCalled();
-    });
-  });
-
-  // === Active elevations styling ===
-  it('shows active elevation count when job is active', async () => {
-    mockInvoke
-      .mockResolvedValueOnce({ success: true, data: connectedStatus })
-      .mockResolvedValueOnce({ success: true, data: [{ Name: 'Label1' }] }) // labels
-      .mockResolvedValueOnce({ success: true, data: [] }) // dlp
-      .mockResolvedValueOnce({ success: true, data: [] }) // retention
-      .mockResolvedValueOnce({ success: true, data: [] }) // auto-label
-      .mockResolvedValueOnce({ success: true, data: [] }) // snapshots
-      .mockResolvedValueOnce({ success: true, data: { State: { ActiveJob: { Id: 'job-1' } } } }) // elevation
-      .mockResolvedValueOnce({ success: true, data: [] }); // audit
-
-    render(<DashboardPage />);
-    await waitFor(() => {
-      // active elevations = 1 — multiple '1' may appear, just verify the card exists
-      const elevCard = screen.getByText('Active Elevations').closest('button');
-      expect(elevCard).toBeInTheDocument();
     });
   });
 
@@ -374,7 +301,6 @@ describe('DashboardPage', () => {
     await waitFor(() => {
       expect(screen.getByText('Sensitivity Labels')).toBeInTheDocument();
     });
-    // Should have called Get-SLLabel but not compliance commands
     const calls = mockInvoke.mock.calls.map((c: unknown[]) => c[0]);
     expect(calls).toContain('Get-SLLabel');
   });
@@ -386,7 +312,6 @@ describe('DashboardPage', () => {
       .mockRejectedValue(new Error('Network error'));
 
     render(<DashboardPage />);
-    // Should not crash
     await waitFor(() => {
       expect(screen.getByText('Sensitivity Labels')).toBeInTheDocument();
     });

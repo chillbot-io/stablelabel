@@ -50,6 +50,27 @@ contextBridge.exposeInMainWorld('stablelabel', {
   clearCredentials: (): Promise<void> =>
     ipcRenderer.invoke('credentials:clear'),
 
+  /** Push settings updates to the main process */
+  updateSettings: (settings: { timeout?: number; logLevel?: string }): Promise<void> =>
+    ipcRenderer.invoke('settings:update', settings),
+
   /** Current platform (win32, darwin, linux) */
   platform: process.platform,
+
+  /* ── Classifier (Presidio) ─────────────────────────────────────── */
+
+  /** Invoke a classifier action (analyze, health, list_entities, reload, test) */
+  classifierInvoke: (
+    action: string,
+    params?: Record<string, unknown>,
+  ): Promise<{ success: boolean; data: unknown; error?: string }> =>
+    ipcRenderer.invoke('classifier:invoke', action, params ?? {}),
+
+  /** Check if the classifier is available */
+  checkClassifier: (): Promise<{ available: boolean; mode?: string; error?: string }> =>
+    ipcRenderer.invoke('classifier:check'),
+
+  /** Get classifier bridge status */
+  getClassifierStatus: (): Promise<{ initialized: boolean }> =>
+    ipcRenderer.invoke('classifier:get-status'),
 });

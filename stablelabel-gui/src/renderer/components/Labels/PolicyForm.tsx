@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { usePowerShell } from '../../hooks/usePowerShell';
 import { TextField, TextArea, TagInput, FormActions } from '../common/FormFields';
+import ConfirmDialog from '../common/ConfirmDialog';
+import ShowPowerShell from '../common/ShowPowerShell';
 import type { LabelPolicy } from '../../lib/types';
 
 interface PolicyFormProps {
@@ -91,6 +93,9 @@ export default function PolicyForm({ existing, onSaved, onCancel, onDeleted }: P
             ? 'Create a new sensitivity label publishing policy.'
             : 'Modify this label policy. Changes take effect after saving.'}
         </p>
+        <p className="text-[11px] text-amber-500/70 mt-2">
+          Note: Policy changes may take up to 24 hours to propagate across your tenant.
+        </p>
       </div>
 
       {error && (
@@ -124,6 +129,14 @@ export default function PolicyForm({ existing, onSaved, onCancel, onDeleted }: P
         helpText="Sensitivity labels published by this policy. Enter exact label names or GUIDs."
       />
 
+      <ShowPowerShell
+        cmdlet={isNew ? 'New-SLLabelPolicy' : 'Set-SLLabelPolicy'}
+        params={isNew
+          ? { Name: name, Labels: labels.length > 0 ? labels : undefined, Comment: comment.trim() || undefined }
+          : { Identity: existing!.Name, Labels: JSON.stringify(labels) !== JSON.stringify(existing!.Labels ?? []) ? labels : undefined, Comment: comment !== (existing!.Comment ?? '') ? comment : undefined }
+        }
+      />
+
       <FormActions
         onSave={handleSave}
         onCancel={onCancel}
@@ -134,55 +147,16 @@ export default function PolicyForm({ existing, onSaved, onCancel, onDeleted }: P
       />
 
       {showDelete && (
-        <DeleteConfirm
-          name={existing!.Name}
-          deleting={deleting}
+        <ConfirmDialog
+          title="Delete Label Policy"
+          message={`Permanently delete "${existing!.Name}"? This will unpublish all labels in this policy. Users will no longer see them.`}
+          confirmLabel="Delete Policy"
+          variant="danger"
+          loading={deleting}
           onConfirm={handleDelete}
           onCancel={() => setShowDelete(false)}
         />
       )}
-    </div>
-  );
-}
-
-function DeleteConfirm({
-  name,
-  deleting,
-  onConfirm,
-  onCancel,
-}: {
-  name: string;
-  deleting: boolean;
-  onConfirm: () => void;
-  onCancel: () => void;
-}) {
-  return (
-    <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50">
-      <div className="bg-white/[0.03] border border-white/[0.08] rounded-lg p-6 w-96">
-        <h3 className="text-lg font-semibold text-white mb-2">Delete Label Policy</h3>
-        <p className="text-sm text-zinc-400 mb-1">
-          Permanently delete <strong className="text-zinc-200">{name}</strong>?
-        </p>
-        <p className="text-xs text-red-400/70 mb-6">
-          This will unpublish all labels in this policy. Users will no longer see them.
-        </p>
-        <div className="flex gap-3 justify-end">
-          <button
-            onClick={onCancel}
-            disabled={deleting}
-            className="px-4 py-2 text-sm text-zinc-400 bg-white/[0.06] rounded-lg border border-white/[0.08] hover:bg-white/[0.08] transition-colors"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={onConfirm}
-            disabled={deleting}
-            className="px-4 py-2 text-sm bg-red-600 hover:bg-red-500 text-white rounded-lg transition-colors disabled:opacity-40"
-          >
-            {deleting ? 'Deleting...' : 'Delete Policy'}
-          </button>
-        </div>
-      </div>
     </div>
   );
 }
