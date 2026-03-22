@@ -42,6 +42,7 @@ export class PowerShellBridge {
   private stderrBuffer = '';
   private currentMarker: string | null = null;
   private currentResolve: ((output: string) => void) | null = null;
+  private currentTimeout: ReturnType<typeof setTimeout> | null = null;
 
   /** Callback invoked when a device-code authentication message is detected in stdout. */
   onDeviceCode: ((info: { userCode: string; verificationUrl: string; message: string }) => void) | null = null;
@@ -132,6 +133,14 @@ export class PowerShellBridge {
 
   async checkPwshAvailable(): Promise<{ available: boolean; path?: string; error?: string }> {
     return new Promise((resolve) => {
+      let resolved = false;
+      const done = (result: { available: boolean; path?: string; error?: string }) => {
+        if (!resolved) {
+          resolved = true;
+          resolve(result);
+        }
+      };
+
       const pwshName = platform() === 'win32' ? 'pwsh.exe' : 'pwsh';
       const proc = spawn(pwshName, ['-NoProfile', '-Command', '$PSVersionTable.PSVersion.ToString()']);
 
@@ -142,9 +151,9 @@ export class PowerShellBridge {
 
       proc.on('close', (code) => {
         if (code === 0) {
-          resolve({ available: true, path: pwshName });
+          done({ available: true, path: pwshName });
         } else {
-          resolve({
+          done({
             available: false,
             error: 'PowerShell 7 (pwsh) is required. Install from: https://aka.ms/powershell',
           });
@@ -152,7 +161,7 @@ export class PowerShellBridge {
       });
 
       proc.on('error', () => {
-        resolve({
+        done({
           available: false,
           error: 'PowerShell 7 (pwsh) not found. Install from: https://aka.ms/powershell',
         });
@@ -160,7 +169,7 @@ export class PowerShellBridge {
 
       setTimeout(() => {
         proc.kill();
-        resolve({ available: false, error: 'PowerShell check timed out' });
+        done({ available: false, error: 'PowerShell check timed out' });
       }, PS_READY_TIMEOUT_MS);
     });
   }
@@ -181,10 +190,11 @@ export class PowerShellBridge {
     });
 
     this.process.stdout?.on('data', (data: Buffer) => {
-      this.outputBuffer += data.toString();
+      const chunk = data.toString();
+      this.outputBuffer += chunk;
 
-      // Device code prompt may arrive via stdout (Information stream redirect)
-      this.checkForDeviceCode(this.outputBuffer);
+      // Only check new chunks for device codes — avoids O(n^2) regex on growing buffer
+      this.checkForDeviceCode(chunk);
 
       // Check if the current command's marker has arrived
       if (this.currentMarker && this.outputBuffer.includes(this.currentMarker)) {
@@ -198,18 +208,39 @@ export class PowerShellBridge {
     });
 
     this.process.stderr?.on('data', (data: Buffer) => {
-      const text = data.toString();
-      logger.error('PS_STDERR', text);
-      this.stderrBuffer += text;
+      const chunk = data.toString();
+      logger.error('PS_STDERR', chunk);
+      this.stderrBuffer += chunk;
 
-      // Fallback: check accumulated stderr in case warnings bypass 3>&1 redirect
-      this.checkForDeviceCode(this.stderrBuffer);
+      // Only check new chunks for device codes — avoids O(n^2) regex on growing buffer
+      this.checkForDeviceCode(chunk);
     });
 
     this.process.on('close', (code) => {
       logger.info('PS_BRIDGE', `PowerShell process exited with code ${code}`);
       this._initialized = false;
       this.process = null;
+
+      // Fail the in-flight command immediately instead of waiting for 10min timeout
+      if (this.currentResolve) {
+        const resolve = this.currentResolve;
+        this.currentMarker = null;
+        this.currentResolve = null;
+        if (this.currentTimeout) {
+          clearTimeout(this.currentTimeout);
+          this.currentTimeout = null;
+        }
+        this.processing = false;
+        resolve(''); // invokeRaw treats empty output + stderrBuffer as error
+      }
+
+      // Drain queued commands that haven't started yet
+      const queued = [...this.commandQueue];
+      this.commandQueue = [];
+      this.processing = false;
+      for (const entry of queued) {
+        entry.reject(new Error('PowerShell process exited unexpectedly'));
+      }
     });
 
     // Force stdout/stderr auto-flush so device-code messages (and all other
@@ -256,7 +287,7 @@ export class PowerShellBridge {
     );
 
     // Import the StableLabel module
-    const escapedPath = this.modulePath.replace(/'/g, "''");
+    const escapedPath = this.modulePath.replace(/'/g, "''").replace(/[\r\n\0]/g, '');
     await this.sendRaw(`Import-Module '${escapedPath}' -Force`);
     this._initialized = true;
   }
@@ -297,14 +328,17 @@ export class PowerShellBridge {
     const timeout = setTimeout(() => {
       this.currentMarker = null;
       this.currentResolve = null;
+      this.currentTimeout = null;
       this.processing = false;
       reject(new Error(`Command timed out: ${command.substring(0, 100)}`));
       this.processQueue();
     }, COMMAND_TIMEOUT_MS);
 
+    this.currentTimeout = timeout;
     this.currentMarker = marker;
     this.currentResolve = (output: string) => {
       clearTimeout(timeout);
+      this.currentTimeout = null;
       this.processing = false;
       (resolve as unknown as (value: string) => void)(output);
       this.processQueue();
@@ -334,6 +368,7 @@ export class PowerShellBridge {
 
   /**
    * Execute an already-validated command string. Internal use only.
+   * Captures stderrBuffer before the next command can overwrite it.
    */
   private async invokeRaw(command: string): Promise<PsResult> {
     try {
@@ -346,9 +381,12 @@ export class PowerShellBridge {
       // Strip ANSI escape codes from output (PowerShell may emit colored warnings)
       const cleanOutput = stripAnsi(output);
 
+      // Capture stderr immediately — it's cleared when the next command starts
+      const capturedStderr = this.stderrBuffer.trim();
+
       // If stdout is empty but stderr has content, the command likely errored
-      if (!cleanOutput && this.stderrBuffer.trim()) {
-        return { success: false, data: null, error: stripAnsi(this.stderrBuffer.trim()) };
+      if (!cleanOutput && capturedStderr) {
+        return { success: false, data: null, error: stripAnsi(capturedStderr) };
       }
 
       try {
@@ -380,17 +418,41 @@ export class PowerShellBridge {
   }
 
   dispose(): void {
-    if (this.process) {
+    const proc = this.process;
+    if (proc) {
+      // Null out refs first so ensureInitialized() won't reuse the dying process
+      this.process = null;
+      this._initialized = false;
+
+      // Fail in-flight command
+      if (this.currentResolve) {
+        const resolve = this.currentResolve;
+        this.currentMarker = null;
+        this.currentResolve = null;
+        if (this.currentTimeout) {
+          clearTimeout(this.currentTimeout);
+          this.currentTimeout = null;
+        }
+        this.processing = false;
+        resolve('');
+      }
+
+      // Drain queued commands
+      const queued = [...this.commandQueue];
+      this.commandQueue = [];
+      this.processing = false;
+      for (const entry of queued) {
+        entry.reject(new Error('PowerShell bridge disposed'));
+      }
+
       try {
-        this.process.stdin?.write('exit\n');
+        proc.stdin?.write('exit\n');
       } catch {
         // Process may already be dead
       }
       setTimeout(() => {
-        this.process?.kill();
-        this.process = null;
+        proc.kill();
       }, PROCESS_CLEANUP_DELAY_MS);
-      this._initialized = false;
     }
   }
 }

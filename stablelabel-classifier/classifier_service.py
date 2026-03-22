@@ -10,7 +10,10 @@ Protocol:
   Response: {"id": "<uuid>", "success": true|false, "data": ..., "error": ...}
 """
 
+import hashlib
 import json
+import os
+import re
 import sys
 import traceback
 from typing import Any
@@ -22,6 +25,12 @@ from presidio_analyzer import (
     RecognizerResult,
 )
 from presidio_analyzer.nlp_engine import NlpEngineProvider
+
+# ---------------------------------------------------------------------------
+# Constants
+# ---------------------------------------------------------------------------
+
+MAX_TEXT_LENGTH = 1_000_000  # 1MB — prevent OOM from spaCy on huge inputs
 
 # ---------------------------------------------------------------------------
 # Engine management
@@ -36,16 +45,27 @@ def _config_hash(config: dict | None) -> str:
     """Deterministic hash of config for change detection."""
     if config is None:
         return ""
-    return json.dumps(config, sort_keys=True)
+    return hashlib.sha256(json.dumps(config, sort_keys=True).encode()).hexdigest()
+
+
+def _get_spacy_model_name() -> str:
+    """Resolve spaCy model — handles PyInstaller bundled path."""
+    if getattr(sys, '_MEIPASS', None):
+        # PyInstaller bundle: model is extracted alongside the exe
+        bundled = os.path.join(sys._MEIPASS, 'en_core_web_lg')
+        if os.path.isdir(bundled):
+            return bundled
+    return 'en_core_web_lg'
 
 
 def _get_nlp_engine():
     """Get or create the cached spaCy NLP engine."""
     global _nlp_engine
     if _nlp_engine is None:
+        model_name = _get_spacy_model_name()
         provider = NlpEngineProvider(nlp_configuration={
             "nlp_engine_name": "spacy",
-            "models": [{"lang_code": "en", "model_name": "en_core_web_lg"}],
+            "models": [{"lang_code": "en", "model_name": model_name}],
         })
         _nlp_engine = provider.create_engine()
     return _nlp_engine
@@ -80,22 +100,29 @@ def _add_custom_recognizer(engine: AnalyzerEngine, rec_def: dict) -> None:
     patterns = []
     if "patterns" in rec_def:
         for p in rec_def["patterns"]:
+            regex = p.get("regex", "")
+            if not _validate_regex(regex):
+                continue
             patterns.append(Pattern(
                 name=p.get("name", rec_def["name"]),
-                regex=p["regex"],
+                regex=regex,
                 score=p.get("score", rec_def.get("score", 0.6)),
             ))
     elif "pattern" in rec_def:
+        regex = rec_def["pattern"]
+        if not _validate_regex(regex):
+            return
         patterns.append(Pattern(
             name=rec_def["name"],
-            regex=rec_def["pattern"],
+            regex=regex,
             score=rec_def.get("score", 0.6),
         ))
 
     if not patterns:
         return  # Skip recognizers with no valid patterns
 
-    context_words = rec_def.get("context_words", [])
+    # Normalize context words to lowercase for Presidio's LemmaContextAwareEnhancer
+    context_words = [w.lower().strip() for w in rec_def.get("context_words", []) if w.strip()]
 
     recognizer = PatternRecognizer(
         supported_entity=rec_def["entity_type"],
@@ -104,6 +131,22 @@ def _add_custom_recognizer(engine: AnalyzerEngine, rec_def: dict) -> None:
         name=rec_def["name"],
     )
     engine.registry.add_recognizer(recognizer)
+
+
+def _validate_regex(pattern: str) -> bool:
+    """Validate a regex pattern — reject invalid or dangerous patterns."""
+    if not pattern:
+        return False
+    try:
+        compiled = re.compile(pattern)
+        # Basic heuristic: reject patterns with nested quantifiers (catastrophic backtracking risk)
+        # e.g., (a+)+, (a*)*b, (a|b+)+
+        if re.search(r'\([^)]*[+*][^)]*\)[+*]', pattern):
+            sys.stderr.write(f"Rejected dangerous regex (nested quantifiers): {pattern}\n")
+            return False
+        return True
+    except re.error:
+        return False
 
 
 def get_engine(config: dict | None = None) -> AnalyzerEngine:
@@ -149,6 +192,12 @@ def handle_analyze(request: dict) -> dict:
     if not text:
         return {"results": [], "entity_counts": {}}
 
+    # Enforce size limit to prevent OOM from spaCy processing
+    truncated = False
+    if len(text) > MAX_TEXT_LENGTH:
+        text = text[:MAX_TEXT_LENGTH]
+        truncated = True
+
     config = request.get("config")
     engine = get_engine(config)
 
@@ -193,14 +242,16 @@ def handle_analyze(request: dict) -> dict:
     # Sort by position
     filtered.sort(key=lambda x: x["start"])
 
-    return {"results": filtered, "entity_counts": entity_counts}
+    result = {"results": filtered, "entity_counts": entity_counts}
+    if truncated:
+        result["warning"] = f"Text truncated to {MAX_TEXT_LENGTH} characters"
+    return result
 
 
 def handle_reload(request: dict) -> dict:
     """Reload the engine with updated config."""
     config = request.get("config")
-    reload_engine(config)
-    engine = get_engine()
+    engine = reload_engine(config)
     return {
         "status": "reloaded",
         "supported_entities": sorted(engine.get_supported_entities()),
@@ -226,18 +277,42 @@ ACTIONS = {
 # ---------------------------------------------------------------------------
 
 
+def _write_response(response: dict) -> None:
+    """Safely serialize and write a response to stdout."""
+    try:
+        sys.stdout.write(json.dumps(response) + "\n")
+        sys.stdout.flush()
+    except (TypeError, ValueError) as e:
+        fallback = {"id": response.get("id"), "success": False, "error": f"Serialization error: {e}"}
+        sys.stdout.write(json.dumps(fallback) + "\n")
+        sys.stdout.flush()
+
+
 def main() -> None:
     """Read JSON requests from stdin, write JSON responses to stdout."""
     # Ensure stdout is line-buffered for real-time communication
-    sys.stdout.reconfigure(line_buffering=True)
-    sys.stderr.reconfigure(line_buffering=True)
+    # Guard for PyInstaller where stdout may not be a TextIOWrapper
+    try:
+        sys.stdout.reconfigure(line_buffering=True)
+    except AttributeError:
+        pass
+    try:
+        sys.stderr.reconfigure(line_buffering=True)
+    except AttributeError:
+        pass
 
     # Signal readiness
     ready_msg = json.dumps({"id": "__startup__", "success": True, "data": {"status": "ready"}})
     sys.stdout.write(ready_msg + "\n")
     sys.stdout.flush()
 
-    for line in sys.stdin:
+    # Use readline() loop instead of `for line in sys.stdin` — the iterator
+    # uses an internal read-ahead buffer that delays line delivery, causing
+    # the request-response protocol to stall unpredictably.
+    while True:
+        line = sys.stdin.readline()
+        if not line:
+            break  # EOF — parent process closed stdin
         line = line.strip()
         if not line:
             continue
@@ -245,13 +320,11 @@ def main() -> None:
         try:
             request = json.loads(line)
         except json.JSONDecodeError as e:
-            error_resp = json.dumps({
+            _write_response({
                 "id": None,
                 "success": False,
                 "error": f"Invalid JSON: {e}",
             })
-            sys.stdout.write(error_resp + "\n")
-            sys.stdout.flush()
             continue
 
         req_id = request.get("id")
@@ -269,14 +342,14 @@ def main() -> None:
                 data = handler(request)
                 response = {"id": req_id, "success": True, "data": data}
         except Exception:
+            sys.stderr.write(traceback.format_exc() + "\n")
             response = {
                 "id": req_id,
                 "success": False,
-                "error": traceback.format_exc(),
+                "error": str(sys.exc_info()[1]),
             }
 
-        sys.stdout.write(json.dumps(response) + "\n")
-        sys.stdout.flush()
+        _write_response(response)
 
 
 if __name__ == "__main__":

@@ -11,6 +11,9 @@ const MAIN_WINDOW_HEIGHT = 900;
 const MAIN_WINDOW_MIN_WIDTH = 1000;
 const MAIN_WINDOW_MIN_HEIGHT = 700;
 
+/** Allowed classifier actions — defense-in-depth allowlist */
+const CLASSIFIER_ACTIONS = new Set(['analyze', 'health', 'list_entities', 'reload', 'test']);
+
 declare const MAIN_WINDOW_VITE_DEV_SERVER_URL: string | undefined;
 declare const MAIN_WINDOW_VITE_NAME: string;
 
@@ -25,6 +28,20 @@ function getModulePath(): string {
   }
   // In development, module is adjacent to the GUI folder
   return path.join(__dirname, '..', '..', '..', 'StableLabel');
+}
+
+function ensureBridges(): void {
+  if (!psBridge) {
+    const modulePath = getModulePath();
+    psBridge = new PowerShellBridge(modulePath);
+    // Wire device-code callback once — uses closure over mainWindow ref
+    psBridge.onDeviceCode = (info) => {
+      mainWindow?.webContents.send('ps:device-code', info);
+    };
+  }
+  if (!classifierBridge) {
+    classifierBridge = new ClassifierBridge();
+  }
 }
 
 function createWindow(): void {
@@ -87,9 +104,8 @@ app.whenReady().then(() => {
     callback(false);
   });
 
-  // Initialize PowerShell bridge
-  const modulePath = getModulePath();
-  psBridge = new PowerShellBridge(modulePath);
+  // Initialize bridges
+  ensureBridges();
 
   // Register IPC handlers — structured invocation only
   ipcMain.handle('ps:invoke', async (_event, cmdlet: string, params: Record<string, unknown>) => {
@@ -99,11 +115,6 @@ app.whenReady().then(() => {
     if (!CMDLET_REGISTRY[cmdlet]) {
       return { success: false, data: null, error: `Cmdlet "${cmdlet}" is not permitted` };
     }
-
-    // Wire device-code callback to forward to renderer via IPC
-    psBridge.onDeviceCode = (info) => {
-      mainWindow?.webContents.send('ps:device-code', info);
-    };
 
     return psBridge.invokeStructured(cmdlet, params);
   });
@@ -155,10 +166,12 @@ app.whenReady().then(() => {
   });
 
   // ── Classifier (Presidio + spaCy) ──────────────────────────────────
-  classifierBridge = new ClassifierBridge();
-
   ipcMain.handle('classifier:invoke', async (_event, action: string, params: Record<string, unknown>) => {
     if (!classifierBridge) throw new Error('Classifier bridge not initialized');
+    // Validate action against allowlist (defense-in-depth)
+    if (!CLASSIFIER_ACTIONS.has(action)) {
+      return { success: false, data: null, error: `Unknown classifier action: "${action}"` };
+    }
     return classifierBridge.invoke(action, params);
   });
 
@@ -176,21 +189,21 @@ app.whenReady().then(() => {
 });
 
 app.on('window-all-closed', () => {
-  if (psBridge) {
-    psBridge.dispose();
-    psBridge = null;
-  }
-  if (classifierBridge) {
-    classifierBridge.dispose();
-    classifierBridge = null;
-  }
   if (process.platform !== 'darwin') {
+    // On non-macOS, dispose bridges and quit
+    psBridge?.dispose();
+    psBridge = null;
+    classifierBridge?.dispose();
+    classifierBridge = null;
     app.quit();
   }
+  // On macOS, keep bridges alive — app continues running without windows
 });
 
 app.on('activate', () => {
+  // macOS: re-create window when dock icon is clicked
   if (BrowserWindow.getAllWindows().length === 0) {
+    ensureBridges();
     createWindow();
   }
 });

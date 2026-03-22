@@ -61,7 +61,7 @@ function validatePath(value: string): void {
   }
   // Normalise separators for traversal check
   const normalised = value.replace(/\\/g, '/');
-  if (normalised.includes('/../') || normalised.endsWith('/..') || normalised.startsWith('../')) {
+  if (normalised === '..' || normalised.includes('/../') || normalised.endsWith('/..') || normalised.startsWith('../')) {
     throw new Error('Path traversal detected');
   }
 }
@@ -155,9 +155,16 @@ export function buildCommand(
       case 'items': {
         // Special: array of {DriveId, ItemId} → PowerShell hashtable array
         if (!Array.isArray(value)) throw new Error(`Parameter "-${key}" must be an array`);
-        const entries = value.map((item: unknown) => {
-          const obj = item as Record<string, string>;
-          if (!obj.DriveId || !obj.ItemId) throw new Error('Each item must have DriveId and ItemId');
+        const entries = value.map((item: unknown, idx: number) => {
+          if (typeof item !== 'object' || item === null) throw new Error(`Item ${idx} must be an object`);
+          const obj = item as Record<string, unknown>;
+          const objKeys = Object.keys(obj);
+          if (objKeys.length !== 2 || !objKeys.includes('DriveId') || !objKeys.includes('ItemId')) {
+            throw new Error('Each item must have exactly DriveId and ItemId');
+          }
+          if (typeof obj.DriveId !== 'string' || typeof obj.ItemId !== 'string') {
+            throw new Error('DriveId and ItemId must be strings');
+          }
           return `@{DriveId='${escapePS(obj.DriveId)}';ItemId='${escapePS(obj.ItemId)}'}`;
         });
         parts.push(`-${key} @(${entries.join(',')})`);

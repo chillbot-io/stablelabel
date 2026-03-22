@@ -150,6 +150,13 @@ export class ClassifierBridge {
         clearTimeout(req.timeout);
         req.reject(new Error('Classifier process exited unexpectedly'));
       }
+      // Drain queued commands that haven't been sent yet
+      const queued = [...this.commandQueue];
+      this.commandQueue = [];
+      this.writing = false;
+      for (const entry of queued) {
+        entry.resolve({ success: false, data: null, error: 'Classifier process exited unexpectedly' });
+      }
     });
 
     this.process.stdout?.on('data', (data: Buffer) => {
