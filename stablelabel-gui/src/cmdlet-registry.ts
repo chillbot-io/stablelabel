@@ -294,6 +294,22 @@ export const CMDLET_REGISTRY: Record<string, CmdletDef> = {
     },
   },
 
+  'Import-SLLabelCsv': {
+    params: {
+      CsvText: { type: 'string', required: true },
+    },
+  },
+  'Remove-SLDocumentLabelBulk': {
+    confirm: true,
+    guiConfirm: true,
+    params: {
+      Items: { type: 'items', required: true },
+      Mode: { type: 'enum', required: true, allowedValues: ['LabelOnly', 'EncryptionOnly', 'Both'] },
+      Justification: { type: 'string', maxLength: 1024 },
+      DryRun: { type: 'switch' },
+    },
+  },
+
   // ── Protection / AIP ──────────────────────────────────────────────────
   'Get-SLProtectionConfig': {},
 

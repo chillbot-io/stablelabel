@@ -47,6 +47,24 @@ const icons: Record<string, React.ReactNode> = {
       <path d="M12 2v4h4" />
     </Icon>
   ),
+  /* Manual Label — upload arrow */
+  'manual-label': (
+    <Icon>
+      <path d="M4 17h12" />
+      <path d="M10 3v10" />
+      <path d="M6 9l4-4 4 4" />
+    </Icon>
+  ),
+  /* Bulk Ops — trash/sweep */
+  'bulk-ops': (
+    <Icon>
+      <path d="M4 6h12" />
+      <path d="M6 6v10a2 2 0 002 2h4a2 2 0 002-2V6" />
+      <path d="M8 6V4h4v2" />
+      <path d="M9 9v5" />
+      <path d="M11 9v5" />
+    </Icon>
+  ),
   /* Snapshots — stacked layers */
   snapshots: (
     <Icon>
@@ -91,6 +109,8 @@ const navItems: NavItem[] = [
   { id: 'dashboard', label: 'Dashboard', group: 'Overview' },
   { id: 'labels', label: 'Labels', group: 'Sensitivity Labels' },
   { id: 'documents', label: 'Documents', group: 'Operations' },
+  { id: 'manual-label', label: 'CSV Upload', group: 'Operations' },
+  { id: 'bulk-ops', label: 'Bulk Removal', group: 'Operations' },
   { id: 'snapshots', label: 'Snapshots', group: 'Safety' },
   { id: 'analysis', label: 'Analysis', group: 'Intelligence' },
 ];

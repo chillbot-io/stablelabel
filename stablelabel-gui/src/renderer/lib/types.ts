@@ -158,10 +158,52 @@ export interface SnapshotDiff {
   }>;
 }
 
+export interface CsvImportResult {
+  Action: string;
+  TotalRows: number;
+  ValidCount: number;
+  InvalidCount: number;
+  ValidRows: Array<{
+    Row: number;
+    DriveId: string;
+    ItemId: string;
+    LabelName: string | null;
+    LabelId: string | null;
+    Valid: boolean;
+    Errors: string | null;
+  }>;
+  InvalidRows: Array<{
+    Row: number;
+    DriveId: string;
+    ItemId: string;
+    LabelName: string | null;
+    LabelId: string | null;
+    Valid: boolean;
+    Errors: string | null;
+  }>;
+}
+
+export interface BulkRemoveResult {
+  Action: string;
+  Mode: string;
+  TotalItems: number;
+  SuccessCount: number;
+  FailedCount: number;
+  DryRun: boolean;
+  Results: Array<{
+    DriveId: string;
+    ItemId: string;
+    Status: string;
+    Error: string | null;
+  }>;
+}
+
 export type Page =
   | 'dashboard'
   | 'labels'
   | 'documents'
+  | 'manual-label'
+  | 'bulk-ops'
   | 'snapshots'
   | 'analysis'
   | 'settings';

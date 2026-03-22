@@ -5,6 +5,8 @@ import TopBar from './components/Layout/TopBar';
 import DashboardPage from './components/Dashboard/DashboardPage';
 import LabelsPage from './components/Labels/LabelsPage';
 import DocumentsPage from './components/Documents/DocumentsPage';
+import ManualLabelPage from './components/ManualLabel/ManualLabelPage';
+import BulkOpsPage from './components/BulkOps/BulkOpsPage';
 import SnapshotsPage from './components/Snapshots/SnapshotsPage';
 import AnalysisPage from './components/Analysis/AnalysisPage';
 import SettingsPage from './components/Settings/SettingsPage';
@@ -21,6 +23,10 @@ export default function App() {
         return <LabelsPage />;
       case 'documents':
         return <DocumentsPage />;
+      case 'manual-label':
+        return <ManualLabelPage />;
+      case 'bulk-ops':
+        return <BulkOpsPage />;
       case 'snapshots':
         return <SnapshotsPage />;
       case 'analysis':
@@ -32,13 +38,15 @@ export default function App() {
     }
   };
 
+  const fullBleedPages: Page[] = ['labels', 'documents', 'snapshots', 'analysis'];
+
   return (
     <ErrorBoundary>
       <div className="flex h-screen">
         <Sidebar currentPage={currentPage} onNavigate={setCurrentPage} />
         <div className="flex-1 flex flex-col overflow-hidden">
           <TopBar />
-          <main className={`flex-1 overflow-auto ${currentPage === 'labels' || currentPage === 'documents' || currentPage === 'snapshots' || currentPage === 'analysis' ? '' : 'p-6'}`}>
+          <main className={`flex-1 overflow-auto ${fullBleedPages.includes(currentPage) ? '' : 'p-6'}`}>
             {renderPage()}
           </main>
         </div>
