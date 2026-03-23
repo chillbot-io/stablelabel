@@ -9,6 +9,9 @@ describe('SettingsPage', () => {
     vi.clearAllMocks();
     mockGetStatus.mockResolvedValue({ initialized: true, modulePath: '/path/to/StableLabel' });
     mockCheckPwsh.mockResolvedValue({ available: true, path: '/usr/bin/pwsh' });
+    (window.stablelabel.getPreferences as ReturnType<typeof vi.fn>).mockResolvedValue({});
+    (window.stablelabel.setPreferences as ReturnType<typeof vi.fn>).mockResolvedValue(true);
+    (window.stablelabel.updateSettings as ReturnType<typeof vi.fn>).mockResolvedValue(undefined);
     localStorage.clear();
   });
 
@@ -88,7 +91,7 @@ describe('SettingsPage', () => {
     expect(screen.getByText('Info').className).not.toContain('bg-blue-500/[0.15]');
   });
 
-  it('saves settings to localStorage', async () => {
+  it('saves settings via encrypted preferences', async () => {
     const user = userEvent.setup();
     render(<SettingsPage />);
 
@@ -96,7 +99,14 @@ describe('SettingsPage', () => {
     await waitFor(() => {
       expect(screen.getByText('Settings saved')).toBeInTheDocument();
     });
-    expect(localStorage.getItem('stablelabel-settings')).toBeTruthy();
+    expect(window.stablelabel.setPreferences).toHaveBeenCalledWith(
+      expect.objectContaining({
+        settings: expect.objectContaining({
+          timeout: 300,
+          logLevel: 'Info',
+        }),
+      }),
+    );
   });
 
   it('saved settings contain correct structure', async () => {
@@ -108,20 +118,18 @@ describe('SettingsPage', () => {
       expect(screen.getByText('Settings saved')).toBeInTheDocument();
     });
 
-    const saved = JSON.parse(localStorage.getItem('stablelabel-settings')!);
-    expect(saved).toHaveProperty('timeout');
-    expect(saved).toHaveProperty('logLevel');
-    expect(saved).toHaveProperty('modulePath');
-    expect(saved.timeout).toBe(300);
-    expect(saved.logLevel).toBe('Info');
+    const call = (window.stablelabel.setPreferences as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(call.settings).toHaveProperty('timeout');
+    expect(call.settings).toHaveProperty('logLevel');
+    expect(call.settings).toHaveProperty('modulePath');
+    expect(call.settings.timeout).toBe(300);
+    expect(call.settings.logLevel).toBe('Info');
   });
 
-  it('loads settings from localStorage on mount', async () => {
-    localStorage.setItem('stablelabel-settings', JSON.stringify({
-      modulePath: '/custom/path',
-      timeout: 600,
-      logLevel: 'Debug',
-    }));
+  it('loads settings from encrypted preferences on mount', async () => {
+    (window.stablelabel.getPreferences as ReturnType<typeof vi.fn>).mockResolvedValue({
+      settings: { modulePath: '/custom/path', timeout: 600, logLevel: 'Debug' },
+    });
 
     render(<SettingsPage />);
 
@@ -150,9 +158,9 @@ describe('SettingsPage', () => {
       expect(screen.getByText('Settings saved')).toBeInTheDocument();
     });
 
-    const saved = JSON.parse(localStorage.getItem('stablelabel-settings')!);
-    expect(typeof saved.timeout).toBe('number');
-    expect(saved.timeout).toBeGreaterThanOrEqual(10);
+    const call = (window.stablelabel.setPreferences as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(typeof call.settings.timeout).toBe('number');
+    expect(call.settings.timeout).toBeGreaterThanOrEqual(10);
   });
 
   it('enforces minimum timeout of 10', async () => {
@@ -168,8 +176,8 @@ describe('SettingsPage', () => {
       expect(screen.getByText('Settings saved')).toBeInTheDocument();
     });
 
-    const saved = JSON.parse(localStorage.getItem('stablelabel-settings')!);
-    expect(saved.timeout).toBeGreaterThanOrEqual(10);
+    const call = (window.stablelabel.setPreferences as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(call.settings.timeout).toBeGreaterThanOrEqual(10);
   });
 
   it('auto-fills module path from bridge status', async () => {

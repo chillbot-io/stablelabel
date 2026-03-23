@@ -90,7 +90,7 @@ describe('ConnectionDialog', () => {
     expect(onConnected).toHaveBeenCalled();
   });
 
-  it('saves connection info to localStorage on success', async () => {
+  it('saves connection info to encrypted preferences on success', async () => {
     mockInvoke.mockResolvedValue({
       success: true,
       data: {
@@ -110,22 +110,31 @@ describe('ConnectionDialog', () => {
       expect(screen.getByText('Connected successfully')).toBeInTheDocument();
     });
 
-    const saved = JSON.parse(localStorage.getItem('stablelabel-last-connection')!);
-    expect(saved.upn).toBe('admin@contoso.com');
-    expect(saved.tenantId).toBe('tenant-abc');
-    expect(saved.connectedAt).toBeDefined();
+    // Connection info saved via encrypted preferences, not localStorage
+    expect(window.stablelabel.setPreferences).toHaveBeenCalledWith(
+      expect.objectContaining({
+        lastConnection: expect.objectContaining({
+          upn: 'admin@contoso.com',
+          tenantId: 'tenant-abc',
+        }),
+      }),
+    );
   });
 
-  it('displays last session info when available', () => {
-    localStorage.setItem('stablelabel-last-connection', JSON.stringify({
-      upn: 'user@contoso.com',
-      tenantId: 'abc-123-def',
-      connectedAt: '2026-01-01T00:00:00.000Z',
-    }));
+  it('displays last session info when available in preferences', async () => {
+    (window.stablelabel.getPreferences as ReturnType<typeof vi.fn>).mockResolvedValue({
+      lastConnection: {
+        upn: 'user@contoso.com',
+        tenantId: 'abc-123-def',
+        connectedAt: '2026-01-01T00:00:00.000Z',
+      },
+    });
 
     render(<ConnectionDialog onClose={onClose} />);
 
-    expect(screen.getByText('Last session')).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByText('Last session')).toBeInTheDocument();
+    });
     expect(screen.getByText('user@contoso.com')).toBeInTheDocument();
     expect(screen.getByText('abc-123-def')).toBeInTheDocument();
   });
