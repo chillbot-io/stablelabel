@@ -54,6 +54,14 @@ contextBridge.exposeInMainWorld('stablelabel', {
   updateSettings: (settings: { timeout?: number; logLevel?: string }): Promise<void> =>
     ipcRenderer.invoke('settings:update', settings),
 
+  /** Load encrypted preferences from the main process (replaces localStorage for PII) */
+  getPreferences: (): Promise<Record<string, unknown>> =>
+    ipcRenderer.invoke('preferences:get'),
+
+  /** Save encrypted preferences in the main process */
+  setPreferences: (prefs: Record<string, unknown>): Promise<boolean> =>
+    ipcRenderer.invoke('preferences:set', prefs),
+
   /** Current platform (win32, darwin, linux) */
   platform: process.platform,
 

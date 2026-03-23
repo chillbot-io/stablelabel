@@ -17,6 +17,7 @@ $script:SLConnection = @{
     }
     ComplianceCommandCount = 0
     ComplianceSessionStart = $null
+    ComplianceLastCommandAt = $null
 }
 
 # Module-scoped label cache for GUID-to-name resolution
@@ -43,13 +44,25 @@ $script:SLConfig = @{
     ComplianceIdleTimeoutMinutes = 12
 }
 
-# Ensure config directory exists
+# Ensure config directories exist and are writable
 $configDir = Join-Path $HOME '.stablelabel'
 if (-not (Test-Path $configDir)) {
     New-Item -ItemType Directory -Path $configDir -Force | Out-Null
 }
 if (-not (Test-Path $script:SLConfig.SnapshotPath)) {
     New-Item -ItemType Directory -Path $script:SLConfig.SnapshotPath -Force | Out-Null
+}
+
+# Validate directories are writable — fail early with a clear error
+foreach ($dir in @($configDir, $script:SLConfig.SnapshotPath)) {
+    $testFile = Join-Path $dir '.write-test'
+    try {
+        [System.IO.File]::WriteAllText($testFile, '')
+        Remove-Item $testFile -Force -ErrorAction SilentlyContinue
+    }
+    catch {
+        Write-Warning "StableLabel directory '$dir' is not writable. Snapshots and audit logs may fail. Error: $_"
+    }
 }
 
 # Load classes first

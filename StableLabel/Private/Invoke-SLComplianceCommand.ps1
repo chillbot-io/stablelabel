@@ -32,6 +32,16 @@ function Invoke-SLComplianceCommand {
         }
     }
 
+    # Check idle timeout — use LastCommandAt (not SessionStart) to avoid
+    # miscalculating idle time after a recycle resets the timestamp (#15)
+    if ($script:SLConnection.ComplianceLastCommandAt) {
+        $idleTime = (Get-Date) - $script:SLConnection.ComplianceLastCommandAt
+        if ($idleTime.TotalMinutes -ge $script:SLConfig.ComplianceIdleTimeoutMinutes) {
+            Write-Verbose "Session recycling: idle for $([int]$idleTime.TotalMinutes) min (limit: $($script:SLConfig.ComplianceIdleTimeoutMinutes) min)."
+            $needsRecycle = $true
+        }
+    }
+
     if ($needsRecycle) {
         Write-Verbose "Recycling S&C PowerShell session..."
         try {
@@ -74,6 +84,7 @@ function Invoke-SLComplianceCommand {
     try {
         $result = Invoke-SLWithRetry -MaxRetries 2 -OperationName $OperationName -ScriptBlock $ScriptBlock
         $script:SLConnection.ComplianceCommandCount++
+        $script:SLConnection.ComplianceLastCommandAt = Get-Date
         return $result
     }
     catch {
@@ -96,6 +107,7 @@ function Invoke-SLComplianceCommand {
 
                 $result = & $ScriptBlock
                 $script:SLConnection.ComplianceCommandCount++
+                $script:SLConnection.ComplianceLastCommandAt = Get-Date
                 return $result
             }
             catch {

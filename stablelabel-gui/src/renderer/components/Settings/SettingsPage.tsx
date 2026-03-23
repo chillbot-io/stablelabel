@@ -6,46 +6,58 @@ interface Settings {
   logLevel: string;
 }
 
+const SETTINGS_DEFAULTS: Settings = { modulePath: '', timeout: 300, logLevel: 'Info' };
 const LOG_LEVELS = ['Error', 'Warning', 'Info', 'Debug'];
 
+/** Validate settings shape — rejects malformed localStorage/preferences data (#18). */
+function validateSettings(raw: unknown): Partial<Settings> {
+  if (typeof raw !== 'object' || raw === null) return {};
+  const obj = raw as Record<string, unknown>;
+  const result: Partial<Settings> = {};
+  if (typeof obj.modulePath === 'string') result.modulePath = obj.modulePath;
+  if (typeof obj.timeout === 'number' && obj.timeout >= 10 && obj.timeout <= 3600) result.timeout = obj.timeout;
+  if (typeof obj.logLevel === 'string' && LOG_LEVELS.includes(obj.logLevel)) result.logLevel = obj.logLevel;
+  return result;
+}
+
 export default function SettingsPage() {
-  const [settings, setSettings] = useState<Settings>({
-    modulePath: '',
-    timeout: 300,
-    logLevel: 'Info',
-  });
+  const [settings, setSettings] = useState<Settings>(SETTINGS_DEFAULTS);
   const [bridgeStatus, setBridgeStatus] = useState<{ initialized: boolean; modulePath?: string } | null>(null);
   const [pwshStatus, setPwshStatus] = useState<{ available: boolean; path?: string } | null>(null);
   const [saved, setSaved] = useState(false);
+  // Track whether user has explicitly set modulePath (#17)
+  const [userSetModulePath, setUserSetModulePath] = useState(false);
 
   useEffect(() => {
     window.stablelabel.getStatus().then(setBridgeStatus);
     window.stablelabel.checkPwsh().then(setPwshStatus);
 
-    try {
-      const stored = localStorage.getItem('stablelabel-settings');
-      if (stored) {
-        const parsed = JSON.parse(stored);
-        setSettings((prev) => ({ ...prev, ...parsed }));
+    // Load settings from encrypted preferences (with validation)
+    window.stablelabel.getPreferences().then((prefs) => {
+      const validated = validateSettings(prefs.settings);
+      if (Object.keys(validated).length > 0) {
+        setSettings((prev) => ({ ...prev, ...validated }));
+        if (validated.modulePath) setUserSetModulePath(true);
       }
-    } catch (err) {
-      console.error('Failed to parse stored settings:', err);
-    }
+    }).catch(() => {});
   }, []);
 
   useEffect(() => {
-    if (bridgeStatus?.modulePath && !settings.modulePath) {
+    // Only auto-fill modulePath from bridge if user hasn't set it (#17)
+    if (bridgeStatus?.modulePath && !settings.modulePath && !userSetModulePath) {
       setSettings((prev) => ({ ...prev, modulePath: bridgeStatus.modulePath! }));
     }
-  }, [bridgeStatus, settings.modulePath]);
+  }, [bridgeStatus, settings.modulePath, userSetModulePath]);
 
   const handleSave = () => {
-    localStorage.setItem('stablelabel-settings', JSON.stringify(settings));
+    // Save to encrypted main-process preferences instead of localStorage (#9)
+    window.stablelabel.setPreferences({ settings }).catch(() => {});
     // Push to main process so bridge/logger pick up changes immediately
     window.stablelabel.updateSettings({
       timeout: settings.timeout,
       logLevel: settings.logLevel,
     });
+    setUserSetModulePath(!!settings.modulePath);
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
   };

@@ -159,9 +159,17 @@ app.whenReady().then(() => {
     filters?: Array<{ name: string; extensions: string[] }>;
   }) => {
     if (!mainWindow) return null;
+    // Validate defaultPath — reject directory traversal and UNC paths
+    let safePath = options?.defaultPath;
+    if (safePath) {
+      const normalised = safePath.replace(/\\/g, '/');
+      if (normalised.includes('/../') || normalised.startsWith('//') || normalised.startsWith('\\\\')) {
+        safePath = undefined;
+      }
+    }
     const result = await dialog.showSaveDialog(mainWindow, {
       title: options?.title ?? 'Save File',
-      defaultPath: options?.defaultPath,
+      defaultPath: safePath,
       filters: options?.filters,
     });
     return result.canceled ? null : result.filePath ?? null;
@@ -170,6 +178,17 @@ app.whenReady().then(() => {
   // ── Credential vault ────────────────────────────────────────────────
   ipcMain.handle('credentials:clear', async () => {
     CredentialStore.clear();
+  });
+
+  // ── Encrypted preferences (replaces renderer localStorage for PII) ─
+  ipcMain.handle('preferences:get', async () => {
+    return CredentialStore.loadPrefs();
+  });
+
+  ipcMain.handle('preferences:set', async (_event, prefs: Record<string, unknown>) => {
+    if (typeof prefs !== 'object' || prefs === null) return false;
+    const existing = CredentialStore.loadPrefs();
+    return CredentialStore.savePrefs({ ...existing, ...prefs });
   });
 
   // ── Settings (pushed from renderer) ────────────────────────────────
@@ -228,15 +247,17 @@ app.whenReady().then(() => {
 });
 
 app.on('window-all-closed', () => {
+  // Dispose bridges on all platforms — no reason to keep PowerShell
+  // running when there are no windows. On macOS, bridges are re-created
+  // in the 'activate' handler when the user clicks the dock icon.
+  psBridge?.dispose();
+  psBridge = null;
+  classifierBridge?.dispose();
+  classifierBridge = null;
+
   if (process.platform !== 'darwin') {
-    // On non-macOS, dispose bridges and quit
-    psBridge?.dispose();
-    psBridge = null;
-    classifierBridge?.dispose();
-    classifierBridge = null;
     app.quit();
   }
-  // On macOS, keep bridges alive — app continues running without windows
 });
 
 app.on('activate', () => {

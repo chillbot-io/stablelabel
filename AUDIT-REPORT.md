@@ -2,7 +2,7 @@
 
 **Date**: 2026-03-19
 **Scope**: Full codebase audit — Security, AI Slop, E2E/Tests, Application Logic, Electron Architecture
-**Updated**: 2026-03-23 — All HIGH severity issues resolved. Removed findings referencing deleted components (DLP, Retention, FileShare, SuperUser)
+**Updated**: 2026-03-23 — All HIGH and MEDIUM severity issues resolved. Removed findings referencing deleted components (DLP, Retention, FileShare, SuperUser)
 
 ---
 
@@ -102,28 +102,28 @@ No `.on('error')` handler for the persistent PowerShell process. If the process 
 
 | # | File | Issue |
 |---|------|-------|
-| 9 | `ConnectionDialog.tsx`, `SettingsPage.tsx` | localStorage stores UPN & tenant ID — should use `safeStorage` |
+| 9 | `ConnectionDialog.tsx`, `SettingsPage.tsx` | ~~localStorage stores UPN & tenant ID~~ FIXED — Migrated to encrypted main-process preferences via IPC (`preferences:get`/`preferences:set`) backed by safeStorage |
 | 10 | `powershell-bridge.ts:231-270` | ~~No command queue size limit~~ FIXED — MAX_QUEUE_SIZE=500 |
-| 11 | `main.ts:136-148` | File dialog `defaultPath` not validated — potential directory traversal |
-| 12 | `cmdlet-registry.ts:58-67` | UNC path traversal not fully validated |
-| 13 | `credential-store.ts:37` | Silent fallback if encryption unavailable — tokens may be stored unencrypted |
+| 11 | `main.ts:136-148` | ~~File dialog `defaultPath` not validated~~ FIXED — Rejects path traversal (`/../`) and UNC paths (`\\\\`, `//`) |
+| 12 | `cmdlet-registry.ts:58-67` | ~~UNC path traversal not fully validated~~ FIXED — `validatePath()` now rejects `\\\\` and `//` UNC prefixes |
+| 13 | `credential-store.ts:37` | ~~Silent fallback if encryption unavailable~~ FIXED — Now logs explicit warning/error via logger when encryption is unavailable, refuses to store tokens unencrypted |
 
 ### Application Logic
 
 | # | File | Issue |
 |---|------|-------|
-| 14 | `usePagination.ts:5-16` | Pagination doesn't reset on items change — filtered lists show empty |
-| 15 | `Invoke-SLComplianceCommand.ps1:53-56` | Session recycle resets timestamp — idle timeout miscalculated |
-| 16 | `StableLabel.psm1:54-60` | Module init doesn't validate writable directories |
-| 17 | `SettingsPage.tsx:36-40` | `useEffect` overwrites user-set `modulePath` on reconnect |
-| 18 | `SettingsPage.tsx:25-34` | No validation of localStorage settings shape |
-| 19 | `main.ts:163-165` | macOS: PowerShell bridge not cleaned up when all windows close |
+| 14 | `usePagination.ts:5-16` | ~~Pagination doesn't reset on items change~~ FIXED — Resets limit when `items.length` changes |
+| 15 | `Invoke-SLComplianceCommand.ps1:53-56` | ~~Session recycle resets timestamp~~ FIXED — Added `ComplianceLastCommandAt` tracking; idle timeout now uses last command time, not session start |
+| 16 | `StableLabel.psm1:54-60` | ~~Module init doesn't validate writable directories~~ FIXED — Write-test on init with clear warning if directory is not writable |
+| 17 | `SettingsPage.tsx:36-40` | ~~`useEffect` overwrites user-set `modulePath`~~ FIXED — Tracks `userSetModulePath` flag; auto-fill only when user hasn't explicitly set a path |
+| 18 | `SettingsPage.tsx:25-34` | ~~No validation of localStorage settings shape~~ FIXED — `validateSettings()` validates type, range, and allowed values before applying |
+| 19 | `main.ts:163-165` | ~~macOS: PowerShell bridge not cleaned up~~ FIXED — Bridges now disposed on `window-all-closed` on all platforms; re-created on `activate` |
 
 ### AI Slop
 
 | # | File | Issue |
 |---|------|-------|
-| 20 | Across codebase | Inconsistent error handling patterns across similar components |
+| 20 | Across codebase | ~~Inconsistent error handling patterns~~ FIXED — Unified to `?? 'Failed'` for invoke errors, added `.catch().finally()` to fire-and-forget promises in LabelsPage |
 
 ---
 

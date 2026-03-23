@@ -25,6 +25,10 @@ declare global {
       }) => Promise<string | null>;
       clearCredentials: () => Promise<void>;
       updateSettings: (settings: { timeout?: number; logLevel?: string }) => Promise<void>;
+      /** Load encrypted preferences from main process */
+      getPreferences: () => Promise<Record<string, unknown>>;
+      /** Save encrypted preferences in main process */
+      setPreferences: (prefs: Record<string, unknown>) => Promise<boolean>;
       platform: string;
       /** Classifier (Presidio) methods */
       classifierInvoke: (action: string, params?: Record<string, unknown>) => Promise<PsResult>;
