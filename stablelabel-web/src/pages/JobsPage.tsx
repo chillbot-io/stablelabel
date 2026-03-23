@@ -9,8 +9,8 @@ import StatusBadge from '@/components/StatusBadge';
 import DataTable from '@/components/DataTable';
 import type { Column } from '@/components/DataTable';
 import Modal from '@/components/Modal';
-import type { Job, JobListPage, SensitivityLabel } from '@/lib/types';
-import { Calendar, Eye, FlaskConical, Play, Zap } from 'lucide-react';
+import type { Job, JobListPage, ScanResult, ScanResultPage, SensitivityLabel } from '@/lib/types';
+import { Calendar, ChevronLeft, ChevronRight, FileText, FlaskConical, Play, Zap } from 'lucide-react';
 
 const PAGE_SIZE = 20;
 
@@ -184,7 +184,7 @@ export default function JobsPage() {
         />
       )}
 
-      {detailJob && <JobDetailPanel job={detailJob} onClose={() => setDetailJob(null)} />}
+      {detailJob && selected && <JobDetailPanel job={detailJob} tenantId={selected.id} onClose={() => setDetailJob(null)} />}
 
       {loading ? (
         <div className="text-center py-12 text-zinc-500">Loading...</div>
@@ -537,9 +537,38 @@ function CreateJobDialog({
 
 // ── Job Detail Panel ──────────────────────────────────────────
 
-function JobDetailPanel({ job, onClose }: { job: Job; onClose: () => void }) {
+function JobDetailPanel({ job, tenantId, onClose }: { job: Job; tenantId: string; onClose: () => void }) {
+  const [showResults, setShowResults] = useState(false);
+  const [results, setResults] = useState<ScanResult[]>([]);
+  const [resultsTotal, setResultsTotal] = useState(0);
+  const [resultsPage, setResultsPage] = useState(1);
+  const [outcomeFilter, setOutcomeFilter] = useState<string>('');
+  const [loadingResults, setLoadingResults] = useState(false);
+
+  const loadResults = useCallback(async () => {
+    if (!tenantId) return;
+    setLoadingResults(true);
+    const filterParam = outcomeFilter ? `&outcome=${outcomeFilter}` : '';
+    try {
+      const data = await api.get<ScanResultPage>(
+        `/tenants/${tenantId}/jobs/${job.id}/results?page=${resultsPage}&page_size=20${filterParam}`
+      );
+      setResults(data.items);
+      setResultsTotal(data.total);
+    } catch {
+      setResults([]);
+    }
+    setLoadingResults(false);
+  }, [tenantId, job.id, resultsPage, outcomeFilter]);
+
+  useEffect(() => {
+    if (showResults) loadResults();
+  }, [showResults, loadResults]);
+
+  const resultsTotalPages = Math.ceil(resultsTotal / 20);
+
   return (
-    <Modal title={`Job: ${job.name}`} onClose={onClose}>
+    <Modal title={`Job: ${job.name}`} onClose={onClose} wide>
       <div className="space-y-3 text-sm">
         <div className="grid grid-cols-2 gap-3">
           <div>
@@ -616,6 +645,101 @@ function JobDetailPanel({ job, onClose }: { job: Job; onClose: () => void }) {
               be labelled. {job.skipped_files} would be skipped (no matching policy).
               Check the Reports page for full entity detection breakdown.
             </p>
+          </div>
+        )}
+
+        {/* Per-file results section */}
+        {job.processed_files > 0 && (
+          <div className="border-t border-zinc-800 pt-3">
+            <button
+              onClick={() => setShowResults(!showResults)}
+              className="flex items-center gap-1.5 text-xs text-blue-400 hover:text-blue-300 transition-colors"
+            >
+              <FileText size={14} />
+              {showResults ? 'Hide' : 'View'} per-file results ({job.processed_files.toLocaleString()} files)
+            </button>
+
+            {showResults && (
+              <div className="mt-3 space-y-2">
+                {/* Outcome filter */}
+                <div className="flex gap-1.5">
+                  {['', 'labelled', 'skipped', 'failed'].map((o) => (
+                    <button
+                      key={o}
+                      onClick={() => { setOutcomeFilter(o); setResultsPage(1); }}
+                      className={`px-2 py-0.5 text-xs rounded transition-colors ${
+                        outcomeFilter === o ? 'bg-blue-600 text-white' : 'bg-zinc-800 text-zinc-400 hover:text-zinc-200'
+                      }`}
+                    >
+                      {o || 'All'}
+                    </button>
+                  ))}
+                </div>
+
+                {loadingResults ? (
+                  <p className="text-xs text-zinc-500 py-2">Loading results...</p>
+                ) : results.length === 0 ? (
+                  <p className="text-xs text-zinc-500 py-2">No results found</p>
+                ) : (
+                  <div className="bg-zinc-800/50 border border-zinc-700 rounded-lg overflow-hidden max-h-60 overflow-y-auto">
+                    <table className="w-full text-xs">
+                      <thead>
+                        <tr className="border-b border-zinc-700">
+                          <th className="text-left py-1.5 px-2 text-zinc-500 font-medium">File</th>
+                          <th className="text-left py-1.5 px-2 text-zinc-500 font-medium w-24">Outcome</th>
+                          <th className="text-left py-1.5 px-2 text-zinc-500 font-medium w-28">Classification</th>
+                          <th className="text-left py-1.5 px-2 text-zinc-500 font-medium w-16">Conf.</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {results.map((r) => (
+                          <tr key={r.id} className="border-b border-zinc-800/50">
+                            <td className="py-1.5 px-2 text-zinc-300 truncate max-w-[200px]" title={r.file_name}>{r.file_name}</td>
+                            <td className="py-1.5 px-2">
+                              <span className={`px-1.5 py-0.5 rounded text-xs ${
+                                r.outcome === 'labelled' ? 'bg-green-900/40 text-green-300' :
+                                r.outcome === 'failed' ? 'bg-red-900/40 text-red-300' :
+                                'bg-zinc-700 text-zinc-400'
+                              }`}>
+                                {r.outcome}
+                              </span>
+                            </td>
+                            <td className="py-1.5 px-2 text-zinc-400">{r.classification ?? '--'}</td>
+                            <td className="py-1.5 px-2 text-zinc-400 tabular-nums">
+                              {r.confidence != null ? `${Math.round(r.confidence * 100)}%` : '--'}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+
+                {/* Pagination */}
+                {resultsTotalPages > 1 && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs text-zinc-500">{resultsTotal} results</span>
+                    <div className="flex gap-1">
+                      <button
+                        disabled={resultsPage <= 1}
+                        onClick={() => setResultsPage(resultsPage - 1)}
+                        className="p-1 rounded bg-zinc-800 hover:bg-zinc-700 disabled:opacity-50"
+                      >
+                        <ChevronLeft size={12} />
+                      </button>
+                      <span className="text-xs text-zinc-400 px-2 py-1">{resultsPage}/{resultsTotalPages}</span>
+                      <button
+                        disabled={resultsPage >= resultsTotalPages}
+                        onClick={() => setResultsPage(resultsPage + 1)}
+                        className="p-1 rounded bg-zinc-800 hover:bg-zinc-700 disabled:opacity-50"
+                      >
+                        <ChevronRight size={12} />
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         )}
       </div>

@@ -18,6 +18,7 @@ import PageHeader from '@/components/PageHeader';
 import TenantSelector from '@/components/TenantSelector';
 import StatusBadge from '@/components/StatusBadge';
 import type { Job, JobListPage, Policy, SensitivityLabel } from '@/lib/types';
+import Modal from '@/components/Modal';
 import {
   ArrowRight,
   CheckCircle,
@@ -27,6 +28,8 @@ import {
   Shield,
   Sparkles,
   Tag,
+  Trash2,
+  Upload,
   Zap,
 } from 'lucide-react';
 
@@ -38,6 +41,8 @@ export default function AutoLabelPage() {
   const [recentJobs, setRecentJobs] = useState<Job[]>([]);
   const [labels, setLabels] = useState<SensitivityLabel[]>([]);
   const [loading, setLoading] = useState(false);
+  const [showCsvUpload, setShowCsvUpload] = useState(false);
+  const [showBulkRemove, setShowBulkRemove] = useState(false);
 
   const load = useCallback(async () => {
     if (!selected) return;
@@ -100,7 +105,7 @@ export default function AutoLabelPage() {
         <div className="space-y-6">
           {/* Quick actions */}
           {isOperator && (
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-3 gap-3">
               <button
                 onClick={() => quickStartJob(true)}
                 className="flex items-center gap-3 p-4 bg-zinc-900 border border-zinc-800 rounded-lg hover:border-yellow-700 transition-colors text-left group"
@@ -139,6 +144,32 @@ export default function AutoLabelPage() {
                   <p className="text-xs text-zinc-500">Custom scope, schedule, static label</p>
                 </div>
               </Link>
+
+              <button
+                onClick={() => setShowCsvUpload(true)}
+                className="flex items-center gap-3 p-4 bg-zinc-900 border border-zinc-800 rounded-lg hover:border-green-700 transition-colors text-left group"
+              >
+                <div className="w-10 h-10 rounded-lg bg-green-900/30 flex items-center justify-center shrink-0">
+                  <Upload size={20} className="text-green-400" />
+                </div>
+                <div>
+                  <div className="text-sm font-medium text-zinc-200 group-hover:text-green-300">CSV Upload</div>
+                  <p className="text-xs text-zinc-500">Bulk label files from a CSV spreadsheet</p>
+                </div>
+              </button>
+
+              <button
+                onClick={() => setShowBulkRemove(true)}
+                className="flex items-center gap-3 p-4 bg-zinc-900 border border-zinc-800 rounded-lg hover:border-red-700 transition-colors text-left group"
+              >
+                <div className="w-10 h-10 rounded-lg bg-red-900/30 flex items-center justify-center shrink-0">
+                  <Trash2 size={20} className="text-red-400" />
+                </div>
+                <div>
+                  <div className="text-sm font-medium text-zinc-200 group-hover:text-red-300">Bulk Remove</div>
+                  <p className="text-xs text-zinc-500">Remove labels or encryption from files</p>
+                </div>
+              </button>
             </div>
           )}
 
@@ -219,7 +250,240 @@ export default function AutoLabelPage() {
           </div>
         </div>
       )}
+
+      {showCsvUpload && selected && (
+        <CsvUploadDialog tenantId={selected.id} onClose={() => setShowCsvUpload(false)} onDone={() => { setShowCsvUpload(false); load(); }} />
+      )}
+
+      {showBulkRemove && selected && (
+        <BulkRemoveDialog tenantId={selected.id} onClose={() => setShowBulkRemove(false)} onDone={() => { setShowBulkRemove(false); load(); }} />
+      )}
     </div>
+  );
+}
+
+// ── CSV Upload Dialog ─────────────────────────────────────────
+
+interface CsvResult {
+  total_rows: number;
+  valid_rows: number;
+  invalid_rows: number;
+  errors: string[];
+  job_id: string;
+}
+
+function CsvUploadDialog({ tenantId, onClose, onDone }: { tenantId: string; onClose: () => void; onDone: () => void }) {
+  const { showError } = useError();
+  const [file, setFile] = useState<File | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [result, setResult] = useState<CsvResult | null>(null);
+
+  const handleUpload = async () => {
+    if (!file) return;
+    setUploading(true);
+    try {
+      const res = await api.upload<CsvResult>(`/tenants/${tenantId}/documents/upload-csv`, file);
+      setResult(res);
+    } catch (err) {
+      showError(err instanceof Error ? err.message : 'Upload failed');
+    }
+    setUploading(false);
+  };
+
+  return (
+    <Modal title="CSV Upload — Bulk Label" onClose={onClose} wide>
+      {!result ? (
+        <div className="space-y-4">
+          <p className="text-sm text-zinc-400">
+            Upload a CSV file with columns: <code className="bg-zinc-800 px-1 rounded text-zinc-300">drive_id</code>,{' '}
+            <code className="bg-zinc-800 px-1 rounded text-zinc-300">item_id</code>,{' '}
+            <code className="bg-zinc-800 px-1 rounded text-zinc-300">filename</code>,{' '}
+            <code className="bg-zinc-800 px-1 rounded text-zinc-300">label_id</code>
+          </p>
+
+          <div className="border-2 border-dashed border-zinc-700 rounded-lg p-6 text-center">
+            <input
+              type="file"
+              accept=".csv"
+              onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+              className="hidden"
+              id="csv-upload"
+            />
+            <label htmlFor="csv-upload" className="cursor-pointer">
+              <Upload size={24} className="mx-auto text-zinc-500 mb-2" />
+              <p className="text-sm text-zinc-400">
+                {file ? file.name : 'Click to select a CSV file'}
+              </p>
+              {file && <p className="text-xs text-zinc-500 mt-1">{(file.size / 1024).toFixed(1)} KB</p>}
+            </label>
+          </div>
+
+          <div className="flex justify-end gap-2">
+            <button onClick={onClose} className="px-3 py-1.5 text-sm rounded bg-zinc-800 hover:bg-zinc-700">Cancel</button>
+            <button
+              onClick={handleUpload}
+              disabled={!file || uploading}
+              className="px-3 py-1.5 text-sm rounded bg-green-600 hover:bg-green-500 disabled:opacity-50"
+            >
+              {uploading ? 'Uploading...' : 'Upload & Apply'}
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="space-y-4">
+          <div className="grid grid-cols-3 gap-3">
+            <div className="bg-zinc-800 rounded-lg p-3 text-center">
+              <div className="text-lg font-semibold text-zinc-100">{result.total_rows}</div>
+              <div className="text-xs text-zinc-500">Total Rows</div>
+            </div>
+            <div className="bg-zinc-800 rounded-lg p-3 text-center">
+              <div className="text-lg font-semibold text-green-400">{result.valid_rows}</div>
+              <div className="text-xs text-zinc-500">Valid</div>
+            </div>
+            <div className="bg-zinc-800 rounded-lg p-3 text-center">
+              <div className="text-lg font-semibold text-red-400">{result.invalid_rows}</div>
+              <div className="text-xs text-zinc-500">Invalid</div>
+            </div>
+          </div>
+
+          {result.errors.length > 0 && (
+            <div className="bg-red-900/20 border border-red-800 rounded-lg p-3 max-h-40 overflow-y-auto">
+              <span className="text-xs text-red-400 font-medium block mb-1">Errors</span>
+              {result.errors.map((e, i) => (
+                <p key={i} className="text-xs text-red-300">{e}</p>
+              ))}
+            </div>
+          )}
+
+          <div className="flex justify-end">
+            <button onClick={onDone} className="px-3 py-1.5 text-sm rounded bg-blue-600 hover:bg-blue-500">Done</button>
+          </div>
+        </div>
+      )}
+    </Modal>
+  );
+}
+
+// ── Bulk Remove Dialog ────────────────────────────────────────
+
+function BulkRemoveDialog({ tenantId, onClose, onDone }: { tenantId: string; onClose: () => void; onDone: () => void }) {
+  const { showError } = useError();
+  const [mode, setMode] = useState<'label_only' | 'encryption_only' | 'label_and_encryption'>('label_only');
+  const [file, setFile] = useState<File | null>(null);
+  const [removing, setRemoving] = useState(false);
+  const [done, setDone] = useState(false);
+
+  const handleRemove = async () => {
+    if (!file) return;
+    setRemoving(true);
+
+    // Parse CSV client-side to extract items
+    try {
+      const text = await file.text();
+      const lines = text.trim().split('\n');
+      if (lines.length < 2) {
+        showError('CSV must have a header row and at least one data row');
+        setRemoving(false);
+        return;
+      }
+
+      const headers = lines[0].split(',').map((h) => h.trim().toLowerCase());
+      const driveIdx = headers.indexOf('drive_id');
+      const itemIdx = headers.indexOf('item_id');
+      const nameIdx = headers.indexOf('filename');
+
+      if (driveIdx === -1 || itemIdx === -1) {
+        showError('CSV must have drive_id and item_id columns');
+        setRemoving(false);
+        return;
+      }
+
+      const items = lines.slice(1).map((line) => {
+        const cols = line.split(',').map((c) => c.trim());
+        return {
+          drive_id: cols[driveIdx],
+          item_id: cols[itemIdx],
+          filename: nameIdx >= 0 ? cols[nameIdx] : '',
+        };
+      }).filter((i) => i.drive_id && i.item_id);
+
+      await api.post(`/tenants/${tenantId}/documents/remove-label-bulk`, {
+        tenant_id: tenantId,
+        items,
+        mode,
+        dry_run: false,
+      });
+      setDone(true);
+    } catch (err) {
+      showError(err instanceof Error ? err.message : 'Bulk removal failed');
+    }
+    setRemoving(false);
+  };
+
+  const MODES = [
+    { value: 'label_only' as const, label: 'Label Only', desc: 'Remove the sensitivity label metadata' },
+    { value: 'encryption_only' as const, label: 'Encryption Only', desc: 'Remove protection but keep the label' },
+    { value: 'label_and_encryption' as const, label: 'Label + Encryption', desc: 'Remove both label and protection' },
+  ];
+
+  return (
+    <Modal title="Bulk Remove Labels" onClose={onClose} wide>
+      {!done ? (
+        <div className="space-y-4">
+          <div>
+            <label className="text-sm text-zinc-400 block mb-2">Removal Mode</label>
+            <div className="space-y-2">
+              {MODES.map((m) => (
+                <button
+                  key={m.value}
+                  onClick={() => setMode(m.value)}
+                  className={`w-full text-left p-3 rounded-lg border transition-colors ${
+                    mode === m.value ? 'border-red-600 bg-red-900/20' : 'border-zinc-700 bg-zinc-800 hover:border-zinc-600'
+                  }`}
+                >
+                  <div className="text-sm font-medium text-zinc-200">{m.label}</div>
+                  <p className="text-xs text-zinc-500">{m.desc}</p>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <label className="text-sm text-zinc-400 block mb-1">File List (CSV)</label>
+            <p className="text-xs text-zinc-500 mb-2">
+              CSV with columns: <code className="bg-zinc-800 px-1 rounded">drive_id</code>, <code className="bg-zinc-800 px-1 rounded">item_id</code> (and optionally <code className="bg-zinc-800 px-1 rounded">filename</code>)
+            </p>
+            <input
+              type="file"
+              accept=".csv"
+              onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+              className="text-sm text-zinc-400"
+            />
+          </div>
+
+          <div className="flex justify-end gap-2">
+            <button onClick={onClose} className="px-3 py-1.5 text-sm rounded bg-zinc-800 hover:bg-zinc-700">Cancel</button>
+            <button
+              onClick={handleRemove}
+              disabled={!file || removing}
+              className="px-3 py-1.5 text-sm rounded bg-red-600 hover:bg-red-500 disabled:opacity-50"
+            >
+              {removing ? 'Removing...' : 'Remove Labels'}
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="space-y-4">
+          <div className="text-center py-4">
+            <CheckCircle size={32} className="mx-auto text-green-400 mb-2" />
+            <p className="text-sm text-zinc-200">Bulk removal complete</p>
+          </div>
+          <div className="flex justify-end">
+            <button onClick={onDone} className="px-3 py-1.5 text-sm rounded bg-blue-600 hover:bg-blue-500">Done</button>
+          </div>
+        </div>
+      )}
+    </Modal>
   );
 }
 
@@ -353,11 +617,13 @@ function countEntityTypes(policies: Policy[]): number {
 }
 
 function conditionSummary(rules: Record<string, unknown>): string {
-  const conditions = (rules.conditions ?? []) as Array<{ type: string; entity_types?: string[]; patterns?: string[] }>;
+  const conditions = (rules.conditions ?? []) as Array<{ type: string; entity_types?: string[]; patterns?: string[]; keywords?: string[] }>;
   if (conditions.length === 0) return 'No conditions';
   const parts = conditions.map((c) => {
     if (c.type === 'entity_detected') return `${(c.entity_types ?? []).length} entity type(s)`;
-    if (c.type === 'file_pattern') return `${(c.patterns ?? []).length} pattern(s)`;
+    if (c.type === 'file_pattern') return `${(c.patterns ?? []).length} file pattern(s)`;
+    if (c.type === 'keyword_match') return `${(c.keywords ?? []).length} keyword(s)`;
+    if (c.type === 'regex_match') return `${(c.patterns ?? []).length} regex(es)`;
     if (c.type === 'no_label') return 'Unlabelled';
     return c.type;
   });

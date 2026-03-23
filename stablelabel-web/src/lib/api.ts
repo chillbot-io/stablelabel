@@ -58,10 +58,38 @@ export class ApiError extends Error {
   }
 }
 
+async function uploadFile<T>(path: string, file: File): Promise<T> {
+  const headers: Record<string, string> = {};
+
+  if (_getToken) {
+    const token = await _getToken();
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+  }
+
+  const formData = new FormData();
+  formData.append('file', file);
+
+  const res = await fetch(`${BASE}${path}`, {
+    method: 'POST',
+    headers,
+    body: formData,
+  });
+
+  if (!res.ok) {
+    const detail = await res.json().catch(() => ({ detail: res.statusText }));
+    throw new ApiError(res.status, detail.detail || res.statusText);
+  }
+
+  return res.json();
+}
+
 export const api = {
   get: <T>(path: string) => request<T>('GET', path),
   post: <T>(path: string, body?: unknown) => request<T>('POST', path, body),
   put: <T>(path: string, body?: unknown) => request<T>('PUT', path, body),
   patch: <T>(path: string, body?: unknown) => request<T>('PATCH', path, body),
   delete: <T>(path: string) => request<T>('DELETE', path),
+  upload: <T>(path: string, file: File) => uploadFile<T>(path, file),
 };

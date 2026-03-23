@@ -78,6 +78,28 @@ export interface JobListPage {
   page_size: number;
 }
 
+// ── Scan Results ────────────────────────────────────────────
+
+export interface ScanResult {
+  id: string;
+  file_name: string;
+  drive_id: string;
+  item_id: string;
+  classification: string | null;
+  confidence: number | null;
+  label_applied: string | null;
+  previous_label: string | null;
+  outcome: 'labelled' | 'skipped' | 'failed';
+  ts: string;
+}
+
+export interface ScanResultPage {
+  items: ScanResult[];
+  total: number;
+  page: number;
+  page_size: number;
+}
+
 // ── Policies ────────────────────────────────────────────────
 
 export interface Policy {

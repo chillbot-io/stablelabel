@@ -24,7 +24,7 @@ from app.core.job_states import COPY_ALLOWED_FROM, SPECIAL_ACTIONS, TERMINAL_STA
 from app.core.rbac import check_tenant_access, require_role
 from app.core.redis import JobSignal, send_job_signal
 from app.db.base import get_session
-from app.db.models import AuditEvent, CustomerTenant, Job, JobCheckpoint
+from app.db.models import AuditEvent, CustomerTenant, Job, JobCheckpoint, ScanResult
 from app.dependencies import get_arq_pool
 
 logger = logging.getLogger(__name__)
@@ -83,6 +83,26 @@ class CheckpointResponse(BaseModel):
     items_failed: int
     scope_cursor: dict
     created_at: str
+
+
+class ScanResultResponse(BaseModel):
+    id: str
+    file_name: str
+    drive_id: str
+    item_id: str
+    classification: str | None
+    confidence: float | None
+    label_applied: str | None
+    previous_label: str | None
+    outcome: str
+    ts: str
+
+
+class ScanResultPage(BaseModel):
+    items: list[ScanResultResponse]
+    total: int
+    page: int
+    page_size: int
 
 
 # ── Helpers ─────────────────────────────────────────────────
@@ -419,6 +439,60 @@ async def list_checkpoints(
         )
         for cp in checkpoints
     ]
+
+
+@router.get("/{job_id}/results", response_model=ScanResultPage)
+async def list_scan_results(
+    customer_tenant_id: str,
+    job_id: str,
+    outcome: str | None = Query(None),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(50, ge=1, le=200),
+    user: CurrentUser = Depends(require_role("Viewer")),
+    db: AsyncSession = Depends(get_session),
+) -> ScanResultPage:
+    """List per-file scan results for a job. Filter by outcome (labelled/skipped/failed)."""
+    await check_tenant_access(user, customer_tenant_id, db)
+    await _get_job(job_id, customer_tenant_id, db)
+
+    base = select(ScanResult).where(
+        ScanResult.job_id == uuid.UUID(job_id),
+        ScanResult.customer_tenant_id == uuid.UUID(customer_tenant_id),
+    )
+    if outcome:
+        base = base.where(ScanResult.outcome == outcome)
+
+    count_stmt = select(func.count()).select_from(base.subquery())
+    total = (await db.execute(count_stmt)).scalar() or 0
+
+    stmt = (
+        base.order_by(ScanResult.ts.desc())
+        .offset((page - 1) * page_size)
+        .limit(page_size)
+    )
+    result = await db.execute(stmt)
+    rows = result.scalars().all()
+
+    return ScanResultPage(
+        items=[
+            ScanResultResponse(
+                id=str(r.id),
+                file_name=r.file_name,
+                drive_id=r.drive_id,
+                item_id=r.item_id,
+                classification=r.classification,
+                confidence=r.confidence,
+                label_applied=r.label_applied,
+                previous_label=r.previous_label,
+                outcome=r.outcome,
+                ts=r.ts.isoformat(),
+            )
+            for r in rows
+        ],
+        total=total,
+        page=page,
+        page_size=page_size,
+    )
 
 
 # ── SSE progress stream ────────────────────────────────────────

@@ -1,12 +1,16 @@
 """Document labeling endpoints.
 
-Apply, extract, and bulk-apply sensitivity labels on files.
+Apply, extract, bulk-apply, remove, and CSV-upload sensitivity labels on files.
 Every landmine guard fires before the Graph call.
 """
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException
+import csv
+import io
+import uuid
+
+from fastapi import APIRouter, Depends, HTTPException, UploadFile
 
 from app.core.entra_auth import CurrentUser
 from app.core.exceptions import (
@@ -17,15 +21,21 @@ from app.core.exceptions import (
 )
 from app.core.rbac import check_tenant_access, require_role
 from app.db.base import get_session
-from app.dependencies import get_document_service
+from app.dependencies import get_document_service, get_graph_client
 from app.models.document import (
+    BulkItem,
     BulkLabelRequest,
     BulkLabelResponse,
+    BulkRemoveRequest,
+    BulkRemoveResponse,
+    CsvUploadResult,
     DocumentLabel,
     LabelAssignment,
     LabelJobResult,
+    RemoveLabelRequest,
 )
 from app.services.document_service import DocumentService
+from app.services.graph_client import GraphClient
 
 router = APIRouter(prefix="/tenants/{tenant_id}/documents", tags=["documents"])
 
@@ -53,11 +63,7 @@ async def apply_label(
     db=Depends(get_session),
     svc: DocumentService = Depends(get_document_service),
 ) -> LabelJobResult:
-    """Apply a sensitivity label to a single file.
-
-    Guard chain: file type -> label validity -> encryption check ->
-    downgrade check -> Graph API -> poll -> verify.
-    """
+    """Apply a sensitivity label to a single file."""
     await check_tenant_access(user, tenant_id, db)
     try:
         return await svc.apply_label(
@@ -75,6 +81,25 @@ async def apply_label(
         raise HTTPException(status_code=502, detail=str(exc)) from None
 
 
+@router.post("/remove-label", status_code=204)
+async def remove_label(
+    tenant_id: str,
+    request: RemoveLabelRequest,
+    user: CurrentUser = Depends(require_role("Operator")),
+    db=Depends(get_session),
+    graph: GraphClient = Depends(get_graph_client),
+) -> None:
+    """Remove the sensitivity label from a single file."""
+    await check_tenant_access(user, tenant_id, db)
+    try:
+        await graph.post(
+            tenant_id,
+            f"/drives/{request.drive_id}/items/{request.item_id}/deleteSensitivityLabel",
+        )
+    except StableLabelError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from None
+
+
 @router.post("/apply-label-bulk", response_model=BulkLabelResponse)
 async def apply_label_bulk(
     tenant_id: str,
@@ -83,14 +108,7 @@ async def apply_label_bulk(
     db=Depends(get_session),
     svc: DocumentService = Depends(get_document_service),
 ) -> BulkLabelResponse:
-    """Apply a label to multiple files with full guard chain.
-
-    Key safety features:
-      - dry_run=True simulates without calling Graph
-      - confirm_encryption=True required for labels with protection
-      - Concurrency capped at 8 parallel operations per tenant
-      - Each file is individually verified after labeling
-    """
+    """Apply a label to multiple files with full guard chain."""
     await check_tenant_access(user, tenant_id, db)
     if request.tenant_id != tenant_id:
         raise HTTPException(
@@ -116,3 +134,114 @@ async def apply_label_bulk(
         raise HTTPException(status_code=404, detail=str(exc)) from None
     except StableLabelError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from None
+
+
+@router.post("/remove-label-bulk", response_model=BulkRemoveResponse)
+async def remove_label_bulk(
+    tenant_id: str,
+    request: BulkRemoveRequest,
+    user: CurrentUser = Depends(require_role("Operator")),
+    db=Depends(get_session),
+    svc: DocumentService = Depends(get_document_service),
+    graph: GraphClient = Depends(get_graph_client),
+) -> BulkRemoveResponse:
+    """Bulk remove labels from files.
+
+    Modes:
+      - label_only: Remove the sensitivity label metadata
+      - encryption_only: Remove protection/encryption but keep the label
+      - label_and_encryption: Remove both label and protection
+    """
+    await check_tenant_access(user, tenant_id, db)
+    if request.tenant_id != tenant_id:
+        raise HTTPException(400, "tenant_id in path must match request body")
+
+    return await svc.remove_label_bulk(
+        tenant_id=tenant_id,
+        items=request.items,
+        mode=request.mode,
+        dry_run=request.dry_run,
+        graph=graph,
+    )
+
+
+@router.post("/upload-csv", response_model=CsvUploadResult)
+async def upload_csv_labels(
+    tenant_id: str,
+    file: UploadFile,
+    user: CurrentUser = Depends(require_role("Operator")),
+    db=Depends(get_session),
+    svc: DocumentService = Depends(get_document_service),
+) -> CsvUploadResult:
+    """Upload a CSV file to apply labels to files in bulk.
+
+    Expected CSV columns: drive_id, item_id, filename, label_id
+    """
+    await check_tenant_access(user, tenant_id, db)
+
+    if not file.filename or not file.filename.endswith(".csv"):
+        raise HTTPException(400, "File must be a .csv")
+
+    content = await file.read()
+    if len(content) > 10 * 1024 * 1024:
+        raise HTTPException(400, "CSV file too large (max 10MB)")
+
+    try:
+        text = content.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        raise HTTPException(400, "CSV must be UTF-8 encoded") from None
+
+    reader = csv.DictReader(io.StringIO(text))
+    required_cols = {"drive_id", "item_id", "filename", "label_id"}
+    if not reader.fieldnames or not required_cols.issubset(set(reader.fieldnames)):
+        raise HTTPException(
+            400,
+            f"CSV must contain columns: {', '.join(sorted(required_cols))}. "
+            f"Found: {', '.join(reader.fieldnames or [])}",
+        )
+
+    rows = list(reader)
+    errors: list[str] = []
+    items_by_label: dict[str, list[BulkItem]] = {}
+
+    for i, row in enumerate(rows, start=2):
+        drive_id = row.get("drive_id", "").strip()
+        item_id = row.get("item_id", "").strip()
+        filename = row.get("filename", "").strip()
+        label_id = row.get("label_id", "").strip()
+
+        if not all([drive_id, item_id, filename, label_id]):
+            errors.append(f"Row {i}: missing required fields")
+            continue
+
+        items_by_label.setdefault(label_id, []).append(
+            BulkItem(drive_id=drive_id, item_id=item_id, filename=filename)
+        )
+
+    if len(errors) > 50:
+        errors = errors[:50] + [f"... and {len(errors) - 50} more errors"]
+
+    valid_rows = len(rows) - len(errors)
+    job_id = str(uuid.uuid4())
+
+    for label_id, items in items_by_label.items():
+        try:
+            result = await svc.apply_label_bulk(
+                tenant_id=tenant_id,
+                label_id=label_id,
+                items=items,
+            )
+            # Track failures from bulk apply
+            for r in result.results:
+                if r.status == "failed":
+                    errors.append(f"{r.filename}: {r.error}")
+        except (StableLabelError, Exception) as exc:
+            errors.append(f"Label {label_id}: {exc}")
+
+    return CsvUploadResult(
+        total_rows=len(rows),
+        valid_rows=valid_rows,
+        invalid_rows=len(rows) - valid_rows,
+        errors=errors[:100],
+        job_id=job_id,
+    )

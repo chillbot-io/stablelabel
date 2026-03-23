@@ -33,6 +33,7 @@ from __future__ import annotations
 
 import fnmatch
 import logging
+import re
 from dataclasses import dataclass, field
 
 from pydantic import BaseModel
@@ -58,6 +59,7 @@ class ClassificationResult(BaseModel):
     filename: str = ""
     entities: list[EntityMatch] = []
     error: str = ""
+    text_content: str = ""  # raw text for regex/keyword matching
 
     @property
     def entity_types(self) -> set[str]:
@@ -142,6 +144,14 @@ def _evaluate_single_policy(
             matched, desc = _check_file_pattern(cond, filename)
             condition_results.append((matched, desc))
 
+        elif cond_type == "keyword_match":
+            matched, desc = _check_keyword_condition(cond, classification)
+            condition_results.append((matched, desc))
+
+        elif cond_type == "regex_match":
+            matched, desc = _check_regex_condition(cond, classification)
+            condition_results.append((matched, desc))
+
         elif cond_type == "no_label":
             # Matches files that currently have no label
             condition_results.append((True, "no_label"))
@@ -212,6 +222,71 @@ def _check_file_pattern(
             return True, f"file_pattern: matched '{pattern}'"
 
     return False, f"file_pattern: no match in {patterns}"
+
+
+def _check_keyword_condition(
+    cond: dict, classification: ClassificationResult
+) -> tuple[bool, str]:
+    """Check if any of the specified keywords appear in the file's text content."""
+    keywords = cond.get("keywords", [])
+    case_sensitive = cond.get("case_sensitive", False)
+    min_count = cond.get("min_count", 1)
+
+    if not keywords:
+        return False, "keyword_match: no keywords specified"
+
+    text = classification.text_content
+    if not text:
+        return False, "keyword_match: no text content available"
+
+    if not case_sensitive:
+        text = text.lower()
+
+    total_matches = 0
+    matched_keywords: list[str] = []
+    for kw in keywords:
+        search_kw = kw if case_sensitive else kw.lower()
+        count = text.count(search_kw)
+        if count > 0:
+            total_matches += count
+            matched_keywords.append(kw)
+
+    if total_matches >= min_count:
+        return True, f"keyword_match: found {matched_keywords} (count={total_matches})"
+
+    return False, f"keyword_match: need {min_count} of {keywords}, found {total_matches}"
+
+
+def _check_regex_condition(
+    cond: dict, classification: ClassificationResult
+) -> tuple[bool, str]:
+    """Check if any regex patterns match the file's text content."""
+    patterns = cond.get("patterns", [])
+    min_count = cond.get("min_count", 1)
+
+    if not patterns:
+        return False, "regex_match: no patterns specified"
+
+    text = classification.text_content
+    if not text:
+        return False, "regex_match: no text content available"
+
+    total_matches = 0
+    matched_patterns: list[str] = []
+    for pattern in patterns:
+        try:
+            compiled = re.compile(pattern, re.IGNORECASE | re.MULTILINE)
+            matches = compiled.findall(text)
+            if matches:
+                total_matches += len(matches)
+                matched_patterns.append(pattern)
+        except re.error:
+            logger.warning("Invalid regex pattern '%s' — skipping", pattern)
+
+    if total_matches >= min_count:
+        return True, f"regex_match: {matched_patterns} matched (count={total_matches})"
+
+    return False, f"regex_match: need {min_count} matches, found {total_matches}"
 
 
 def policies_from_db(db_policies: list) -> list[PolicyRule]:

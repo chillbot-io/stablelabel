@@ -50,7 +50,20 @@ export interface NoLabelCondition {
   type: 'no_label';
 }
 
-export type Condition = EntityCondition | FilePatternCondition | NoLabelCondition;
+export interface KeywordCondition {
+  type: 'keyword_match';
+  keywords: string[];
+  case_sensitive: boolean;
+  min_count: number;
+}
+
+export interface RegexCondition {
+  type: 'regex_match';
+  patterns: string[];
+  min_count: number;
+}
+
+export type Condition = EntityCondition | FilePatternCondition | NoLabelCondition | KeywordCondition | RegexCondition;
 
 export interface PolicyRules {
   conditions: Condition[];
@@ -72,6 +85,10 @@ export default function RuleBuilder({ value, onChange, readOnly }: Props) {
       newCondition = { type: 'entity_detected', entity_types: [], min_confidence: 0.8, min_count: 1 };
     } else if (type === 'file_pattern') {
       newCondition = { type: 'file_pattern', patterns: [''] };
+    } else if (type === 'keyword_match') {
+      newCondition = { type: 'keyword_match', keywords: [''], case_sensitive: false, min_count: 1 };
+    } else if (type === 'regex_match') {
+      newCondition = { type: 'regex_match', patterns: [''], min_count: 1 };
     } else {
       newCondition = { type: 'no_label' };
     }
@@ -179,6 +196,20 @@ export default function RuleBuilder({ value, onChange, readOnly }: Props) {
           </button>
           <button
             type="button"
+            onClick={() => addCondition('keyword_match')}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-md bg-zinc-800 hover:bg-zinc-700 text-zinc-300 border border-zinc-700 transition-colors"
+          >
+            <Plus size={12} /> Keyword Match
+          </button>
+          <button
+            type="button"
+            onClick={() => addCondition('regex_match')}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-md bg-zinc-800 hover:bg-zinc-700 text-zinc-300 border border-zinc-700 transition-colors"
+          >
+            <Plus size={12} /> Regex Pattern
+          </button>
+          <button
+            type="button"
             onClick={() => addCondition('no_label')}
             className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-md bg-zinc-800 hover:bg-zinc-700 text-zinc-300 border border-zinc-700 transition-colors"
           >
@@ -206,6 +237,12 @@ function ConditionEditor({
   }
   if (condition.type === 'file_pattern') {
     return <FilePatternEditor condition={condition} onChange={onChange} readOnly={readOnly} />;
+  }
+  if (condition.type === 'keyword_match') {
+    return <KeywordConditionEditor condition={condition} onChange={onChange} readOnly={readOnly} />;
+  }
+  if (condition.type === 'regex_match') {
+    return <RegexConditionEditor condition={condition} onChange={onChange} readOnly={readOnly} />;
   }
   return (
     <div className="text-sm text-zinc-300">
@@ -427,6 +464,158 @@ function FilePatternEditor({
             <Plus size={12} /> Add pattern
           </button>
         )}
+      </div>
+    </div>
+  );
+}
+
+function KeywordConditionEditor({
+  condition,
+  onChange,
+  readOnly,
+}: {
+  condition: KeywordCondition;
+  onChange: (c: Condition) => void;
+  readOnly?: boolean;
+}) {
+  const updateKeyword = (index: number, value: string) => {
+    const keywords = [...condition.keywords];
+    keywords[index] = value;
+    onChange({ ...condition, keywords });
+  };
+
+  const addKeyword = () => {
+    onChange({ ...condition, keywords: [...condition.keywords, ''] });
+  };
+
+  const removeKeyword = (index: number) => {
+    onChange({ ...condition, keywords: condition.keywords.filter((_, i) => i !== index) });
+  };
+
+  return (
+    <div className="flex-1 space-y-3">
+      <div className="text-sm">
+        <span className="text-blue-400 font-medium">Keyword Match</span>
+        <span className="text-zinc-500 ml-2">— match files containing specific words or phrases</span>
+      </div>
+
+      <div className="space-y-1.5">
+        {condition.keywords.map((kw, i) => (
+          <div key={i} className="flex items-center gap-2">
+            <input
+              value={kw}
+              onChange={(e) => !readOnly && updateKeyword(i, e.target.value)}
+              placeholder="e.g. confidential, internal only, salary"
+              disabled={readOnly}
+              className="flex-1 bg-zinc-800 border border-zinc-700 rounded px-3 py-1.5 text-xs text-zinc-200 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            />
+            {!readOnly && condition.keywords.length > 1 && (
+              <button type="button" onClick={() => removeKeyword(i)} className="text-zinc-500 hover:text-red-400 transition-colors">
+                <Trash2 size={12} />
+              </button>
+            )}
+          </div>
+        ))}
+        {!readOnly && (
+          <button type="button" onClick={addKeyword} className="flex items-center gap-1 text-xs text-zinc-400 hover:text-zinc-200 transition-colors">
+            <Plus size={12} /> Add keyword
+          </button>
+        )}
+      </div>
+
+      <div className="flex gap-4">
+        <div className="flex items-center gap-2">
+          <input
+            type="checkbox"
+            checked={condition.case_sensitive}
+            onChange={(e) => !readOnly && onChange({ ...condition, case_sensitive: e.target.checked })}
+            disabled={readOnly}
+            className="rounded border-zinc-600 bg-zinc-800 text-blue-500 focus:ring-blue-500 focus:ring-offset-0"
+          />
+          <span className="text-xs text-zinc-400">Case sensitive</span>
+        </div>
+        <div className="w-24">
+          <label className="text-xs text-zinc-500 block mb-1">Min Count</label>
+          <input
+            type="number"
+            min={1}
+            max={1000}
+            value={condition.min_count}
+            onChange={(e) => !readOnly && onChange({ ...condition, min_count: Math.max(1, parseInt(e.target.value) || 1) })}
+            disabled={readOnly}
+            className="w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-xs text-zinc-200 focus:outline-none focus:ring-1 focus:ring-blue-500"
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function RegexConditionEditor({
+  condition,
+  onChange,
+  readOnly,
+}: {
+  condition: RegexCondition;
+  onChange: (c: Condition) => void;
+  readOnly?: boolean;
+}) {
+  const updatePattern = (index: number, value: string) => {
+    const patterns = [...condition.patterns];
+    patterns[index] = value;
+    onChange({ ...condition, patterns });
+  };
+
+  const addPattern = () => {
+    onChange({ ...condition, patterns: [...condition.patterns, ''] });
+  };
+
+  const removePattern = (index: number) => {
+    onChange({ ...condition, patterns: condition.patterns.filter((_, i) => i !== index) });
+  };
+
+  return (
+    <div className="flex-1 space-y-3">
+      <div className="text-sm">
+        <span className="text-blue-400 font-medium">Regex Pattern</span>
+        <span className="text-zinc-500 ml-2">— match files using regular expressions on content</span>
+      </div>
+
+      <div className="space-y-1.5">
+        {condition.patterns.map((pattern, i) => (
+          <div key={i} className="flex items-center gap-2">
+            <input
+              value={pattern}
+              onChange={(e) => !readOnly && updatePattern(i, e.target.value)}
+              placeholder="e.g. \b[A-Z]{2}\d{6}\b, PROJECT-\d+"
+              disabled={readOnly}
+              className="flex-1 bg-zinc-800 border border-zinc-700 rounded px-3 py-1.5 text-xs text-zinc-200 focus:outline-none focus:ring-1 focus:ring-blue-500 font-mono"
+            />
+            {!readOnly && condition.patterns.length > 1 && (
+              <button type="button" onClick={() => removePattern(i)} className="text-zinc-500 hover:text-red-400 transition-colors">
+                <Trash2 size={12} />
+              </button>
+            )}
+          </div>
+        ))}
+        {!readOnly && (
+          <button type="button" onClick={addPattern} className="flex items-center gap-1 text-xs text-zinc-400 hover:text-zinc-200 transition-colors">
+            <Plus size={12} /> Add pattern
+          </button>
+        )}
+      </div>
+
+      <div className="w-24">
+        <label className="text-xs text-zinc-500 block mb-1">Min Matches</label>
+        <input
+          type="number"
+          min={1}
+          max={1000}
+          value={condition.min_count}
+          onChange={(e) => !readOnly && onChange({ ...condition, min_count: Math.max(1, parseInt(e.target.value) || 1) })}
+          disabled={readOnly}
+          className="w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-xs text-zinc-200 focus:outline-none focus:ring-1 focus:ring-blue-500"
+        />
       </div>
     </div>
   );
