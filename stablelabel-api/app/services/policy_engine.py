@@ -1,32 +1,21 @@
 """Policy engine — evaluates files against classification-to-label policies.
 
+Supports two rule schemas:
+
+1. **SIT-aligned** (new): patterns with primary match + corroborative evidence
+   + proximity + confidence tiers + shared definitions. Mirrors Microsoft
+   Sensitive Information Types.
+
+2. **Legacy flat** (old): conditions list with match_mode. Auto-migrated to
+   new format at evaluation time for backward compatibility.
+
 A policy has:
-  - rules: JSONB with conditions (entity types, confidence thresholds, file patterns)
+  - rules: JSONB with detection patterns (new) or conditions (legacy)
   - target_label_id: the label to apply when rules match
   - priority: higher priority wins when multiple policies match
 
 The engine evaluates all enabled policies against a file's classification
 results and returns the highest-priority matching label (or None).
-
-Rule schema (stored in Policy.rules JSONB):
-  {
-    "conditions": [
-      {
-        "type": "entity_detected",
-        "entity_types": ["CREDIT_CARD", "US_SSN"],
-        "min_confidence": 0.8,
-        "min_count": 1
-      },
-      {
-        "type": "file_pattern",
-        "patterns": ["*.xlsx", "financial*"]
-      }
-    ],
-    "match_mode": "any"  // "any" = OR, "all" = AND
-  }
-
-Each condition evaluates independently. match_mode controls how conditions
-are combined within a single policy.
 """
 
 from __future__ import annotations
@@ -37,6 +26,8 @@ import re
 from dataclasses import dataclass, field
 
 from pydantic import BaseModel
+
+from app.models.policy_rules import migrate_legacy_rules
 
 logger = logging.getLogger(__name__)
 
@@ -66,12 +57,15 @@ class ClassificationResult(BaseModel):
         return {e.entity_type for e in self.entities}
 
 
-# ── Policy evaluation ─────────────────────────────────────────
+# ── Policy evaluation (legacy flat schema) ────────────────────
 
 
 @dataclass
 class PolicyRule:
-    """Parsed representation of a single policy, ready for evaluation."""
+    """Parsed representation of a single policy, ready for evaluation.
+
+    Holds either legacy conditions or new-format rules dict.
+    """
 
     policy_id: str
     policy_name: str
@@ -79,6 +73,7 @@ class PolicyRule:
     priority: int
     conditions: list[dict]
     match_mode: str = "any"  # "any" or "all"
+    rules_raw: dict = field(default_factory=dict)  # full rules JSONB for new schema
 
 
 @dataclass
@@ -89,6 +84,7 @@ class PolicyMatch:
     policy_id: str
     policy_name: str
     priority: int
+    confidence_level: int = 75
     matched_conditions: list[str] = field(default_factory=list)
 
 
@@ -96,13 +92,17 @@ def evaluate_policies(
     policies: list[PolicyRule],
     classification: ClassificationResult,
     filename: str = "",
+    current_label_id: str | None = None,
 ) -> PolicyMatch | None:
     """Evaluate a file against all policies, return highest-priority match.
+
+    Supports both legacy flat conditions and new SIT-aligned patterns.
 
     Args:
         policies: Pre-sorted by priority (highest first).
         classification: Entity detection results from content classifier.
-        filename: Original filename for file_pattern matching.
+        filename: Original filename for file_pattern/file_scope matching.
+        current_label_id: Current label on the file (for no_label / require_no_existing_label).
 
     Returns:
         The highest-priority matching PolicyMatch, or None.
@@ -110,15 +110,15 @@ def evaluate_policies(
     matches: list[PolicyMatch] = []
 
     for policy in policies:
-        matched = _evaluate_single_policy(policy, classification, filename)
+        matched = _evaluate_single_policy(policy, classification, filename, current_label_id)
         if matched:
             matches.append(matched)
 
     if not matches:
         return None
 
-    # Highest priority wins
-    matches.sort(key=lambda m: m.priority, reverse=True)
+    # Sort by priority desc, then confidence_level desc as tiebreaker
+    matches.sort(key=lambda m: (m.priority, m.confidence_level), reverse=True)
     return matches[0]
 
 
@@ -126,8 +126,373 @@ def _evaluate_single_policy(
     policy: PolicyRule,
     classification: ClassificationResult,
     filename: str,
+    current_label_id: str | None,
 ) -> PolicyMatch | None:
-    """Check if a single policy's conditions are met."""
+    """Check if a single policy's conditions are met.
+
+    Routes to SIT-aligned evaluation if rules contain 'patterns',
+    otherwise falls back to legacy flat evaluation.
+    """
+    rules = policy.rules_raw or {}
+
+    # New SIT-aligned schema
+    if "patterns" in rules:
+        return _evaluate_sit_policy(policy, rules, classification, filename, current_label_id)
+
+    # Legacy flat schema
+    return _evaluate_legacy_policy(policy, classification, filename)
+
+
+# ═══════════════════════════════════════════════════════════════
+# SIT-ALIGNED EVALUATION (new schema)
+# ═══════════════════════════════════════════════════════════════
+
+
+def _evaluate_sit_policy(
+    policy: PolicyRule,
+    rules: dict,
+    classification: ClassificationResult,
+    filename: str,
+    current_label_id: str | None,
+) -> PolicyMatch | None:
+    """Evaluate a policy using the SIT-aligned patterns schema."""
+    patterns = rules.get("patterns", [])
+    definitions = rules.get("definitions", {})
+    file_scope = rules.get("file_scope")
+
+    if not patterns:
+        return None
+
+    # Check file_scope first (cheap, no content scanning needed)
+    if file_scope:
+        if not _check_file_scope(file_scope, filename, current_label_id):
+            return None
+
+    # Evaluate patterns from highest confidence to lowest
+    sorted_patterns = sorted(patterns, key=lambda p: p.get("confidence_level", 75), reverse=True)
+
+    for pattern in sorted_patterns:
+        result = _evaluate_pattern(pattern, definitions, classification)
+        if result is not None:
+            confidence_level, matched_descs = result
+            return PolicyMatch(
+                target_label_id=policy.target_label_id,
+                policy_id=policy.policy_id,
+                policy_name=policy.policy_name,
+                priority=policy.priority,
+                confidence_level=confidence_level,
+                matched_conditions=matched_descs,
+            )
+
+    return None
+
+
+def _check_file_scope(
+    file_scope: dict,
+    filename: str,
+    current_label_id: str | None,
+) -> bool:
+    """Check if the file passes the scope filters."""
+    file_patterns = file_scope.get("file_patterns", [])
+    if file_patterns and filename:
+        lower_name = filename.lower()
+        if not any(fnmatch.fnmatch(lower_name, p.lower()) for p in file_patterns):
+            return False
+
+    if file_scope.get("require_no_existing_label", False):
+        if current_label_id is not None:
+            return False
+
+    return True
+
+
+def _evaluate_pattern(
+    pattern: dict,
+    definitions: dict,
+    classification: ClassificationResult,
+) -> tuple[int, list[str]] | None:
+    """Evaluate a single detection pattern against classification results.
+
+    Returns (confidence_level, matched_descriptions) or None if no match.
+    """
+    confidence_level = pattern.get("confidence_level", 75)
+    primary_match = pattern.get("primary_match")
+    evidence = pattern.get("corroborative_evidence")
+    proximity = pattern.get("proximity", 300)
+
+    if not primary_match:
+        return None
+
+    # Step 1: evaluate primary match — get the matching positions
+    primary_result = _evaluate_primary_match(primary_match, classification)
+    if primary_result is None:
+        return None
+
+    primary_desc, primary_positions = primary_result
+    matched_descs = [primary_desc]
+
+    # Step 2: if corroborative evidence required, check it within proximity
+    if evidence:
+        evidence_result = _evaluate_evidence(
+            evidence, definitions, classification, primary_positions, proximity,
+        )
+        if evidence_result is None:
+            return None
+        matched_descs.extend(evidence_result)
+
+    return confidence_level, matched_descs
+
+
+def _evaluate_primary_match(
+    primary: dict,
+    classification: ClassificationResult,
+) -> tuple[str, list[tuple[int, int]]] | None:
+    """Evaluate the primary match (anchor detection).
+
+    Returns (description, list_of_(start,end)_positions) or None.
+    """
+    match_type = primary.get("type", "")
+
+    if match_type == "entity":
+        return _primary_entity_match(primary, classification)
+    elif match_type == "regex":
+        return _primary_regex_match(primary, classification)
+
+    logger.warning("Unknown primary match type: %s", match_type)
+    return None
+
+
+def _primary_entity_match(
+    primary: dict,
+    classification: ClassificationResult,
+) -> tuple[str, list[tuple[int, int]]] | None:
+    """Check if required entities are detected above threshold. Returns positions."""
+    entity_types = set(primary.get("entity_types", []))
+    min_confidence = primary.get("min_confidence", 0.5)
+    min_count = primary.get("min_count", 1)
+
+    if not entity_types:
+        return None
+
+    qualifying = [
+        e for e in classification.entities
+        if e.entity_type in entity_types and e.confidence >= min_confidence
+    ]
+
+    if len(qualifying) < min_count:
+        return None
+
+    positions = [(e.start, e.end) for e in qualifying]
+    found_types = {e.entity_type for e in qualifying}
+    desc = f"entity: {found_types} (count={len(qualifying)})"
+    return desc, positions
+
+
+def _primary_regex_match(
+    primary: dict,
+    classification: ClassificationResult,
+) -> tuple[str, list[tuple[int, int]]] | None:
+    """Check if regex patterns match text content. Returns match positions."""
+    patterns = primary.get("patterns", [])
+    min_count = primary.get("min_count", 1)
+    text = classification.text_content
+
+    if not patterns or not text:
+        return None
+
+    all_positions: list[tuple[int, int]] = []
+    matched_patterns: list[str] = []
+
+    for pattern in patterns:
+        try:
+            compiled = re.compile(pattern, re.IGNORECASE | re.MULTILINE)
+            for m in compiled.finditer(text):
+                all_positions.append((m.start(), m.end()))
+                if pattern not in matched_patterns:
+                    matched_patterns.append(pattern)
+        except re.error:
+            logger.warning("Invalid regex pattern '%s' — skipping", pattern)
+
+    if len(all_positions) < min_count:
+        return None
+
+    desc = f"regex: {matched_patterns} (count={len(all_positions)})"
+    return desc, all_positions
+
+
+def _evaluate_evidence(
+    evidence: dict,
+    definitions: dict,
+    classification: ClassificationResult,
+    primary_positions: list[tuple[int, int]],
+    proximity: int,
+) -> list[str] | None:
+    """Evaluate corroborative evidence within proximity of primary matches.
+
+    Returns list of matched evidence descriptions, or None if min_matches not met.
+    """
+    min_matches = evidence.get("min_matches", 1)
+    max_matches = evidence.get("max_matches")
+    matches_list = evidence.get("matches", [])
+
+    if not matches_list:
+        return None
+
+    satisfied: list[str] = []
+
+    for match_def in matches_list:
+        match_type = match_def.get("type", "")
+
+        if match_type == "keyword_list":
+            ref_id = match_def.get("id", "")
+            defn = definitions.get(ref_id, {})
+            result = _evidence_keyword_check(
+                defn.get("keywords", []),
+                defn.get("case_sensitive", False),
+                classification.text_content,
+                primary_positions,
+                proximity,
+            )
+            if result:
+                satisfied.append(f"keyword_list({ref_id}): {result}")
+
+        elif match_type == "regex":
+            ref_id = match_def.get("id", "")
+            defn = definitions.get(ref_id, {})
+            result = _evidence_regex_check(
+                defn.get("patterns", []),
+                classification.text_content,
+                primary_positions,
+                proximity,
+            )
+            if result:
+                satisfied.append(f"regex({ref_id}): {result}")
+
+        elif match_type == "inline_keyword":
+            result = _evidence_keyword_check(
+                match_def.get("keywords", []),
+                match_def.get("case_sensitive", False),
+                classification.text_content,
+                primary_positions,
+                proximity,
+            )
+            if result:
+                satisfied.append(f"inline_keyword: {result}")
+
+        elif match_type == "inline_regex":
+            result = _evidence_regex_check(
+                match_def.get("patterns", []),
+                classification.text_content,
+                primary_positions,
+                proximity,
+            )
+            if result:
+                satisfied.append(f"inline_regex: {result}")
+
+        else:
+            logger.warning("Unknown evidence match type: %s", match_type)
+
+        # Early exit if max_matches reached
+        if max_matches is not None and len(satisfied) >= max_matches:
+            break
+
+    if len(satisfied) < min_matches:
+        return None
+
+    return satisfied
+
+
+def _is_within_proximity(
+    hit_start: int,
+    hit_end: int,
+    primary_positions: list[tuple[int, int]],
+    proximity: int,
+) -> bool:
+    """Check if a hit position is within proximity of any primary match position."""
+    if proximity <= 0:
+        return True  # proximity=0 means no proximity check
+    for p_start, p_end in primary_positions:
+        # Evidence can be before or after the primary match
+        if hit_start >= p_start - proximity and hit_end <= p_end + proximity:
+            return True
+        # Also check overlap
+        if hit_start <= p_end + proximity and hit_end >= p_start - proximity:
+            return True
+    return False
+
+
+def _evidence_keyword_check(
+    keywords: list[str],
+    case_sensitive: bool,
+    text: str,
+    primary_positions: list[tuple[int, int]],
+    proximity: int,
+) -> str | None:
+    """Check if keywords appear within proximity of primary matches."""
+    if not keywords or not text:
+        return None
+
+    search_text = text if case_sensitive else text.lower()
+    matched_keywords: list[str] = []
+
+    for kw in keywords:
+        search_kw = kw if case_sensitive else kw.lower()
+        start = 0
+        while True:
+            idx = search_text.find(search_kw, start)
+            if idx == -1:
+                break
+            hit_end = idx + len(search_kw)
+            if _is_within_proximity(idx, hit_end, primary_positions, proximity):
+                if kw not in matched_keywords:
+                    matched_keywords.append(kw)
+                break  # one match per keyword is enough
+            start = idx + 1
+
+    if matched_keywords:
+        return f"found {matched_keywords}"
+    return None
+
+
+def _evidence_regex_check(
+    patterns: list[str],
+    text: str,
+    primary_positions: list[tuple[int, int]],
+    proximity: int,
+) -> str | None:
+    """Check if regex patterns match within proximity of primary matches."""
+    if not patterns or not text:
+        return None
+
+    matched_patterns: list[str] = []
+
+    for pattern in patterns:
+        try:
+            compiled = re.compile(pattern, re.IGNORECASE | re.MULTILINE)
+            for m in compiled.finditer(text):
+                if _is_within_proximity(m.start(), m.end(), primary_positions, proximity):
+                    if pattern not in matched_patterns:
+                        matched_patterns.append(pattern)
+                    break
+        except re.error:
+            logger.warning("Invalid evidence regex '%s' — skipping", pattern)
+
+    if matched_patterns:
+        return f"matched {matched_patterns}"
+    return None
+
+
+# ═══════════════════════════════════════════════════════════════
+# LEGACY FLAT EVALUATION (backward compat)
+# ═══════════════════════════════════════════════════════════════
+
+
+def _evaluate_legacy_policy(
+    policy: PolicyRule,
+    classification: ClassificationResult,
+    filename: str,
+) -> PolicyMatch | None:
+    """Evaluate using the old flat conditions schema."""
     if not policy.conditions:
         return None
 
@@ -153,7 +518,6 @@ def _evaluate_single_policy(
             condition_results.append((matched, desc))
 
         elif cond_type == "no_label":
-            # Matches files that currently have no label
             condition_results.append((True, "no_label"))
 
         else:
@@ -195,7 +559,6 @@ def _check_entity_condition(
     if not required_types:
         return False, "entity_detected: no entity_types specified"
 
-    # Find qualifying entities
     qualifying = [
         e for e in classification.entities
         if e.entity_type in required_types and e.confidence >= min_confidence
@@ -289,17 +652,28 @@ def _check_regex_condition(
     return False, f"regex_match: need {min_count} matches, found {total_matches}"
 
 
+# ═══════════════════════════════════════════════════════════════
+# DB CONVERSION
+# ═══════════════════════════════════════════════════════════════
+
+
 def policies_from_db(db_policies: list) -> list[PolicyRule]:
     """Convert DB Policy objects to PolicyRule evaluation objects.
 
     Filters to enabled policies and sorts by priority (highest first).
+    Detects schema format (legacy vs SIT-aligned) per policy.
     """
     rules = []
     for p in db_policies:
         if not p.is_enabled:
             continue
-        conditions = p.rules.get("conditions", [])
-        match_mode = p.rules.get("match_mode", "any")
+
+        raw_rules = p.rules or {}
+
+        # Legacy schema
+        conditions = raw_rules.get("conditions", [])
+        match_mode = raw_rules.get("match_mode", "any")
+
         rules.append(PolicyRule(
             policy_id=str(p.id),
             policy_name=p.name,
@@ -307,6 +681,7 @@ def policies_from_db(db_policies: list) -> list[PolicyRule]:
             priority=p.priority,
             conditions=conditions,
             match_mode=match_mode,
+            rules_raw=raw_rules,
         ))
 
     rules.sort(key=lambda r: r.priority, reverse=True)

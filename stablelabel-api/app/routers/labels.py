@@ -66,12 +66,27 @@ async def get_label(
 
 
 class CreateLabelRequest(BaseModel):
+    """Create a top-level sensitivity label."""
+
     name: str
     display_name: str = ""
     description: str = ""
     tooltip: str = ""
     color: str = ""
-    parent_id: str | None = None
+
+
+class CreateSublabelRequest(BaseModel):
+    """Create a sublabel under an existing parent label.
+
+    Sublabels inherit their parent's scope but can have different
+    protection settings. Example: Confidential → Confidential/PCI.
+    """
+
+    name: str
+    display_name: str = ""
+    description: str = ""
+    tooltip: str = ""
+    color: str = ""
 
 
 class UpdateLabelRequest(BaseModel):
@@ -83,14 +98,18 @@ class UpdateLabelRequest(BaseModel):
 
 
 @router.post("", status_code=201)
-async def create_label_definition(
+async def create_label(
     tenant_id: str,
     body: CreateLabelRequest,
     user: CurrentUser = Depends(require_role("Operator")),
     db: AsyncSession = Depends(get_session),
     mgmt: LabelManagementService = Depends(get_label_management_service),
 ) -> dict[str, Any]:
-    """Create a new sensitivity label (Graph API, with PowerShell fallback)."""
+    """Create a new top-level sensitivity label.
+
+    To create a **sublabel** under an existing parent, use
+    ``POST /tenants/{tenant_id}/labels/{parent_label_id}/sublabels`` instead.
+    """
     await check_tenant_access(user, tenant_id, db)
     config = LabelConfig(
         name=body.name,
@@ -98,7 +117,6 @@ async def create_label_definition(
         description=body.description,
         tooltip=body.tooltip,
         color=body.color,
-        parent_id=body.parent_id,
     )
     result = await mgmt.create_label(tenant_id, config)
     ct = await db.get(CustomerTenant, uuid.UUID(tenant_id))
@@ -109,6 +127,59 @@ async def create_label_definition(
             actor_id=uuid.UUID(user.id),
             event_type="label.created",
             extra={"label_name": body.name},
+        ))
+        await db.commit()
+    return result
+
+
+@router.post("/{parent_label_id}/sublabels", status_code=201)
+async def create_sublabel(
+    tenant_id: str,
+    parent_label_id: str,
+    body: CreateSublabelRequest,
+    user: CurrentUser = Depends(require_role("Operator")),
+    db: AsyncSession = Depends(get_session),
+    mgmt: LabelManagementService = Depends(get_label_management_service),
+    svc: LabelService = Depends(get_label_service),
+) -> dict[str, Any]:
+    """Create a sublabel under an existing parent label.
+
+    The parent label must exist and will become a non-appliable parent
+    (``is_parent=True``) once it has sublabels. Only leaf sublabels can
+    be applied to files.
+
+    Example: ``POST /tenants/{id}/labels/{confidential-id}/sublabels``
+    with ``{"name": "PCI", "description": "PCI-DSS regulated content"}``
+    creates "Confidential / PCI".
+    """
+    await check_tenant_access(user, tenant_id, db)
+
+    # Verify parent label exists
+    parent = await svc.get_label(tenant_id, parent_label_id)
+    if not parent:
+        raise HTTPException(404, f"Parent label {parent_label_id} not found")
+
+    config = LabelConfig(
+        name=body.name,
+        display_name=body.display_name,
+        description=body.description,
+        tooltip=body.tooltip,
+        color=body.color,
+        parent_id=parent_label_id,
+    )
+    result = await mgmt.create_label(tenant_id, config)
+    ct = await db.get(CustomerTenant, uuid.UUID(tenant_id))
+    if ct:
+        db.add(AuditEvent(
+            msp_tenant_id=ct.msp_tenant_id,
+            customer_tenant_id=ct.id,
+            actor_id=uuid.UUID(user.id),
+            event_type="label.created",
+            extra={
+                "label_name": body.name,
+                "parent_label_id": parent_label_id,
+                "is_sublabel": True,
+            },
         ))
         await db.commit()
     return result

@@ -1,9 +1,15 @@
 """Policies routes — classification-to-label mapping rules.
 
-Policies define what happens when sensitive data is detected:
-  "If PCI detected with confidence > 0.8 → apply Highly Confidential"
+Policies define what happens when sensitive data is detected, using a
+SIT-aligned (Sensitive Information Type) rules schema:
+  - **Patterns** with primary match (entity/regex) + corroborative evidence
+  - **Proximity** window: evidence must be within N characters of anchor
+  - **Confidence tiers**: 65=low, 75=medium, 85=high
+  - **Shared definitions**: reusable keyword lists and regex patterns
 
-Operators can create/edit policies for tenants they have access to.
+Example: "If US_SSN detected AND health keywords within 300 chars → HIPAA → Highly Confidential"
+
+Legacy flat conditions schema is also accepted and auto-validated.
 """
 
 from __future__ import annotations
@@ -11,7 +17,7 @@ from __future__ import annotations
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -19,11 +25,30 @@ from app.core.entra_auth import CurrentUser
 from app.core.rbac import check_tenant_access, require_role
 from app.db.base import get_session
 from app.db.models import Policy
+from app.models.policy_rules import PolicyRules
 
 router = APIRouter(prefix="/tenants/{customer_tenant_id}/policies", tags=["policies"])
 
 
 # ── Schemas ─────────────────────────────────────────────────
+
+
+def _validate_rules(rules: dict) -> dict:
+    """Validate rules dict against SIT-aligned schema.
+
+    Accepts both new format (patterns) and legacy format (conditions).
+    Returns the rules dict unchanged if valid.
+    """
+    if "patterns" in rules:
+        try:
+            PolicyRules.model_validate(rules)
+        except ValidationError as e:
+            raise HTTPException(
+                status_code=422,
+                detail=f"Invalid policy rules: {e.errors()}",
+            )
+    # Legacy format is accepted as-is (backward compat)
+    return rules
 
 
 class CreatePolicyRequest(BaseModel):
@@ -50,6 +75,7 @@ class PolicyResponse(BaseModel):
     rules: dict
     target_label_id: str
     priority: int
+    schema_version: str
     created_at: str
     updated_at: str
 
@@ -57,14 +83,17 @@ class PolicyResponse(BaseModel):
 
 
 def _policy_to_response(p: Policy) -> PolicyResponse:
+    rules = p.rules or {}
+    schema_version = "sit" if "patterns" in rules else "legacy"
     return PolicyResponse(
         id=str(p.id),
         name=p.name,
         is_builtin=p.is_builtin,
         is_enabled=p.is_enabled,
-        rules=p.rules,
+        rules=rules,
         target_label_id=p.target_label_id,
         priority=p.priority,
+        schema_version=schema_version,
         created_at=p.created_at.isoformat(),
         updated_at=p.updated_at.isoformat(),
     )
@@ -98,8 +127,14 @@ async def create_policy(
     user: CurrentUser = Depends(require_role("Operator")),
     db: AsyncSession = Depends(get_session),
 ) -> PolicyResponse:
-    """Create a custom classification-to-label policy."""
+    """Create a custom classification-to-label policy.
+
+    Rules can use either the new SIT-aligned schema (with ``patterns``,
+    ``definitions``, ``file_scope``) or the legacy flat conditions schema.
+    New SIT-aligned rules are validated against the Pydantic model.
+    """
     await check_tenant_access(user, customer_tenant_id, db)
+    _validate_rules(body.rules)
 
     policy = Policy(
         customer_tenant_id=uuid.UUID(customer_tenant_id),
@@ -169,6 +204,7 @@ async def update_policy(
         if body.name is not None:
             policy.name = body.name
         if body.rules is not None:
+            _validate_rules(body.rules)
             policy.rules = body.rules
         if body.target_label_id is not None:
             policy.target_label_id = body.target_label_id
