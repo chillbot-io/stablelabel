@@ -3,6 +3,12 @@
 Uses presidio-analyzer for PII/PCI detection. Falls back gracefully when
 presidio is not installed (it's an optional dependency).
 
+Supports two types of entity detection:
+  1. **Built-in PII/PCI entities** — Presidio's default recognizers
+     (US_SSN, CREDIT_CARD, etc.)
+  2. **SIT composite entities** — Custom recognizers compiled from
+     SIT policy definitions (SIT_HIPAA_PHI, SIT_PCI_DSS, etc.)
+
 The classifier does NOT download files itself — the executor extracts text
 via Graph API and passes it here for scanning.
 
@@ -28,10 +34,14 @@ _analyzer: Any = None
 _analyzer_loaded = False
 _analyzer_lock = threading.Lock()
 
+# Registered SIT entity types (populated by register_tenant_sits)
+_sit_entity_types: list[str] = []
+_sit_lock = threading.Lock()
+
 # Thread pool for CPU-bound presidio work so we never block the event loop.
 _classifier_pool = ThreadPoolExecutor(max_workers=2, thread_name_prefix="presidio")
 
-# Default entity types to scan for
+# Default entity types to scan for (raw PII/PCI)
 DEFAULT_ENTITIES = [
     "CREDIT_CARD",
     "CRYPTO",
@@ -115,7 +125,7 @@ def classify_content(
             error="presidio-analyzer not installed",
         )
 
-    scan_entities = entities or DEFAULT_ENTITIES
+    scan_entities = entities or get_all_entity_types()
 
     try:
         results = analyzer.analyze(
@@ -337,3 +347,79 @@ def is_large_text(text: str) -> bool:
 def is_available() -> bool:
     """Check if the classifier is available (presidio installed)."""
     return _get_analyzer() is not None
+
+
+# ── SIT recognizer registration ──────────────────────────────
+
+
+def register_tenant_sits(sit_definitions: list[dict]) -> list[str]:
+    """Register SIT definitions as Presidio recognizers.
+
+    Call this when a tenant's policies are loaded (e.g. at job start).
+    Each SIT definition should have ``name`` and ``rules`` keys.
+
+    Returns list of registered SIT entity type names.
+
+    Example::
+
+        register_tenant_sits([
+            {
+                "name": "HIPAA_PHI",
+                "rules": {
+                    "patterns": [{
+                        "confidence_level": 85,
+                        "primary_match": {
+                            "type": "entity",
+                            "entity_types": ["US_SSN", "MEDICAL_LICENSE"],
+                            "min_confidence": 0.8,
+                        },
+                        "corroborative_evidence": {
+                            "min_matches": 1,
+                            "matches": [{"type": "keyword_list", "id": "health"}],
+                        },
+                        "proximity": 300,
+                    }],
+                    "definitions": {
+                        "health": {
+                            "type": "keyword_list",
+                            "keywords": ["patient", "diagnosis"],
+                        },
+                    },
+                },
+            },
+        ])
+    """
+    global _sit_entity_types
+
+    analyzer = _get_analyzer()
+    if analyzer is None:
+        return []
+
+    from app.services.sit_recognizers import register_sit_recognizers
+
+    with _sit_lock:
+        registered = register_sit_recognizers(analyzer, sit_definitions)
+        # Track registered types so they're included in scans
+        for et in registered:
+            if et not in _sit_entity_types:
+                _sit_entity_types.append(et)
+        return registered
+
+
+def get_all_entity_types() -> list[str]:
+    """Return all scannable entity types (default + registered SITs)."""
+    return DEFAULT_ENTITIES + list(_sit_entity_types)
+
+
+def get_sit_entity_types() -> list[str]:
+    """Return only the registered SIT entity types."""
+    return list(_sit_entity_types)
+
+
+def clear_sit_recognizers() -> None:
+    """Remove all registered SIT recognizers. Used for testing and tenant switches."""
+    global _sit_entity_types
+    with _sit_lock:
+        _sit_entity_types = []
+    # Note: Presidio doesn't support removing individual recognizers from the registry.
+    # In production, the analyzer is recreated per-tenant or SITs are registered once.
