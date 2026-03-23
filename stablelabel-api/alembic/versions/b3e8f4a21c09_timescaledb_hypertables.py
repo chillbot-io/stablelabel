@@ -9,8 +9,13 @@ Adds:
   - scan_results table + hypertable
   - classification_events table + hypertable
   - job_metrics table + hypertable
-  - Converts audit_events to monthly range-partitioned table
+  - Converts audit_events to hypertable
   - schedule_cron column on jobs (if not present)
+
+Note: TimescaleDB hypertables require the partitioning column (ts/created_at)
+to be part of the primary key. We use composite PKs (ts, id) for all
+time-series tables. Foreign keys are omitted since hypertables don't
+support them — referential integrity is enforced at the application layer.
 """
 
 from typing import Sequence, Union
@@ -33,14 +38,12 @@ def upgrade() -> None:
     # ── scan_results ────────────────────────────────────────
     op.create_table(
         "scan_results",
-        sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True,
+        sa.Column("id", postgresql.UUID(as_uuid=True), nullable=False,
                   server_default=sa.text("gen_random_uuid()")),
         sa.Column("ts", sa.DateTime(timezone=True), nullable=False,
                   server_default=sa.text("now()")),
-        sa.Column("customer_tenant_id", postgresql.UUID(as_uuid=True),
-                  sa.ForeignKey("customer_tenants.id", ondelete="CASCADE"), nullable=False),
-        sa.Column("job_id", postgresql.UUID(as_uuid=True),
-                  sa.ForeignKey("jobs.id", ondelete="CASCADE"), nullable=False),
+        sa.Column("customer_tenant_id", postgresql.UUID(as_uuid=True), nullable=False),
+        sa.Column("job_id", postgresql.UUID(as_uuid=True), nullable=False),
         sa.Column("drive_id", sa.String(255), nullable=False),
         sa.Column("item_id", sa.String(255), nullable=False),
         sa.Column("file_name", sa.String(500), nullable=False),
@@ -49,6 +52,7 @@ def upgrade() -> None:
         sa.Column("label_applied", sa.String(36)),
         sa.Column("previous_label", sa.String(36)),
         sa.Column("outcome", sa.String(20), nullable=False),
+        sa.PrimaryKeyConstraint("ts", "id"),
     )
     op.create_index("ix_scan_tenant_ts", "scan_results", ["customer_tenant_id", "ts"])
     op.create_index("ix_scan_job", "scan_results", ["job_id"])
@@ -57,18 +61,17 @@ def upgrade() -> None:
     # ── classification_events ───────────────────────────────
     op.create_table(
         "classification_events",
-        sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True,
+        sa.Column("id", postgresql.UUID(as_uuid=True), nullable=False,
                   server_default=sa.text("gen_random_uuid()")),
         sa.Column("ts", sa.DateTime(timezone=True), nullable=False,
                   server_default=sa.text("now()")),
-        sa.Column("customer_tenant_id", postgresql.UUID(as_uuid=True),
-                  sa.ForeignKey("customer_tenants.id", ondelete="CASCADE"), nullable=False),
-        sa.Column("job_id", postgresql.UUID(as_uuid=True),
-                  sa.ForeignKey("jobs.id", ondelete="CASCADE"), nullable=False),
+        sa.Column("customer_tenant_id", postgresql.UUID(as_uuid=True), nullable=False),
+        sa.Column("job_id", postgresql.UUID(as_uuid=True), nullable=False),
         sa.Column("entity_type", sa.String(100), nullable=False),
         sa.Column("entity_count", sa.Integer, nullable=False),
         sa.Column("max_confidence", sa.Float, nullable=False),
         sa.Column("file_name", sa.String(500), nullable=False),
+        sa.PrimaryKeyConstraint("ts", "id"),
     )
     op.create_index("ix_class_tenant_ts", "classification_events", ["customer_tenant_id", "ts"])
     op.create_index("ix_class_entity", "classification_events", ["entity_type"])
@@ -77,35 +80,34 @@ def upgrade() -> None:
     # ── job_metrics ─────────────────────────────────────────
     op.create_table(
         "job_metrics",
-        sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True,
+        sa.Column("id", postgresql.UUID(as_uuid=True), nullable=False,
                   server_default=sa.text("gen_random_uuid()")),
         sa.Column("ts", sa.DateTime(timezone=True), nullable=False,
                   server_default=sa.text("now()")),
-        sa.Column("customer_tenant_id", postgresql.UUID(as_uuid=True),
-                  sa.ForeignKey("customer_tenants.id", ondelete="CASCADE"), nullable=False),
-        sa.Column("job_id", postgresql.UUID(as_uuid=True),
-                  sa.ForeignKey("jobs.id", ondelete="CASCADE"), nullable=False),
+        sa.Column("customer_tenant_id", postgresql.UUID(as_uuid=True), nullable=False),
+        sa.Column("job_id", postgresql.UUID(as_uuid=True), nullable=False),
         sa.Column("batch_number", sa.Integer, nullable=False),
         sa.Column("files_processed", sa.Integer, nullable=False),
         sa.Column("files_failed", sa.Integer, nullable=False),
         sa.Column("files_skipped", sa.Integer, nullable=False),
         sa.Column("duration_ms", sa.Integer, nullable=False),
         sa.Column("files_per_second", sa.Float, nullable=False),
+        sa.PrimaryKeyConstraint("ts", "id"),
     )
     op.create_index("ix_jm_tenant_ts", "job_metrics", ["customer_tenant_id", "ts"])
     op.create_index("ix_jm_job", "job_metrics", ["job_id"])
     op.execute("SELECT create_hypertable('job_metrics', 'ts', migrate_data => true)")
 
     # ── Retention policies ──────────────────────────────────
-    # Keep scan_results for 90 days, classification_events for 1 year, job_metrics for 1 year
     op.execute("SELECT add_retention_policy('scan_results', INTERVAL '90 days')")
     op.execute("SELECT add_retention_policy('classification_events', INTERVAL '1 year')")
     op.execute("SELECT add_retention_policy('job_metrics', INTERVAL '1 year')")
 
-    # ── Audit events: enable compression for old data ───────
-    # Note: Full monthly partitioning of audit_events would require recreating the
-    # table. Instead, we convert to a TimescaleDB hypertable which handles
-    # time-based partitioning automatically.
+    # ── Audit events: convert to hypertable ───────────────
+    # Must include created_at in the PK for TimescaleDB partitioning.
+    # Drop the existing PK and recreate as composite.
+    op.execute("ALTER TABLE audit_events DROP CONSTRAINT audit_events_pkey")
+    op.execute("ALTER TABLE audit_events ADD PRIMARY KEY (created_at, id)")
     op.execute(
         "SELECT create_hypertable('audit_events', 'created_at', "
         "migrate_data => true, if_not_exists => true)"
@@ -113,7 +115,6 @@ def upgrade() -> None:
     op.execute("SELECT add_retention_policy('audit_events', INTERVAL '2 years')")
 
     # ── Jobs: schedule_cron (idempotent) ────────────────────
-    # Column may already exist from models.py — add only if missing
     op.execute("""
         DO $$
         BEGIN
@@ -136,3 +137,7 @@ def downgrade() -> None:
     op.drop_table("job_metrics")
     op.drop_table("classification_events")
     op.drop_table("scan_results")
+
+    # Restore audit_events PK to id-only
+    op.execute("ALTER TABLE audit_events DROP CONSTRAINT audit_events_pkey")
+    op.execute("ALTER TABLE audit_events ADD PRIMARY KEY (id)")
