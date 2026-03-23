@@ -368,3 +368,176 @@ class TestClassificationResult:
     def test_empty_entity_types(self) -> None:
         cr = ClassificationResult()
         assert cr.entity_types == set()
+
+    def test_text_content_field(self) -> None:
+        cr = ClassificationResult(text_content="hello world")
+        assert cr.text_content == "hello world"
+
+
+# ── Keyword match condition tests ─────────────────────────────
+
+
+class TestKeywordMatchCondition:
+    """Tests for the keyword_match condition type."""
+
+    def test_matches_keyword_in_text(self) -> None:
+        policy = _rule(conditions=[{
+            "type": "keyword_match",
+            "keywords": ["confidential"],
+            "case_sensitive": False,
+            "min_count": 1,
+        }])
+        classification = ClassificationResult(
+            text_content="This document is confidential and private.",
+        )
+        result = evaluate_policies([policy], classification)
+        assert result is not None
+        assert result.target_label_id == "label-1"
+
+    def test_case_insensitive_by_default(self) -> None:
+        policy = _rule(conditions=[{
+            "type": "keyword_match",
+            "keywords": ["confidential"],
+            "min_count": 1,
+        }])
+        classification = ClassificationResult(
+            text_content="This is CONFIDENTIAL data.",
+        )
+        result = evaluate_policies([policy], classification)
+        assert result is not None
+
+    def test_case_sensitive_mode(self) -> None:
+        policy = _rule(conditions=[{
+            "type": "keyword_match",
+            "keywords": ["Confidential"],
+            "case_sensitive": True,
+            "min_count": 1,
+        }])
+        classification = ClassificationResult(
+            text_content="This is CONFIDENTIAL data.",
+        )
+        result = evaluate_policies([policy], classification)
+        assert result is None
+
+    def test_min_count_check(self) -> None:
+        policy = _rule(conditions=[{
+            "type": "keyword_match",
+            "keywords": ["secret"],
+            "case_sensitive": False,
+            "min_count": 3,
+        }])
+        # Only 2 occurrences
+        classification = ClassificationResult(
+            text_content="secret plans and secret operations",
+        )
+        result = evaluate_policies([policy], classification)
+        assert result is None
+
+    def test_min_count_met(self) -> None:
+        policy = _rule(conditions=[{
+            "type": "keyword_match",
+            "keywords": ["secret"],
+            "case_sensitive": False,
+            "min_count": 2,
+        }])
+        classification = ClassificationResult(
+            text_content="secret plans and secret operations",
+        )
+        result = evaluate_policies([policy], classification)
+        assert result is not None
+
+    def test_no_text_content_returns_false(self) -> None:
+        policy = _rule(conditions=[{
+            "type": "keyword_match",
+            "keywords": ["confidential"],
+            "min_count": 1,
+        }])
+        classification = ClassificationResult(text_content="")
+        result = evaluate_policies([policy], classification)
+        assert result is None
+
+    def test_no_keywords_returns_false(self) -> None:
+        policy = _rule(conditions=[{
+            "type": "keyword_match",
+            "keywords": [],
+            "min_count": 1,
+        }])
+        classification = ClassificationResult(
+            text_content="This has some text.",
+        )
+        result = evaluate_policies([policy], classification)
+        assert result is None
+
+
+# ── Regex match condition tests ───────────────────────────────
+
+
+class TestRegexMatchCondition:
+    """Tests for the regex_match condition type."""
+
+    def test_matches_regex_pattern(self) -> None:
+        policy = _rule(conditions=[{
+            "type": "regex_match",
+            "patterns": [r"\b\d{3}-\d{2}-\d{4}\b"],
+            "min_count": 1,
+        }])
+        classification = ClassificationResult(
+            text_content="SSN: 123-45-6789 found in document.",
+        )
+        result = evaluate_policies([policy], classification)
+        assert result is not None
+
+    def test_multiple_patterns_any_match(self) -> None:
+        policy = _rule(conditions=[{
+            "type": "regex_match",
+            "patterns": [
+                r"\b\d{3}-\d{2}-\d{4}\b",  # SSN pattern
+                r"\b[A-Z]{2}\d{2}[A-Z0-9]{4}\d{7}[A-Z0-9]{0,16}\b",  # IBAN-ish
+            ],
+            "min_count": 1,
+        }])
+        # Only SSN pattern matches
+        classification = ClassificationResult(
+            text_content="SSN: 123-45-6789 is here.",
+        )
+        result = evaluate_policies([policy], classification)
+        assert result is not None
+
+    def test_min_count_check(self) -> None:
+        policy = _rule(conditions=[{
+            "type": "regex_match",
+            "patterns": [r"\b\d{3}-\d{2}-\d{4}\b"],
+            "min_count": 3,
+        }])
+        # Only 2 SSN matches
+        classification = ClassificationResult(
+            text_content="SSN: 123-45-6789 and 987-65-4321",
+        )
+        result = evaluate_policies([policy], classification)
+        assert result is None
+
+    def test_invalid_regex_skipped(self) -> None:
+        policy = _rule(conditions=[{
+            "type": "regex_match",
+            "patterns": [
+                r"[invalid(",        # bad regex — should be skipped
+                r"\b\d{3}-\d{2}-\d{4}\b",  # valid SSN pattern
+            ],
+            "min_count": 1,
+        }])
+        classification = ClassificationResult(
+            text_content="SSN: 123-45-6789 is here.",
+        )
+        # Should succeed because the valid pattern still matches
+        result = evaluate_policies([policy], classification)
+        assert result is not None
+
+    def test_no_text_content_returns_false(self) -> None:
+        policy = _rule(conditions=[{
+            "type": "regex_match",
+            "patterns": [r"\b\d{3}-\d{2}-\d{4}\b"],
+            "min_count": 1,
+        }])
+        classification = ClassificationResult(text_content="")
+        result = evaluate_policies([policy], classification)
+        assert result is None

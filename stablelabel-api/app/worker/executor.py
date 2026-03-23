@@ -34,6 +34,7 @@ from app.db.models import (
     AuditEvent, ClassificationEvent, Job, JobCheckpoint, JobMetric, Policy, ScanResult,
 )
 from app.models.document import LabelAssignment, JobStatus
+from app.config import Settings
 from app.services.classifier import classify_content
 from app.services.document_service import DocumentService
 from app.services.graph_client import GraphClient
@@ -48,6 +49,120 @@ logger = logging.getLogger(__name__)
 
 # Checkpoint every N files during labelling
 _LABELLING_BATCH_SIZE = 100
+
+
+def _extract_text_from_bytes(content: bytes, filename: str) -> str:
+    """Extract text from file content based on file extension.
+
+    Supports:
+      - Plain text (.txt, .csv, .json, .xml, .ps1, .md, etc.)
+      - Office OOXML (.docx, .xlsx, .pptx) via zipfile + XML parsing
+      - PDF via pdfminer.six (optional dependency)
+
+    Falls back to UTF-8 decode for unknown types.
+    """
+    ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
+
+    # OOXML formats — extract text from XML inside the ZIP
+    if ext in ("docx", "docm"):
+        return _extract_docx(content)
+    if ext in ("xlsx", "xlsm"):
+        return _extract_xlsx(content)
+    if ext in ("pptx", "pptm"):
+        return _extract_pptx(content)
+    if ext == "pdf":
+        return _extract_pdf(content)
+
+    # Default: UTF-8 text
+    try:
+        return content.decode("utf-8", errors="replace")
+    except (UnicodeDecodeError, AttributeError):
+        return ""
+
+
+def _extract_docx(content: bytes) -> str:
+    """Extract text from .docx by parsing word/document.xml inside the ZIP."""
+    import zipfile
+    import io
+    import xml.etree.ElementTree as ET
+
+    try:
+        with zipfile.ZipFile(io.BytesIO(content)) as zf:
+            if "word/document.xml" not in zf.namelist():
+                return ""
+            xml_content = zf.read("word/document.xml")
+            root = ET.fromstring(xml_content)
+            # Word namespace
+            ns = {"w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main"}
+            texts = [t.text for t in root.iter(f"{{{ns['w']}}}t") if t.text]
+            return " ".join(texts)
+    except (zipfile.BadZipFile, ET.ParseError, KeyError):
+        return ""
+
+
+def _extract_xlsx(content: bytes) -> str:
+    """Extract text from .xlsx shared strings inside the ZIP."""
+    import zipfile
+    import io
+    import xml.etree.ElementTree as ET
+
+    try:
+        with zipfile.ZipFile(io.BytesIO(content)) as zf:
+            if "xl/sharedStrings.xml" not in zf.namelist():
+                return ""
+            xml_content = zf.read("xl/sharedStrings.xml")
+            root = ET.fromstring(xml_content)
+            ns = {"s": "http://schemas.openxmlformats.org/spreadsheetml/2006/main"}
+            texts = [t.text for t in root.iter(f"{{{ns['s']}}}t") if t.text]
+            return " ".join(texts)
+    except (zipfile.BadZipFile, ET.ParseError, KeyError):
+        return ""
+
+
+def _extract_pptx(content: bytes) -> str:
+    """Extract text from .pptx slide XML inside the ZIP."""
+    import zipfile
+    import io
+    import xml.etree.ElementTree as ET
+
+    try:
+        with zipfile.ZipFile(io.BytesIO(content)) as zf:
+            texts: list[str] = []
+            ns = {"a": "http://schemas.openxmlformats.org/drawingml/2006/main"}
+            for name in sorted(zf.namelist()):
+                if name.startswith("ppt/slides/slide") and name.endswith(".xml"):
+                    root = ET.fromstring(zf.read(name))
+                    texts.extend(t.text for t in root.iter(f"{{{ns['a']}}}t") if t.text)
+            return " ".join(texts)
+    except (zipfile.BadZipFile, ET.ParseError, KeyError):
+        return ""
+
+
+def _extract_pdf(content: bytes) -> str:
+    """Extract text from PDF using pdfminer.six (optional dependency)."""
+    try:
+        from pdfminer.high_level import extract_text
+        import io
+
+        return extract_text(io.BytesIO(content))
+    except ImportError:
+        logger.debug("pdfminer.six not installed — skipping PDF text extraction")
+        return ""
+    except Exception:
+        return ""
+
+
+def _top_classification(
+    classification: ClassificationResult | None,
+) -> tuple[str | None, float | None]:
+    """Extract the highest-confidence entity type from a classification result.
+
+    Returns (entity_type, confidence) or (None, None) if no entities.
+    """
+    if not classification or not classification.entities:
+        return None, None
+    best = max(classification.entities, key=lambda e: e.confidence)
+    return best.entity_type, best.confidence
 
 
 class JobExecutor:
@@ -337,26 +452,32 @@ class JobExecutor:
                 filename = file_info["name"]
 
                 # Determine which label to apply
+                file_classification: ClassificationResult | None = None
                 if use_policies:
-                    label_id = await self._resolve_label_via_policy(
+                    label_id, file_classification = await self._resolve_label_via_policy(
                         tenant_id, drive_id, item_id, filename, policy_rules,
                         job=job,
                     )
                     if not label_id:
                         files_skipped += 1
                         batch_skipped += 1
-                        # Record scan result for skipped file
+                        # Extract top classification for the scan result
+                        top_entity, top_conf = _top_classification(file_classification)
                         self._db.add(ScanResult(
                             customer_tenant_id=job.customer_tenant_id,
                             job_id=job.id,
                             drive_id=drive_id,
                             item_id=item_id,
                             file_name=filename,
+                            classification=top_entity,
+                            confidence=top_conf,
                             outcome="skipped",
                         ))
                         continue  # no policy matched — skip file
                 else:
                     label_id = static_label_id
+
+                top_entity, top_conf = _top_classification(file_classification)
 
                 # In dry-run mode: record what would happen without applying
                 if dry_run:
@@ -374,6 +495,8 @@ class JobExecutor:
                         drive_id=drive_id,
                         item_id=item_id,
                         file_name=filename,
+                        classification=top_entity,
+                        confidence=top_conf,
                         label_applied=label_id,
                         outcome="labelled",
                     ))
@@ -408,6 +531,8 @@ class JobExecutor:
                         drive_id=drive_id,
                         item_id=item_id,
                         file_name=filename,
+                        classification=top_entity,
+                        confidence=top_conf,
                         label_applied=label_id,
                         outcome="labelled",
                     ))
@@ -431,6 +556,8 @@ class JobExecutor:
                             drive_id=drive_id,
                             item_id=item_id,
                             file_name=filename,
+                            classification=top_entity,
+                            confidence=top_conf,
                             label_applied=label_id,
                             outcome="skipped",
                         ))
@@ -443,6 +570,8 @@ class JobExecutor:
                             drive_id=drive_id,
                             item_id=item_id,
                             file_name=filename,
+                            classification=top_entity,
+                            confidence=top_conf,
                             label_applied=label_id,
                             outcome="failed",
                         ))
@@ -689,10 +818,11 @@ class JobExecutor:
         policy_rules: list[PolicyRule],
         *,
         job: Job | None = None,
-    ) -> str | None:
+    ) -> tuple[str | None, ClassificationResult]:
         """Classify a file's content and evaluate policies to pick a label.
 
-        Returns the target_label_id or None if no policy matched.
+        Returns (target_label_id, classification_result).
+        target_label_id is None if no policy matched.
         """
         # Download file content as text for classification
         classification = await self._classify_file(tenant_id, drive_id, item_id, filename)
@@ -721,9 +851,9 @@ class JobExecutor:
                 "File %s/%s matched policy '%s' → label %s",
                 drive_id, item_id, match.policy_name, match.target_label_id,
             )
-            return match.target_label_id
+            return match.target_label_id, classification
 
-        return None
+        return None, classification
 
     async def _classify_file(
         self,
@@ -732,7 +862,19 @@ class JobExecutor:
         item_id: str,
         filename: str,
     ) -> ClassificationResult:
-        """Download file content and run it through the content classifier."""
+        """Download file content and run it through the content classifier.
+
+        Uses format-aware text extraction for Office/PDF files.
+        Respects the classifier_enabled config flag.
+        """
+        # Check if classifier is enabled
+        try:
+            settings = Settings()
+            if not settings.classifier_enabled:
+                return ClassificationResult(filename=filename)
+        except Exception:
+            pass  # If settings fail, proceed anyway
+
         try:
             # Get file content via Graph — small files only (< 4MB via direct download)
             body = await self._graph.get(
@@ -752,9 +894,9 @@ class JobExecutor:
                 return ClassificationResult(filename=filename)
 
             # Download the raw content
-            import httpx
+            import httpx as _httpx
 
-            async with httpx.AsyncClient(timeout=30.0) as client:
+            async with _httpx.AsyncClient(timeout=30.0) as client:
                 resp = await client.get(download_url)
                 if resp.status_code != 200:
                     return ClassificationResult(
@@ -762,16 +904,13 @@ class JobExecutor:
                         error=f"Download failed: {resp.status_code}",
                     )
 
-            # Extract text (simple approach — works for plaintext-ish files)
-            try:
-                text = resp.content.decode("utf-8", errors="replace")
-            except (UnicodeDecodeError, AttributeError):
-                text = ""
+            # Extract text using format-aware extraction
+            text = _extract_text_from_bytes(resp.content, filename)
 
             if not text.strip():
-                return ClassificationResult(filename=filename)
+                return ClassificationResult(filename=filename, text_content="")
 
-            # Run presidio classification
+            # Run presidio classification (now also populates text_content)
             return classify_content(text, filename=filename)
 
         except Exception as exc:

@@ -77,3 +77,26 @@ class TestClassificationResultModel:
             EntityMatch(entity_type="PHONE_NUMBER", confidence=0.7),
         ])
         assert cr.entity_types == {"EMAIL_ADDRESS", "PHONE_NUMBER"}
+
+
+class TestTextContentPopulation:
+    """Verify that classify_content populates text_content on the result."""
+
+    def test_text_content_populated(self) -> None:
+        result = classify_content("some text")
+        assert result.text_content == "some text"
+
+    def test_text_content_when_empty(self) -> None:
+        result = classify_content("")
+        assert result.text_content == ""
+
+    def test_text_content_when_no_presidio(self) -> None:
+        """text_content should be set regardless of presidio availability."""
+        result = classify_content("SSN 123-45-6789", filename="data.txt")
+        # Whether presidio is installed or not, text_content must be populated
+        assert result.text_content == "SSN 123-45-6789"
+
+    def test_text_content_preserves_original(self) -> None:
+        original = "Multi\nline\ntext with special chars: @#$%"
+        result = classify_content(original)
+        assert result.text_content == original

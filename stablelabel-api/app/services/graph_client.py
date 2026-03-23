@@ -157,6 +157,7 @@ class GraphClient:
         url = f"{GRAPH_BASE}{path}" if not path.startswith("http") else path
 
         last_error: Exception | None = None
+        auth_retried = False  # Track if we already refreshed the token
         for attempt in range(_MAX_RETRIES + 1):
             try:
                 resp = await self._http.request(method, url, headers=headers, **kwargs)
@@ -187,8 +188,13 @@ class GraphClient:
                     f"File locked (423): {self._extract_error(resp)}"
                 )
 
-            # 401 — token might have expired mid-batch
+            # 401 — token might have expired mid-batch; refresh once
             if resp.status_code == 401:
+                if auth_retried:
+                    raise GraphAuthError(
+                        f"Authentication failed after token refresh: {self._extract_error(resp)}"
+                    )
+                auth_retried = True
                 token = self._tokens.acquire_token(tenant_id)
                 headers["Authorization"] = f"Bearer {token}"
                 continue

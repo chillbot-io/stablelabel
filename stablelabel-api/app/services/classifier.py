@@ -87,12 +87,13 @@ def classify_content(
         ClassificationResult with detected entities.
     """
     if not text or not text.strip():
-        return ClassificationResult(filename=filename)
+        return ClassificationResult(filename=filename, text_content=text or "")
 
     analyzer = _get_analyzer()
     if analyzer is None:
         return ClassificationResult(
             filename=filename,
+            text_content=text,
             error="presidio-analyzer not installed",
         )
 
@@ -119,6 +120,7 @@ def classify_content(
         return ClassificationResult(
             filename=filename,
             entities=entity_matches,
+            text_content=text,
         )
 
     except (RuntimeError, ValueError, TypeError, OSError) as exc:

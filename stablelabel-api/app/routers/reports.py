@@ -31,7 +31,11 @@ async def job_summary(
 ) -> list[dict[str, Any]]:
     """Job execution summary by day and status."""
     await check_tenant_access(user, customer_tenant_id, db)
-    return await reporting.job_summary(uuid.UUID(customer_tenant_id), days)
+    return await reporting.job_summary(
+        uuid.UUID(customer_tenant_id),
+        msp_tenant_id=uuid.UUID(user.msp_tenant_id),
+        days=days,
+    )
 
 
 @router.get("/detections")
@@ -44,7 +48,11 @@ async def entity_detections(
 ) -> list[dict[str, Any]]:
     """PII/PCI entity detection trends over time."""
     await check_tenant_access(user, customer_tenant_id, db)
-    return await reporting.entity_detections(uuid.UUID(customer_tenant_id), days)
+    return await reporting.entity_detections(
+        uuid.UUID(customer_tenant_id),
+        msp_tenant_id=uuid.UUID(user.msp_tenant_id),
+        days=days,
+    )
 
 
 @router.get("/labels")
@@ -57,7 +65,11 @@ async def label_distribution(
 ) -> list[dict[str, Any]]:
     """Label application distribution (which labels were applied how often)."""
     await check_tenant_access(user, customer_tenant_id, db)
-    return await reporting.label_distribution(uuid.UUID(customer_tenant_id), days)
+    return await reporting.label_distribution(
+        uuid.UUID(customer_tenant_id),
+        msp_tenant_id=uuid.UUID(user.msp_tenant_id),
+        days=days,
+    )
 
 
 @router.get("/throughput")
@@ -70,7 +82,11 @@ async def throughput_stats(
 ) -> list[dict[str, Any]]:
     """Throughput metrics — files/sec, batch timing, error rates."""
     await check_tenant_access(user, customer_tenant_id, db)
-    return await reporting.throughput_stats(uuid.UUID(customer_tenant_id), days)
+    return await reporting.throughput_stats(
+        uuid.UUID(customer_tenant_id),
+        msp_tenant_id=uuid.UUID(user.msp_tenant_id),
+        days=days,
+    )
 
 
 @router.get("/overview")
@@ -82,4 +98,7 @@ async def tenant_overview(
 ) -> dict[str, Any]:
     """High-level tenant dashboard — total jobs, files labelled, detections."""
     await check_tenant_access(user, customer_tenant_id, db)
-    return await reporting.tenant_overview(uuid.UUID(customer_tenant_id))
+    return await reporting.tenant_overview(
+        uuid.UUID(customer_tenant_id),
+        msp_tenant_id=uuid.UUID(user.msp_tenant_id),
+    )
