@@ -202,24 +202,81 @@ function UsersTab() {
 }
 
 function ConnectTenantDialog({ onSubmit, onClose }: { onSubmit: (entraId: string, name: string) => void; onClose: () => void }) {
-  const [entraId, setEntraId] = useState('');
+  const [input, setInput] = useState('');
   const [name, setName] = useState('');
+  const [resolvedId, setResolvedId] = useState('');
+  const [resolving, setResolving] = useState(false);
+  const [resolveError, setResolveError] = useState('');
+  const { showError } = useError();
+
+  // Detect if input looks like a UUID (tenant ID) or a domain
+  const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(input.trim());
+  const isDomain = /^[a-zA-Z0-9][a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/.test(input.trim());
+
+  const effectiveId = isUuid ? input.trim() : resolvedId;
+
+  const resolveDomain = async () => {
+    if (!isDomain) return;
+    setResolving(true);
+    setResolveError('');
+    setResolvedId('');
+    try {
+      const result = await api.get<{ tenant_id: string; domain: string }>(`/security/tenants/resolve/${input.trim()}`);
+      setResolvedId(result.tenant_id);
+      if (!name) setName(input.trim());
+    } catch (err) {
+      setResolveError(err instanceof Error ? err.message : 'Could not resolve domain');
+    }
+    setResolving(false);
+  };
+
+  const handleSubmit = () => {
+    if (effectiveId) {
+      onSubmit(effectiveId, name || input.trim());
+    }
+  };
 
   return (
     <Modal title="Connect Customer Tenant" onClose={onClose}>
       <div className="space-y-3">
         <div>
-          <label className="text-sm text-zinc-400 block mb-1">Entra Tenant ID</label>
-          <input value={entraId} onChange={(e) => setEntraId(e.target.value)} placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-sm font-mono focus:outline-none focus:ring-1 focus:ring-blue-500" />
+          <label className="text-sm text-zinc-400 block mb-1">Domain or Tenant ID</label>
+          <div className="flex gap-2">
+            <input
+              value={input}
+              onChange={(e) => { setInput(e.target.value); setResolvedId(''); setResolveError(''); }}
+              placeholder="contoso.com or xxxxxxxx-xxxx-..."
+              className="flex-1 bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+              onKeyDown={(e) => { if (e.key === 'Enter' && isDomain && !resolvedId) { e.preventDefault(); resolveDomain(); } }}
+            />
+            {isDomain && !resolvedId && (
+              <button
+                onClick={resolveDomain}
+                disabled={resolving}
+                className="px-3 py-2 text-sm rounded bg-zinc-700 hover:bg-zinc-600 disabled:opacity-50 whitespace-nowrap"
+              >
+                {resolving ? 'Looking up...' : 'Lookup'}
+              </button>
+            )}
+          </div>
+          {resolvedId && (
+            <p className="text-xs text-green-400 mt-1">Resolved: <span className="font-mono">{resolvedId}</span></p>
+          )}
+          {resolveError && (
+            <p className="text-xs text-red-400 mt-1">{resolveError}</p>
+          )}
+          {isUuid && (
+            <p className="text-xs text-zinc-500 mt-1">Tenant ID detected</p>
+          )}
         </div>
         <div>
           <label className="text-sm text-zinc-400 block mb-1">Display Name</label>
-          <input value={name} onChange={(e) => setName(e.target.value)} className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500" />
+          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Contoso Corp" className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500" />
         </div>
       </div>
       <div className="flex justify-end gap-2 mt-6">
         <button onClick={onClose} className="px-3 py-1.5 text-sm rounded bg-zinc-800 hover:bg-zinc-700">Cancel</button>
-        <button onClick={() => entraId && onSubmit(entraId, name)} disabled={!entraId} className="px-3 py-1.5 text-sm rounded bg-blue-600 hover:bg-blue-500 disabled:opacity-50">
+        <button onClick={handleSubmit} disabled={!effectiveId} className="px-3 py-1.5 text-sm rounded bg-blue-600 hover:bg-blue-500 disabled:opacity-50">
           Connect
         </button>
       </div>
