@@ -302,7 +302,7 @@ class JobExecutor:
                     job.status = "running"
                     await self._db.commit()
 
-            if job.status == "running":
+            elif job.status == "running":
                 await self._label(job, tenant_id, msp_tenant_id)
 
             # Check final status
@@ -367,9 +367,12 @@ class JobExecutor:
         total_files_found = cursor.get("total_files_found", 0)
 
         # Get all SharePoint sites for this tenant
-        sites = await self._graph.get_all_pages(
-            tenant_id, "/sites?search=*"
-        )
+        try:
+            sites = await self._graph.get_all_pages(
+                tenant_id, "/sites?search=*"
+            )
+        except (StableLabelError, httpx.HTTPError) as exc:
+            raise RuntimeError(f"Failed to enumerate SharePoint sites: {exc}") from exc
 
         # Apply site scope filter if configured
         scoped_site_ids: list[str] | None = job.config.get("site_ids")

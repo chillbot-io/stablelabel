@@ -160,18 +160,36 @@ async def classify_content_async(
     language: str = "en",
     score_threshold: float = 0.4,
 ) -> ClassificationResult:
-    """Async wrapper — runs presidio in a thread pool to avoid blocking the event loop."""
+    """Async wrapper — runs presidio in a thread pool to avoid blocking the event loop.
+
+    Has a per-call timeout (CHUNK_TIMEOUT_SECONDS) so a pathological input
+    can't hang the worker indefinitely.
+    """
     loop = asyncio.get_running_loop()
-    return await loop.run_in_executor(
-        _classifier_pool,
-        lambda: classify_content(
-            text,
+    try:
+        return await asyncio.wait_for(
+            loop.run_in_executor(
+                _classifier_pool,
+                lambda: classify_content(
+                    text,
+                    filename=filename,
+                    entities=entities,
+                    language=language,
+                    score_threshold=score_threshold,
+                ),
+            ),
+            timeout=CHUNK_TIMEOUT_SECONDS,
+        )
+    except asyncio.TimeoutError:
+        logger.error(
+            "classify_content_async timed out after %ds for %s (%d chars)",
+            CHUNK_TIMEOUT_SECONDS, filename, len(text),
+        )
+        return ClassificationResult(
             filename=filename,
-            entities=entities,
-            language=language,
-            score_threshold=score_threshold,
-        ),
-    )
+            text_content=text[:1000],
+            error=f"classification timed out after {CHUNK_TIMEOUT_SECONDS}s",
+        )
 
 
 # ── Chunked classification for large documents ─────────────────

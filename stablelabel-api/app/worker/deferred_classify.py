@@ -106,6 +106,7 @@ async def classify_and_label_file(
                         max_confidence=max(e.confidence for e in entities),
                         file_name=filename,
                     ))
+                await db.commit()
 
             # 3. Determine label
             label_id: str | None = None

@@ -160,7 +160,7 @@ class Job(Base):
         ForeignKey("customer_tenants.id", ondelete="CASCADE"), nullable=False
     )
     created_by: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("users.id"), nullable=False
+        ForeignKey("users.id", ondelete="CASCADE"), nullable=False
     )
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     status: Mapped[str] = mapped_column(
