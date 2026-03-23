@@ -172,8 +172,14 @@ async def _jit_provision(
         db.add(user)
         logger.info("JIT provisioned user %s (%s) role=%s", email, entra_oid, role)
     else:
-        # Update role from token (Entra is source of truth)
-        user.role = role
+        # DB role is authoritative — do NOT overwrite from token claims.
+        # Token roles could be manipulated; the DB role is set by admins
+        # through the application's own user-management endpoints.
+        if role != user.role:
+            logger.warning(
+                "Token role mismatch for %s: token=%s db=%s — using DB role",
+                email, role, user.role,
+            )
         user.last_seen = datetime.datetime.now(datetime.UTC)
         if display_name:
             user.display_name = display_name

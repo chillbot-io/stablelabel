@@ -175,7 +175,7 @@ async def connect_tenant(
     state_payload = str(tenant.id)
     state_sig = hmac.new(
         settings.session_secret.encode(), state_payload.encode(), hashlib.sha256
-    ).hexdigest()[:16]
+    ).hexdigest()
     state = f"{state_payload}:{state_sig}"
 
     consent_url = (

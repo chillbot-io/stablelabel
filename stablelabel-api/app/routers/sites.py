@@ -6,9 +6,11 @@ instead of scanning the entire tenant.
 
 from __future__ import annotations
 
+import re
 import uuid
+from urllib.parse import quote
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -53,9 +55,22 @@ async def list_sites(
         return []
 
     search_term = search.strip() or "*"
+
+    # Validate and sanitize the search term to prevent URL injection /
+    # path traversal.  Reject anything that looks like an attempt to
+    # manipulate the Graph API URL.
+    if len(search_term) > 256:
+        raise HTTPException(status_code=400, detail="Search term too long (max 256 characters)")
+    if re.search(r"[/\\]|\.\.", search_term):
+        raise HTTPException(status_code=400, detail="Search term contains invalid characters")
+
+    # URL-encode the search term so special characters (?, #, &, etc.)
+    # are treated as literal search text, not URL syntax.
+    encoded_search = quote(search_term, safe="")
+
     try:
         sites = await graph.get_all_pages(
-            tenant.entra_tenant_id, f"/sites?search={search_term}"
+            tenant.entra_tenant_id, f"/sites?search={encoded_search}"
         )
     except Exception:
         return []

@@ -117,7 +117,7 @@ async def consent_callback(
         settings = get_settings()
         expected_sig = hmac.new(
             settings.session_secret.encode(), ct_id_str.encode(), hashlib.sha256
-        ).hexdigest()[:16]
+        ).hexdigest()
         if hmac.compare_digest(sig, expected_sig):
             try:
                 stmt = select(CustomerTenant).where(
