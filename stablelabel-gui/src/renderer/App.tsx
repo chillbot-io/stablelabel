@@ -1,19 +1,25 @@
-import React, { useState } from 'react';
+import React, { useState, Suspense, lazy } from 'react';
 import ErrorBoundary from './components/common/ErrorBoundary';
 import Sidebar from './components/Layout/Sidebar';
 import TopBar from './components/Layout/TopBar';
-import DashboardPage from './components/Dashboard/DashboardPage';
-import LabelsPage from './components/Labels/LabelsPage';
-import DocumentsPage from './components/Documents/DocumentsPage';
-import ManualLabelPage from './components/ManualLabel/ManualLabelPage';
-import BulkOpsPage from './components/BulkOps/BulkOpsPage';
-import ExplorerPage from './components/Explorer/ExplorerPage';
-import SnapshotsPage from './components/Snapshots/SnapshotsPage';
-import AnalysisPage from './components/Analysis/AnalysisPage';
-import ClassificationPage from './components/Classification/ClassificationPage';
-import AuditLogPage from './components/AuditLog/AuditLogPage';
-import SettingsPage from './components/Settings/SettingsPage';
 import type { Page } from './lib/types';
+
+// Lazy-load page components — only the active page is loaded
+const DashboardPage = lazy(() => import('./components/Dashboard/DashboardPage'));
+const LabelsPage = lazy(() => import('./components/Labels/LabelsPage'));
+const DocumentsPage = lazy(() => import('./components/Documents/DocumentsPage'));
+const ManualLabelPage = lazy(() => import('./components/ManualLabel/ManualLabelPage'));
+const BulkOpsPage = lazy(() => import('./components/BulkOps/BulkOpsPage'));
+const ExplorerPage = lazy(() => import('./components/Explorer/ExplorerPage'));
+const SnapshotsPage = lazy(() => import('./components/Snapshots/SnapshotsPage'));
+const AnalysisPage = lazy(() => import('./components/Analysis/AnalysisPage'));
+const ClassificationPage = lazy(() => import('./components/Classification/ClassificationPage'));
+const AuditLogPage = lazy(() => import('./components/AuditLog/AuditLogPage'));
+const SettingsPage = lazy(() => import('./components/Settings/SettingsPage'));
+
+function PageLoader() {
+  return <div className="p-6"><div className="h-32 bg-white/[0.06] rounded-lg animate-pulse" /></div>;
+}
 
 export default function App() {
   const [currentPage, setCurrentPage] = useState<Page>('dashboard');
@@ -56,7 +62,9 @@ export default function App() {
         <div className="flex-1 flex flex-col overflow-hidden">
           <TopBar />
           <main className={`flex-1 overflow-auto ${fullBleedPages.includes(currentPage) ? '' : 'p-6'}`}>
-            {renderPage()}
+            <Suspense fallback={<PageLoader />}>
+              {renderPage()}
+            </Suspense>
           </main>
         </div>
       </div>

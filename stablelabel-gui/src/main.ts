@@ -115,28 +115,42 @@ app.whenReady().then(() => {
   ensureBridges();
 
   // Register IPC handlers — structured invocation only
+  // All handlers return structured results instead of throwing, so the
+  // renderer always gets a usable response even on unexpected errors (#30).
   ipcMain.handle('ps:invoke', async (_event, cmdlet: string, params: Record<string, unknown>) => {
-    if (!psBridge) throw new Error('PowerShell bridge not initialized');
+    try {
+      if (!psBridge) return { success: false, data: null, error: 'PowerShell bridge not initialized' };
 
-    // Validate cmdlet is in the registry (defense-in-depth — buildCommand checks too)
-    if (!CMDLET_REGISTRY[cmdlet]) {
-      return { success: false, data: null, error: `Cmdlet "${cmdlet}" is not permitted` };
+      // Validate cmdlet is in the registry (defense-in-depth — buildCommand checks too)
+      if (!CMDLET_REGISTRY[cmdlet]) {
+        return { success: false, data: null, error: `Cmdlet "${cmdlet}" is not permitted` };
+      }
+
+      return psBridge.invokeStructured(cmdlet, params);
+    } catch (err) {
+      return { success: false, data: null, error: err instanceof Error ? err.message : String(err) };
     }
-
-    return psBridge.invokeStructured(cmdlet, params);
   });
 
   ipcMain.handle('ps:check-pwsh', async () => {
-    if (!psBridge) throw new Error('PowerShell bridge not initialized');
-    return psBridge.checkPwshAvailable();
+    try {
+      if (!psBridge) return { available: false, error: 'PowerShell bridge not initialized' };
+      return psBridge.checkPwshAvailable();
+    } catch (err) {
+      return { available: false, error: err instanceof Error ? err.message : String(err) };
+    }
   });
 
   ipcMain.handle('ps:get-status', async () => {
-    if (!psBridge) return { initialized: false };
-    return {
-      initialized: psBridge.isInitialized(),
-      modulePath: getModulePath(),
-    };
+    try {
+      if (!psBridge) return { initialized: false };
+      return {
+        initialized: psBridge.isInitialized(),
+        modulePath: getModulePath(),
+      };
+    } catch {
+      return { initialized: false };
+    }
   });
 
   // ── File dialogs (M4) ───────────────────────────────────────────────
@@ -203,22 +217,34 @@ app.whenReady().then(() => {
 
   // ── Classifier (Presidio + spaCy) ──────────────────────────────────
   ipcMain.handle('classifier:invoke', async (_event, action: string, params: Record<string, unknown>) => {
-    if (!classifierBridge) throw new Error('Classifier bridge not initialized');
-    // Validate action against allowlist (defense-in-depth)
-    if (!CLASSIFIER_ACTIONS.has(action)) {
-      return { success: false, data: null, error: `Unknown classifier action: "${action}"` };
+    try {
+      if (!classifierBridge) return { success: false, data: null, error: 'Classifier bridge not initialized' };
+      // Validate action against allowlist (defense-in-depth)
+      if (!CLASSIFIER_ACTIONS.has(action)) {
+        return { success: false, data: null, error: `Unknown classifier action: "${action}"` };
+      }
+      return classifierBridge.invoke(action, params);
+    } catch (err) {
+      return { success: false, data: null, error: err instanceof Error ? err.message : String(err) };
     }
-    return classifierBridge.invoke(action, params);
   });
 
   ipcMain.handle('classifier:check', async () => {
-    if (!classifierBridge) return { available: false, error: 'Not initialized' };
-    return classifierBridge.checkAvailable();
+    try {
+      if (!classifierBridge) return { available: false, error: 'Not initialized' };
+      return classifierBridge.checkAvailable();
+    } catch (err) {
+      return { available: false, error: err instanceof Error ? err.message : String(err) };
+    }
   });
 
   ipcMain.handle('classifier:get-status', async () => {
-    if (!classifierBridge) return { initialized: false };
-    return { initialized: classifierBridge.isInitialized() };
+    try {
+      if (!classifierBridge) return { initialized: false };
+      return { initialized: classifierBridge.isInitialized() };
+    } catch {
+      return { initialized: false };
+    }
   });
 
   createWindow();
