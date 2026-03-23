@@ -10,7 +10,12 @@ RUN apt-get update && \
 
 COPY pyproject.toml .
 COPY app/ app/
-RUN pip install --no-cache-dir --prefix=/install .
+RUN pip install --no-cache-dir --prefix=/install '.[classifier]'
+
+# Bake the spaCy model into the image so the first classification request
+# doesn't stall downloading ~560 MB at runtime.
+ENV PYTHONPATH=/install/lib/python3.11/site-packages
+RUN python -m spacy download en_core_web_lg
 
 # ── Stage 2: Runtime ─────────────────────────────────────────
 FROM python:3.11-slim
