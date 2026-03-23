@@ -6,6 +6,7 @@ import { BrowserRouter, Route, Routes } from 'react-router-dom';
 import Layout from '@/components/Layout';
 import { ErrorProvider } from '@/contexts/ErrorContext';
 import AuditPage from '@/pages/AuditPage';
+import AutoLabelPage from '@/pages/AutoLabelPage';
 import DashboardPage from '@/pages/DashboardPage';
 import ExplorerPage from '@/pages/ExplorerPage';
 import JobsPage from '@/pages/JobsPage';
@@ -28,6 +29,7 @@ export default function App() {
           <Routes>
             <Route element={<Layout />}>
               <Route index element={<DashboardPage />} />
+              <Route path="auto-label" element={<AutoLabelPage />} />
               <Route path="jobs" element={<JobsPage />} />
               <Route path="explorer" element={<ExplorerPage />} />
               <Route path="labels" element={<LabelsPage />} />

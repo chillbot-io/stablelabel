@@ -13,7 +13,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.core.redis import parse_redis_settings
 from app.db.base import dispose_engine, init_engine
 from app.dependencies import get_graph_client, get_reporting_service, get_settings, set_arq_pool
-from app.routers import audit, documents, health, jobs, labels, onboard, policies, reports, tenants, users
+from app.routers import audit, documents, health, jobs, labels, onboard, policies, reports, sites, tenants, users
 
 logger = logging.getLogger(__name__)
 
@@ -67,3 +67,4 @@ app.include_router(audit.router)
 app.include_router(jobs.router)
 app.include_router(policies.router)
 app.include_router(reports.router)
+app.include_router(sites.router)

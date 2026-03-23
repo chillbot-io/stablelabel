@@ -156,6 +156,15 @@ class JobExecutor:
             tenant_id, "/sites?search=*"
         )
 
+        # Apply site scope filter if configured
+        scoped_site_ids: list[str] | None = job.config.get("site_ids")
+        if scoped_site_ids:
+            sites = [s for s in sites if s.get("id", "") in scoped_site_ids]
+            logger.info(
+                "Job %s: scoped to %d site(s) out of %d available",
+                job.id, len(sites), len(scoped_site_ids),
+            )
+
         for site in sites:
             site_id = site.get("id", "")
             if not site_id or site_id in sites_completed:
@@ -248,15 +257,21 @@ class JobExecutor:
     async def _label(self, job: Job, tenant_id: str, msp_tenant_id: uuid.UUID | None = None) -> None:
         """Apply labels to enumerated files.
 
-        Two modes:
+        Three modes:
           1. Static: job.config["target_label_id"] — apply one label to all files
           2. Policy-driven: job.config["use_policies"] = true — classify each file,
              evaluate policies, and pick the appropriate label per file
+          3. Dry-run: job.config["dry_run"] = true — classify and evaluate but don't
+             actually apply labels (works with both static and policy-driven)
         """
         use_policies = job.config.get("use_policies", False)
+        dry_run = job.config.get("dry_run", False)
         assignment_method = job.config.get("assignment_method", "standard")
         justification = job.config.get("justification_text", "")
         confirm_encryption = job.config.get("confirm_encryption", False)
+
+        if dry_run:
+            logger.info("Job %s: running in DRY-RUN mode — no labels will be applied", job.id)
 
         # Static mode requires a target label
         static_label_id = job.config.get("target_label_id", "")
@@ -342,6 +357,27 @@ class JobExecutor:
                         continue  # no policy matched — skip file
                 else:
                     label_id = static_label_id
+
+                # In dry-run mode: record what would happen without applying
+                if dry_run:
+                    files_labelled += 1
+                    batch_applied.append({
+                        "item_id": item_id,
+                        "drive_id": drive_id,
+                        "label_id": label_id,
+                        "previous_label_id": "",
+                        "dry_run": True,
+                    })
+                    self._db.add(ScanResult(
+                        customer_tenant_id=job.customer_tenant_id,
+                        job_id=job.id,
+                        drive_id=drive_id,
+                        item_id=item_id,
+                        file_name=filename,
+                        label_applied=label_id,
+                        outcome="labelled",
+                    ))
+                    continue
 
                 assignment = LabelAssignment(
                     drive_id=drive_id,
