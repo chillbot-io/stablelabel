@@ -128,7 +128,7 @@ async def consent_callback(
                 result = await db.execute(stmt)
                 ct = result.scalar_one_or_none()
             except ValueError:
-                pass  # invalid UUID in state
+                logger.warning("Invalid UUID in consent callback state: %s", ct_id_str)
 
     # Fallback: if no valid state, reject — prevents cross-MSP claims
     if ct is None:

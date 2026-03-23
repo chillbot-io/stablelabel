@@ -9,7 +9,10 @@ until the user picks a real label. They cannot be deleted — only toggled.
 
 from __future__ import annotations
 
+import logging
 import uuid
+
+logger = logging.getLogger(__name__)
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -48,4 +51,5 @@ async def seed_builtin_policies(
         db.add(policy)
         policies.append(policy)
 
+    logger.info("Seeded %d built-in policies for tenant %s", len(policies), customer_tenant_id)
     return policies

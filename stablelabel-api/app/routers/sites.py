@@ -6,11 +6,17 @@ instead of scanning the entire tenant.
 
 from __future__ import annotations
 
+import logging
 import re
 import uuid
 from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+
+from app.core.exceptions import StableLabelError
+
+logger = logging.getLogger(__name__)
+
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -72,7 +78,8 @@ async def list_sites(
         sites = await graph.get_all_pages(
             tenant.entra_tenant_id, f"/sites?search={encoded_search}"
         )
-    except Exception:
+    except (StableLabelError, Exception) as exc:
+        logger.warning("Site search failed for tenant %s: %s", customer_tenant_id, exc)
         return []
 
     return [

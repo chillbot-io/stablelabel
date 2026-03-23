@@ -235,7 +235,7 @@ async def upload_csv_labels(
             for r in result.results:
                 if r.status == "failed":
                     errors.append(f"{r.filename}: {r.error}")
-        except (StableLabelError, Exception) as exc:
+        except Exception as exc:
             errors.append(f"Label {label_id}: {exc}")
 
     return CsvUploadResult(

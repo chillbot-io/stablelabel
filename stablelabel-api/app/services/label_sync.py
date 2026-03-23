@@ -131,4 +131,9 @@ async def _upsert_label_definitions(
             ld.is_active = False
             ld.fetched_at = now
 
-    await db.commit()
+    try:
+        await db.commit()
+    except Exception as exc:
+        logger.error("Failed to commit label sync for tenant %s: %s", customer_tenant_id, exc)
+        await db.rollback()
+        raise
