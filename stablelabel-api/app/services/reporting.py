@@ -60,18 +60,22 @@ class ReportingService:
             )
         return self._conn
 
-    def _query(self, sql: str, params: dict | None = None) -> list[dict[str, Any]]:
-        """Execute a SQL query and return results as dicts."""
+    def _query(self, sql: str, params: list[Any] | None = None) -> list[dict[str, Any]]:
+        """Execute a SQL query and return results as dicts.
+
+        params should be a positional list matching $1, $2, … placeholders
+        in the SQL string.
+        """
         with self._lock:
             conn = self._get_conn()
             if params:
-                result = conn.execute(sql, list(params.values()))
+                result = conn.execute(sql, params)
             else:
                 result = conn.execute(sql)
             columns = [desc[0] for desc in result.description]
             return [dict(zip(columns, row)) for row in result.fetchall()]
 
-    async def _async_query(self, sql: str, params: dict | None = None) -> list[dict[str, Any]]:
+    async def _async_query(self, sql: str, params: list[Any] | None = None) -> list[dict[str, Any]]:
         """Run query in thread pool to avoid blocking the event loop."""
         return await asyncio.to_thread(self._query, sql, params)
 
@@ -102,7 +106,7 @@ class ReportingService:
             GROUP BY 1, 2
             ORDER BY 1 DESC
             """,
-            {"tenant": str(customer_tenant_id), "msp": str(msp_tenant_id), "days": days},
+            [str(customer_tenant_id), str(msp_tenant_id), days],
         )
 
     async def entity_detections(
@@ -128,7 +132,7 @@ class ReportingService:
             GROUP BY 1, 2
             ORDER BY 1 DESC, total_detections DESC
             """,
-            {"tenant": str(customer_tenant_id), "msp": str(msp_tenant_id), "days": days},
+            [str(customer_tenant_id), str(msp_tenant_id), days],
         )
 
     async def label_distribution(
@@ -153,7 +157,7 @@ class ReportingService:
             GROUP BY 1, 2
             ORDER BY file_count DESC
             """,
-            {"tenant": str(customer_tenant_id), "msp": str(msp_tenant_id), "days": days},
+            [str(customer_tenant_id), str(msp_tenant_id), days],
         )
 
     async def throughput_stats(
@@ -180,7 +184,7 @@ class ReportingService:
             GROUP BY 1
             ORDER BY 1 DESC
             """,
-            {"tenant": str(customer_tenant_id), "msp": str(msp_tenant_id), "days": days},
+            [str(customer_tenant_id), str(msp_tenant_id), days],
         )
 
     async def tenant_overview(
@@ -220,7 +224,7 @@ class ReportingService:
                  WHERE ce.customer_tenant_id = $1 AND ct.msp_tenant_id = $2)
                     AS total_detections
             """,
-            {"tenant": str(customer_tenant_id), "msp": str(msp_tenant_id)},
+            [str(customer_tenant_id), str(msp_tenant_id)],
         )
         return rows[0] if rows else {}
 

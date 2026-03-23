@@ -72,9 +72,10 @@ class TenantRateLimiters:
         self._default_capacity = default_capacity
 
     def get(self, tenant_id: str) -> TokenBucket:
-        if tenant_id not in self._limiters:
-            self._limiters[tenant_id] = TokenBucket(
-                rate=self._default_rate,
-                capacity=self._default_capacity,
-            )
-        return self._limiters[tenant_id]
+        # setdefault is atomic at the dict level — avoids TOCTOU where two
+        # concurrent callers each create a separate TokenBucket and one
+        # overwrites the other, losing its token state.
+        return self._limiters.setdefault(
+            tenant_id,
+            TokenBucket(rate=self._default_rate, capacity=self._default_capacity),
+        )
