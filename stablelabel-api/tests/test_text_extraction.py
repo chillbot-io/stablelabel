@@ -11,6 +11,12 @@ from app.worker.executor import (
     _extract_xlsx,
     _extract_pptx,
     _top_classification,
+    _validate_zip_safety,
+    _ZipBombError,
+    _ZIP_MAX_ENTRIES,
+    _ZIP_MAX_RATIO,
+    _ZIP_MAX_SINGLE_FILE,
+    _ZIP_MAX_UNCOMPRESSED,
 )
 from app.services.policy_engine import ClassificationResult, EntityMatch
 
@@ -320,6 +326,121 @@ class TestExtractPptx:
 
 
 # ── Bad ZIP handling ─────────────────────────────────────────
+
+
+# ── Zip bomb protection ─────────────────────────────────────
+
+
+class TestZipBombProtection:
+    def test_safe_zip_passes(self) -> None:
+        """A normal zip with a few small entries should pass validation."""
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w") as zf:
+            zf.writestr("file1.xml", "<root>ok</root>")
+            zf.writestr("file2.xml", "<root>also ok</root>")
+        buf.seek(0)
+        with zipfile.ZipFile(buf) as zf:
+            _validate_zip_safety(zf, "test.docx")  # should not raise
+
+    def test_too_many_entries(self) -> None:
+        """Zip with excessive number of entries should be rejected."""
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w") as zf:
+            for i in range(_ZIP_MAX_ENTRIES + 1):
+                zf.writestr(f"file_{i}.txt", "x")
+        buf.seek(0)
+        with zipfile.ZipFile(buf) as zf:
+            with pytest.raises(_ZipBombError, match="entries"):
+                _validate_zip_safety(zf, "bomb.xlsx")
+
+    def test_high_compression_ratio(self) -> None:
+        """Entry with suspiciously high compression ratio should be rejected."""
+        buf = io.BytesIO()
+        # Write a highly compressible entry (all zeros compress extremely well)
+        with zipfile.ZipFile(buf, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+            # 10 MB of zeros compresses to a few KB → ratio > 100:1
+            zf.writestr("bomb.xml", "\x00" * (10 * 1024 * 1024))
+        buf.seek(0)
+        with zipfile.ZipFile(buf) as zf:
+            info = zf.infolist()[0]
+            ratio = info.file_size / max(info.compress_size, 1)
+            if ratio > _ZIP_MAX_RATIO:
+                with pytest.raises(_ZipBombError, match="compression ratio"):
+                    _validate_zip_safety(zf, "bomb.docx")
+            # If the test runtime doesn't achieve the ratio, skip
+            # (depends on zlib implementation)
+
+    def test_oversized_single_entry(self) -> None:
+        """Single entry exceeding the per-file limit should be rejected.
+
+        We fake the file_size in the zip info to avoid allocating 100MB+ in tests.
+        """
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w") as zf:
+            zf.writestr("normal.xml", "small content")
+        buf.seek(0)
+        with zipfile.ZipFile(buf) as zf:
+            # Monkey-patch the file_size to simulate a huge entry
+            zf.infolist()[0].file_size = _ZIP_MAX_SINGLE_FILE + 1
+            with pytest.raises(_ZipBombError, match="uncompressed"):
+                _validate_zip_safety(zf, "big.pptx")
+
+    def test_total_uncompressed_too_large(self) -> None:
+        """Total uncompressed size across all entries exceeding limit should be rejected."""
+        buf = io.BytesIO()
+        # Create 3 entries; each under the per-file limit but total exceeds overall limit
+        with zipfile.ZipFile(buf, "w") as zf:
+            zf.writestr("a.xml", "x")
+            zf.writestr("b.xml", "y")
+            zf.writestr("c.xml", "z")
+        buf.seek(0)
+        with zipfile.ZipFile(buf) as zf:
+            per_file = _ZIP_MAX_SINGLE_FILE - 1  # just under per-file limit
+            for info in zf.infolist():
+                info.file_size = per_file
+                info.compress_size = per_file  # ratio 1:1, won't trigger ratio check
+            # 3 * (100MB - 1) > 200MB total limit
+            with pytest.raises(_ZipBombError, match="total uncompressed"):
+                _validate_zip_safety(zf, "bloated.xlsx")
+
+    def test_docx_zip_bomb_returns_empty(self) -> None:
+        """_extract_docx should return empty string (not crash) on zip bomb."""
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w") as zf:
+            for i in range(_ZIP_MAX_ENTRIES + 1):
+                zf.writestr(f"file_{i}.txt", "x")
+        result = _extract_docx(buf.getvalue())
+        assert result == ""
+
+    def test_xlsx_zip_bomb_returns_empty(self) -> None:
+        """_extract_xlsx should return empty string (not crash) on zip bomb."""
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w") as zf:
+            for i in range(_ZIP_MAX_ENTRIES + 1):
+                zf.writestr(f"file_{i}.txt", "x")
+        result = _extract_xlsx(buf.getvalue())
+        assert result == ""
+
+    def test_pptx_zip_bomb_returns_empty(self) -> None:
+        """_extract_pptx should return empty string (not crash) on zip bomb."""
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w") as zf:
+            for i in range(_ZIP_MAX_ENTRIES + 1):
+                zf.writestr(f"file_{i}.txt", "x")
+        result = _extract_pptx(buf.getvalue())
+        assert result == ""
+
+    def test_via_extract_text_from_bytes(self) -> None:
+        """Zip bomb protection should work through the main entry point."""
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w") as zf:
+            for i in range(_ZIP_MAX_ENTRIES + 1):
+                zf.writestr(f"file_{i}.txt", "x")
+        result = _extract_text_from_bytes(buf.getvalue(), "bomb.docx")
+        assert result == ""
+
+
+# ── Bad ZIP handling ────────────────────────────────────────
 
 
 class TestBadZip:

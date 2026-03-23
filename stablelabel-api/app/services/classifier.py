@@ -57,6 +57,7 @@ DEFAULT_ENTITIES = [
 LARGE_TEXT_THRESHOLD = 500_000  # ~500 KB — triggers async/chunked classification
 CHUNK_SIZE = 50_000  # ~50 KB per chunk
 CHUNK_OVERLAP = 1_000  # 1 KB overlap to avoid splitting entities at boundaries
+CHUNK_TIMEOUT_SECONDS = 30  # max seconds per chunk before we give up and move on
 
 
 def _get_analyzer() -> Any:
@@ -272,13 +273,24 @@ async def classify_content_chunked(
 
     loop = asyncio.get_running_loop()
 
-    # Classify each chunk concurrently in the thread pool
+    # Classify each chunk concurrently in the thread pool, with a per-chunk timeout
+    # so a single pathological chunk can't hang the entire task.
     async def _classify_chunk(offset: int, chunk: str) -> tuple[int, list[EntityMatch]]:
-        result = await loop.run_in_executor(
-            _classifier_pool,
-            lambda: classify_content(chunk, filename=filename, entities=entities,
-                                     language=language, score_threshold=score_threshold),
-        )
+        try:
+            result = await asyncio.wait_for(
+                loop.run_in_executor(
+                    _classifier_pool,
+                    lambda: classify_content(chunk, filename=filename, entities=entities,
+                                             language=language, score_threshold=score_threshold),
+                ),
+                timeout=CHUNK_TIMEOUT_SECONDS,
+            )
+        except asyncio.TimeoutError:
+            logger.error(
+                "Chunk at offset %d timed out after %ds for %s (%d chars)",
+                offset, CHUNK_TIMEOUT_SECONDS, filename, len(chunk),
+            )
+            return offset, []
         if result.error:
             logger.warning("Chunk at offset %d failed for %s: %s", offset, filename, result.error)
             return offset, []

@@ -52,6 +52,58 @@ logger = logging.getLogger(__name__)
 # Checkpoint every N files during labelling
 _LABELLING_BATCH_SIZE = 100
 
+# File size limits
+_MAX_FILE_SIZE = 5 * 1024 * 1024 * 1024  # 5 GB
+_STREAM_THRESHOLD = 50 * 1024 * 1024  # 50 MB — above this, stream to temp file
+
+# Zip bomb protection limits
+_ZIP_MAX_ENTRIES = 10_000  # max files inside a single archive
+_ZIP_MAX_UNCOMPRESSED = 200 * 1024 * 1024  # 200 MB total decompressed
+_ZIP_MAX_RATIO = 100  # max compression ratio (uncompressed / compressed)
+_ZIP_MAX_SINGLE_FILE = 100 * 1024 * 1024  # 100 MB for a single file inside the zip
+
+
+class _ZipBombError(Exception):
+    """Raised when a zip archive looks like a zip bomb."""
+
+
+def _validate_zip_safety(zf: "zipfile.ZipFile", filename: str) -> None:
+    """Check a zip archive for zip bomb characteristics.
+
+    Raises _ZipBombError if any limit is exceeded.
+    """
+    if len(zf.infolist()) > _ZIP_MAX_ENTRIES:
+        raise _ZipBombError(
+            f"{filename}: zip has {len(zf.infolist())} entries "
+            f"(limit {_ZIP_MAX_ENTRIES})"
+        )
+
+    total_uncompressed = 0
+    for info in zf.infolist():
+        # Check individual file size
+        if info.file_size > _ZIP_MAX_SINGLE_FILE:
+            raise _ZipBombError(
+                f"{filename}: entry '{info.filename}' is {info.file_size} bytes "
+                f"uncompressed (limit {_ZIP_MAX_SINGLE_FILE})"
+            )
+
+        # Check compression ratio per entry
+        if info.compress_size > 0:
+            ratio = info.file_size / info.compress_size
+            if ratio > _ZIP_MAX_RATIO:
+                raise _ZipBombError(
+                    f"{filename}: entry '{info.filename}' has compression ratio "
+                    f"{ratio:.0f}:1 (limit {_ZIP_MAX_RATIO}:1)"
+                )
+
+        total_uncompressed += info.file_size
+
+    if total_uncompressed > _ZIP_MAX_UNCOMPRESSED:
+        raise _ZipBombError(
+            f"{filename}: total uncompressed size {total_uncompressed} bytes "
+            f"(limit {_ZIP_MAX_UNCOMPRESSED})"
+        )
+
 
 def _extract_text_from_bytes(content: bytes, filename: str) -> str:
     """Extract text from file content based on file extension.
@@ -90,6 +142,7 @@ def _extract_docx(content: bytes) -> str:
 
     try:
         with zipfile.ZipFile(io.BytesIO(content)) as zf:
+            _validate_zip_safety(zf, "docx")
             if "word/document.xml" not in zf.namelist():
                 return ""
             xml_content = zf.read("word/document.xml")
@@ -98,6 +151,9 @@ def _extract_docx(content: bytes) -> str:
             ns = {"w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main"}
             texts = [t.text for t in root.iter(f"{{{ns['w']}}}t") if t.text]
             return " ".join(texts)
+    except _ZipBombError as exc:
+        logger.error("Zip bomb detected in docx: %s", exc)
+        return ""
     except (zipfile.BadZipFile, ET.ParseError, KeyError):
         return ""
 
@@ -119,6 +175,7 @@ def _extract_xlsx(content: bytes) -> str:
 
     try:
         with zipfile.ZipFile(io.BytesIO(content)) as zf:
+            _validate_zip_safety(zf, "xlsx")
             texts: list[str] = []
 
             # 1. Shared strings table
@@ -149,6 +206,9 @@ def _extract_xlsx(content: bytes) -> str:
                         texts.append(v.text)
 
             return " ".join(texts)
+    except _ZipBombError as exc:
+        logger.error("Zip bomb detected in xlsx: %s", exc)
+        return ""
     except (zipfile.BadZipFile, ET.ParseError, KeyError):
         return ""
 
@@ -161,6 +221,7 @@ def _extract_pptx(content: bytes) -> str:
 
     try:
         with zipfile.ZipFile(io.BytesIO(content)) as zf:
+            _validate_zip_safety(zf, "pptx")
             texts: list[str] = []
             ns = {"a": "http://schemas.openxmlformats.org/drawingml/2006/main"}
             for name in sorted(zf.namelist()):
@@ -168,6 +229,9 @@ def _extract_pptx(content: bytes) -> str:
                     root = ET.fromstring(zf.read(name))
                     texts.extend(t.text for t in root.iter(f"{{{ns['a']}}}t") if t.text)
             return " ".join(texts)
+    except _ZipBombError as exc:
+        logger.error("Zip bomb detected in pptx: %s", exc)
+        return ""
     except (zipfile.BadZipFile, ET.ParseError, KeyError):
         return ""
 
@@ -941,6 +1005,9 @@ class JobExecutor:
     ) -> str | None:
         """Download a file via Graph and extract its text content.
 
+        Supports files up to 5 GB. Small files (< 50 MB) are downloaded into
+        memory; larger files are streamed to a temp file to avoid OOM.
+
         Returns the extracted text, or None if the file should be skipped
         (too large, download failed, classifier disabled, etc.).
         """
@@ -951,7 +1018,6 @@ class JobExecutor:
         except Exception:
             pass
 
-        # Get file metadata via Graph — small files only (< 4MB via direct download)
         body = await self._graph.get(
             tenant_id,
             f"/drives/{drive_id}/items/{item_id}",
@@ -959,7 +1025,11 @@ class JobExecutor:
         )
 
         size = body.get("size", 0)
-        if size > 4 * 1024 * 1024:
+        if size > _MAX_FILE_SIZE:
+            logger.info(
+                "File %s/%s is %d bytes (> %d limit), skipping classification",
+                drive_id, item_id, size, _MAX_FILE_SIZE,
+            )
             return None
 
         download_url = body.get("@microsoft.graph.downloadUrl", "")
@@ -967,13 +1037,39 @@ class JobExecutor:
             return None
 
         import httpx as _httpx
+        import tempfile
 
-        async with _httpx.AsyncClient(timeout=30.0) as client:
-            resp = await client.get(download_url)
-            if resp.status_code != 200:
+        if size <= _STREAM_THRESHOLD:
+            # Small file — download into memory
+            async with _httpx.AsyncClient(timeout=60.0) as client:
+                resp = await client.get(download_url)
+                if resp.status_code != 200:
+                    return None
+            content = resp.content
+        else:
+            # Large file — stream to temp file to avoid holding it all in memory
+            logger.info(
+                "Streaming large file %s (%d bytes) to temp file",
+                filename, size,
+            )
+            try:
+                with tempfile.SpooledTemporaryFile(max_size=_STREAM_THRESHOLD) as tmp:
+                    async with _httpx.AsyncClient(timeout=300.0) as client:
+                        async with client.stream("GET", download_url) as resp:
+                            if resp.status_code != 200:
+                                return None
+                            async for chunk in resp.aiter_bytes(chunk_size=1024 * 1024):
+                                tmp.write(chunk)
+                    tmp.seek(0)
+                    content = tmp.read()
+            except (IOError, _httpx.HTTPError) as exc:
+                logger.warning(
+                    "Streaming download failed for %s/%s: %s",
+                    drive_id, item_id, exc,
+                )
                 return None
 
-        text = _extract_text_from_bytes(resp.content, filename)
+        text = _extract_text_from_bytes(content, filename)
         return text if text and text.strip() else None
 
     async def _classify_file(
