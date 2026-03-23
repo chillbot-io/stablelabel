@@ -28,6 +28,8 @@ from redis.asyncio import Redis
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from arq.connections import ArqRedis
+
 from app.core.exceptions import StableLabelError
 from app.core.redis import JobSignal, ack_job_signal, check_job_signal
 from app.db.models import (
@@ -35,7 +37,7 @@ from app.db.models import (
 )
 from app.models.document import LabelAssignment, JobStatus
 from app.config import Settings
-from app.services.classifier import classify_content
+from app.services.classifier import classify_content_async, is_large_text
 from app.services.document_service import DocumentService
 from app.services.graph_client import GraphClient
 from app.services.policy_engine import (
@@ -101,19 +103,51 @@ def _extract_docx(content: bytes) -> str:
 
 
 def _extract_xlsx(content: bytes) -> str:
-    """Extract text from .xlsx shared strings inside the ZIP."""
+    """Extract text from .xlsx — shared strings, inline strings, and cell values.
+
+    Excel stores text in three places:
+      1. xl/sharedStrings.xml — shared string table (most text cells)
+      2. Sheet XML <is><t> — inline strings
+      3. Sheet XML <v> — raw cell values (numbers, dates, formulas)
+    We read all three to ensure numeric PII (SSNs, account numbers) is captured.
+    """
     import zipfile
     import io
     import xml.etree.ElementTree as ET
 
+    ns = {"s": "http://schemas.openxmlformats.org/spreadsheetml/2006/main"}
+
     try:
         with zipfile.ZipFile(io.BytesIO(content)) as zf:
-            if "xl/sharedStrings.xml" not in zf.namelist():
-                return ""
-            xml_content = zf.read("xl/sharedStrings.xml")
-            root = ET.fromstring(xml_content)
-            ns = {"s": "http://schemas.openxmlformats.org/spreadsheetml/2006/main"}
-            texts = [t.text for t in root.iter(f"{{{ns['s']}}}t") if t.text]
+            texts: list[str] = []
+
+            # 1. Shared strings table
+            if "xl/sharedStrings.xml" in zf.namelist():
+                root = ET.fromstring(zf.read("xl/sharedStrings.xml"))
+                texts.extend(t.text for t in root.iter(f"{{{ns['s']}}}t") if t.text)
+
+            # 2 & 3. Walk sheet files for inline strings and raw cell values
+            for name in sorted(zf.namelist()):
+                if not name.startswith("xl/worksheets/sheet") or not name.endswith(".xml"):
+                    continue
+                root = ET.fromstring(zf.read(name))
+                for cell in root.iter(f"{{{ns['s']}}}c"):
+                    # Inline strings: <c><is><t>value</t></is></c>
+                    inline = cell.find(f"{{{ns['s']}}}is")
+                    if inline is not None:
+                        for t in inline.iter(f"{{{ns['s']}}}t"):
+                            if t.text:
+                                texts.append(t.text)
+                        continue
+                    # Raw values (numbers, formula results): <c><v>123</v></c>
+                    # Skip shared-string references (t="s") since we already have those
+                    cell_type = cell.get("t", "")
+                    if cell_type == "s":
+                        continue
+                    v = cell.find(f"{{{ns['s']}}}v")
+                    if v is not None and v.text:
+                        texts.append(v.text)
+
             return " ".join(texts)
     except (zipfile.BadZipFile, ET.ParseError, KeyError):
         return ""
@@ -174,11 +208,13 @@ class JobExecutor:
         graph: GraphClient,
         doc_service: DocumentService,
         redis: Redis,
+        arq_pool: ArqRedis | None = None,
     ) -> None:
         self._db = db
         self._graph = graph
         self._docs = doc_service
         self._redis = redis
+        self._arq_pool = arq_pool
 
     async def run(self, job_id: str) -> None:
         """Main entry point — dispatched by arq for start/resume."""
@@ -458,6 +494,41 @@ class JobExecutor:
                         tenant_id, drive_id, item_id, filename, policy_rules,
                         job=job,
                     )
+
+                    # Large document → enqueue deferred async classification
+                    if file_classification and file_classification.error == "deferred":
+                        deferred = await self._enqueue_deferred_classification(
+                            job=job,
+                            tenant_id=tenant_id,
+                            msp_tenant_id=msp_tenant_id,
+                            drive_id=drive_id,
+                            item_id=item_id,
+                            filename=filename,
+                            text=file_classification.text_content,
+                            use_policies=True,
+                            static_label_id="",
+                            assignment_method=assignment_method,
+                            justification_text=justification,
+                            confirm_encryption=confirm_encryption,
+                            dry_run=dry_run,
+                        )
+                        if deferred:
+                            # Don't count toward batch totals — deferred task
+                            # will update job counters when it completes
+                            continue
+                        # If arq pool not available, fall back to skip
+                        files_skipped += 1
+                        batch_skipped += 1
+                        self._db.add(ScanResult(
+                            customer_tenant_id=job.customer_tenant_id,
+                            job_id=job.id,
+                            drive_id=drive_id,
+                            item_id=item_id,
+                            file_name=filename,
+                            outcome="skipped",
+                        ))
+                        continue
+
                     if not label_id:
                         files_skipped += 1
                         batch_skipped += 1
@@ -823,9 +894,15 @@ class JobExecutor:
 
         Returns (target_label_id, classification_result).
         target_label_id is None if no policy matched.
+        If classification.error == "deferred", the caller must enqueue async
+        processing — no policy evaluation is done here.
         """
         # Download file content as text for classification
         classification = await self._classify_file(tenant_id, drive_id, item_id, filename)
+
+        # Large document → pass through so caller can enqueue deferred task
+        if classification.error == "deferred":
+            return None, classification
 
         # Persist classification events for detected entities
         if job and classification.entities:
@@ -855,6 +932,50 @@ class JobExecutor:
 
         return None, classification
 
+    async def _download_and_extract_text(
+        self,
+        tenant_id: str,
+        drive_id: str,
+        item_id: str,
+        filename: str,
+    ) -> str | None:
+        """Download a file via Graph and extract its text content.
+
+        Returns the extracted text, or None if the file should be skipped
+        (too large, download failed, classifier disabled, etc.).
+        """
+        try:
+            settings = Settings()
+            if not settings.classifier_enabled:
+                return None
+        except Exception:
+            pass
+
+        # Get file metadata via Graph — small files only (< 4MB via direct download)
+        body = await self._graph.get(
+            tenant_id,
+            f"/drives/{drive_id}/items/{item_id}",
+            select="id,name,size,@microsoft.graph.downloadUrl",
+        )
+
+        size = body.get("size", 0)
+        if size > 4 * 1024 * 1024:
+            return None
+
+        download_url = body.get("@microsoft.graph.downloadUrl", "")
+        if not download_url:
+            return None
+
+        import httpx as _httpx
+
+        async with _httpx.AsyncClient(timeout=30.0) as client:
+            resp = await client.get(download_url)
+            if resp.status_code != 200:
+                return None
+
+        text = _extract_text_from_bytes(resp.content, filename)
+        return text if text and text.strip() else None
+
     async def _classify_file(
         self,
         tenant_id: str,
@@ -866,58 +987,102 @@ class JobExecutor:
 
         Uses format-aware text extraction for Office/PDF files.
         Respects the classifier_enabled config flag.
+
+        For small texts (<500 KB): classifies inline via thread pool.
+        For large texts (≥500 KB): returns a result with error="deferred"
+        so the caller can enqueue async processing.
         """
-        # Check if classifier is enabled
         try:
-            settings = Settings()
-            if not settings.classifier_enabled:
-                return ClassificationResult(filename=filename)
-        except Exception:
-            pass  # If settings fail, proceed anyway
-
-        try:
-            # Get file content via Graph — small files only (< 4MB via direct download)
-            body = await self._graph.get(
-                tenant_id,
-                f"/drives/{drive_id}/items/{item_id}",
-                select="id,name,size,@microsoft.graph.downloadUrl",
+            text = await self._download_and_extract_text(
+                tenant_id, drive_id, item_id, filename,
             )
-
-            size = body.get("size", 0)
-            if size > 4 * 1024 * 1024:
-                # Too large for direct classification — skip content scan
-                # Still evaluate file_pattern rules with empty classification
+            if text is None:
                 return ClassificationResult(filename=filename)
 
-            download_url = body.get("@microsoft.graph.downloadUrl", "")
-            if not download_url:
-                return ClassificationResult(filename=filename)
+            # Large text → signal the caller to defer
+            if is_large_text(text):
+                return ClassificationResult(
+                    filename=filename,
+                    text_content=text,
+                    error="deferred",
+                )
 
-            # Download the raw content
-            import httpx as _httpx
-
-            async with _httpx.AsyncClient(timeout=30.0) as client:
-                resp = await client.get(download_url)
-                if resp.status_code != 200:
-                    return ClassificationResult(
-                        filename=filename,
-                        error=f"Download failed: {resp.status_code}",
-                    )
-
-            # Extract text using format-aware extraction
-            text = _extract_text_from_bytes(resp.content, filename)
-
-            if not text.strip():
-                return ClassificationResult(filename=filename, text_content="")
-
-            # Run presidio classification (now also populates text_content)
-            return classify_content(text, filename=filename)
+            # Small text → classify inline (runs in thread pool, won't block event loop)
+            return await classify_content_async(text, filename=filename)
 
         except Exception as exc:
             logger.warning(
                 "Classification failed for %s/%s: %s", drive_id, item_id, exc,
             )
             return ClassificationResult(filename=filename, error=str(exc))
+
+    # ── Deferred classification ──────────────────────────────────
+
+    async def _enqueue_deferred_classification(
+        self,
+        *,
+        job: Job,
+        tenant_id: str,
+        msp_tenant_id: uuid.UUID | None,
+        drive_id: str,
+        item_id: str,
+        filename: str,
+        text: str,
+        use_policies: bool,
+        static_label_id: str,
+        assignment_method: str,
+        justification_text: str,
+        confirm_encryption: bool,
+        dry_run: bool,
+    ) -> bool:
+        """Create a deferred ScanResult and enqueue async classification.
+
+        Returns True if successfully enqueued, False if arq pool unavailable.
+        """
+        if self._arq_pool is None:
+            logger.warning(
+                "arq pool not available — cannot defer classification for %s",
+                filename,
+            )
+            return False
+
+        # Create placeholder ScanResult with outcome="deferred"
+        scan_result = ScanResult(
+            customer_tenant_id=job.customer_tenant_id,
+            job_id=job.id,
+            drive_id=drive_id,
+            item_id=item_id,
+            file_name=filename,
+            outcome="deferred",
+        )
+        self._db.add(scan_result)
+        await self._db.flush()  # get the generated id
+
+        await self._arq_pool.enqueue_job(
+            "classify_and_label_file",
+            _job_id=f"deferred-{scan_result.id}",
+            tenant_id=tenant_id,
+            customer_tenant_id=str(job.customer_tenant_id),
+            msp_tenant_id=str(msp_tenant_id) if msp_tenant_id else None,
+            job_id=str(job.id),
+            drive_id=drive_id,
+            item_id=item_id,
+            filename=filename,
+            text=text,
+            scan_result_id=str(scan_result.id),
+            use_policies=use_policies,
+            static_label_id=static_label_id,
+            assignment_method=assignment_method,
+            justification_text=justification_text,
+            confirm_encryption=confirm_encryption,
+            dry_run=dry_run,
+        )
+
+        logger.info(
+            "Deferred classification enqueued for %s (%d chars), scan_result %s",
+            filename, len(text), scan_result.id,
+        )
+        return True
 
     # ── DB helpers ──────────────────────────────────────────────
 
