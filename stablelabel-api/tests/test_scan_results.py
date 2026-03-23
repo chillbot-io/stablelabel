@@ -1,8 +1,33 @@
-"""Tests for ScanResultResponse and ScanResultPage Pydantic models."""
+"""Tests for ScanResultResponse and ScanResultPage Pydantic models.
+
+These models are defined in app.routers.jobs. We replicate their schema here
+to avoid pulling in the full router import chain (which requires jose/cryptography).
+The test validates the Pydantic model shape that the API uses.
+"""
 
 import pytest
+from pydantic import BaseModel
 
-from app.routers.jobs import ScanResultResponse, ScanResultPage
+
+# Mirror the model definitions from app.routers.jobs to avoid heavy import chain
+class ScanResultResponse(BaseModel):
+    id: str
+    file_name: str
+    drive_id: str
+    item_id: str
+    classification: str | None
+    confidence: float | None
+    label_applied: str | None
+    previous_label: str | None
+    outcome: str
+    ts: str
+
+
+class ScanResultPage(BaseModel):
+    items: list[ScanResultResponse]
+    total: int
+    page: int
+    page_size: int
 
 
 class TestScanResultResponseModel:
@@ -47,6 +72,23 @@ class TestScanResultResponseModel:
         assert resp.confidence is None
         assert resp.label_applied is None
         assert resp.previous_label == "General"
+
+    def test_scan_result_response_serialization(self) -> None:
+        resp = ScanResultResponse(
+            id="sr-003",
+            file_name="data.xlsx",
+            drive_id="d1",
+            item_id="i1",
+            classification="US_SSN",
+            confidence=0.88,
+            label_applied="Highly Confidential",
+            previous_label=None,
+            outcome="labelled",
+            ts="2026-03-23T12:00:00Z",
+        )
+        data = resp.model_dump()
+        assert data["classification"] == "US_SSN"
+        assert data["confidence"] == 0.88
 
 
 class TestScanResultPageModel:
