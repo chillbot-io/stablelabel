@@ -23,6 +23,40 @@ from app.dependencies import get_settings
 router = APIRouter(prefix="/security/tenants", tags=["security"])
 
 
+@router.get("/resolve/{domain}")
+async def resolve_tenant_domain(
+    domain: str,
+    _user: CurrentUser = Depends(require_role("Admin")),
+) -> dict:
+    """Resolve a domain name (e.g. contoso.com) to an Entra tenant ID."""
+    import httpx
+    import re
+
+    # Validate domain format
+    if not re.match(r"^[a-zA-Z0-9][a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$", domain):
+        raise HTTPException(400, "Invalid domain format")
+
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            resp = await client.get(
+                f"https://login.microsoftonline.com/{domain}/.well-known/openid-configuration"
+            )
+            if resp.status_code != 200:
+                raise HTTPException(404, f"No Microsoft 365 tenant found for '{domain}'")
+
+            data = resp.json()
+            # Extract tenant ID from the issuer URL
+            issuer = data.get("issuer", "")
+            # issuer looks like: https://sts.windows.net/{tenant-id}/
+            match = re.search(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", issuer)
+            if not match:
+                raise HTTPException(404, f"Could not resolve tenant ID for '{domain}'")
+
+            return {"tenant_id": match.group(0), "domain": domain}
+    except httpx.HTTPError:
+        raise HTTPException(502, f"Failed to reach Microsoft for domain '{domain}'")
+
+
 # ── Request/Response schemas ────────────────────────────────
 
 
