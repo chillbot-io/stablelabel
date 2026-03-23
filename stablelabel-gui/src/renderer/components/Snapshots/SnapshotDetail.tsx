@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { usePowerShell } from '../../hooks/usePowerShell';
 import { useElapsedTime } from '../../hooks/useElapsedTime';
 import ConfirmDialog from '../common/ConfirmDialog';
@@ -13,6 +13,8 @@ interface Props {
 
 export default function SnapshotDetail({ snapshotName, onDeleted, onCompare, onRestore }: Props) {
   const { invoke } = usePowerShell();
+  const mountedRef = useRef(true);
+  useEffect(() => () => { mountedRef.current = false; }, []);
   const [snap, setSnap] = useState<SnapshotSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -23,34 +25,39 @@ export default function SnapshotDetail({ snapshotName, onDeleted, onCompare, onR
   const [compareError, setCompareError] = useState<string | null>(null);
 
   useEffect(() => {
+    let cancelled = false;
     setLoading(true); setError(null);
     invoke<SnapshotSummary[]>('Get-SLSnapshot').then(r => {
+      if (cancelled) return;
       if (r.success && Array.isArray(r.data)) {
         const found = r.data.find(s => s.Name === snapshotName);
         if (found) setSnap(found); else setError('Snapshot not found');
       } else { setError(r.error ?? 'Failed'); }
       setLoading(false);
     });
+    return () => { cancelled = true; };
   }, [snapshotName, invoke]);
 
   const handleDelete = async () => {
     setDeleting(true);
     try {
       const r = await invoke('Remove-SLSnapshot', { Name: snapshotName });
+      if (!mountedRef.current) return;
       if (r.success) { setShowDelete(false); onDeleted(); }
       else setError(r.error ?? 'Delete failed');
-    } catch (e) { setError(e instanceof Error ? e.message : 'Failed'); }
-    setDeleting(false);
+    } catch (e) { if (mountedRef.current) setError(e instanceof Error ? e.message : 'Failed'); }
+    if (mountedRef.current) setDeleting(false);
   };
 
   const handleCompareLive = async () => {
     setComparing(true); setCompareError(null);
     try {
       const r = await invoke<SnapshotDiff>('Compare-SLSnapshot', { Name: snapshotName, Live: true });
+      if (!mountedRef.current) return;
       if (r.success && r.data) onCompare(r.data);
       else setCompareError(r.error ?? 'Compare failed');
-    } catch (e) { setCompareError(e instanceof Error ? e.message : 'Failed'); }
-    setComparing(false);
+    } catch (e) { if (mountedRef.current) setCompareError(e instanceof Error ? e.message : 'Failed'); }
+    if (mountedRef.current) setComparing(false);
   };
 
   if (loading) return <div className="p-6 space-y-4">{[1,2,3].map(i => <div key={i} className="h-16 bg-white/[0.06] rounded-lg animate-pulse" />)}</div>;

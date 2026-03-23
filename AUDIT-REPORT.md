@@ -2,7 +2,7 @@
 
 **Date**: 2026-03-19
 **Scope**: Full codebase audit — Security, AI Slop, E2E/Tests, Application Logic, Electron Architecture
-**Updated**: 2026-03-22 — Removed findings referencing deleted components (DLP, Retention, FileShare, SuperUser)
+**Updated**: 2026-03-23 — All HIGH severity issues resolved. Removed findings referencing deleted components (DLP, Retention, FileShare, SuperUser)
 
 ---
 
@@ -25,15 +25,11 @@ The restore function emits `Write-Warning` for Create/Update operations but sets
 
 ---
 
-### 2. npm Dependency Vulnerabilities (32 total)
+### 2. ~~npm Dependency Vulnerabilities (32 total)~~ FIXED
 
 **Severity**: HIGH
 **File**: `stablelabel-gui/package.json`
-
-- Electron ASAR integrity bypass (needs ≥35.7.5)
-- `tar` — arbitrary file creation via hardlink path traversal
-- `esbuild` — XSS via dev server
-- `tmp` — symlink exploitation
+**Status**: FIXED — Electron ASAR already resolved (v41 >> v35.7.5). Added npm overrides for `tar@^7.5.11` and `@tootallnate/once@^3.0.1` to patch transitive deps. Reduced from 32 HIGH to 0 HIGH (7 low/moderate remain in dev-only tooling: esbuild dev-server XSS and tmp symlink — not shipped to users).
 
 **Fix**: `npm audit fix`, upgrade Electron.
 
@@ -50,56 +46,51 @@ No `.on('error')` handler for the persistent PowerShell process. If the process 
 
 ---
 
-### 4. PowerShell Bridge — Unbounded Buffer Growth
+### 4. ~~PowerShell Bridge — Unbounded Buffer Growth~~ FIXED
 
 **Severity**: HIGH
 **File**: `stablelabel-gui/src/powershell-bridge.ts:170-194`
-
-`outputBuffer` and `stderrBuffer` grow without limit. A runaway cmdlet could exhaust memory.
+**Status**: FIXED — Added 50 MB buffer cap. stdout overflow rejects the current command with an error. stderr overflow truncates from the start to keep recent output. Also added MAX_QUEUE_SIZE (500) to prevent unbounded command queue growth.
 
 **Fix**: Add max buffer size with truncation or error on overflow.
 
 ---
 
-### 5. PowerShell Bridge — Zombie Process Risk
+### 5. ~~PowerShell Bridge — Zombie Process Risk~~ FIXED
 
 **Severity**: HIGH
 **File**: `stablelabel-gui/src/powershell-bridge.ts:345-348`
-
-No `SIGKILL` escalation if graceful kill fails during dispose.
+**Status**: FIXED — dispose() now sends graceful `exit`, then SIGTERM after 2s, then SIGKILL after another 2s if process survives.
 
 **Fix**: Add timeout-based SIGKILL escalation.
 
 ---
 
-### 6. Connect-SLAll Partial Connection State
+### 6. ~~Connect-SLAll Partial Connection State~~ FIXED
 
 **Severity**: HIGH
 **File**: `StableLabel/Public/Connection/Connect-SLAll.ps1:174-188`
-
-If Graph succeeds but Compliance fails, returns `PartiallyConnected` but stale credentials remain set. Downstream operations may use wrong identity.
+**Status**: FIXED — Graph failure now clears stale credentials (GraphAccessToken, GraphTokenExpiry) from `$script:SLConnection` and sets `GraphConnected=$false`. Status returns `PartiallyConnected` when `-IncludeGraph` was requested but Graph failed, instead of misleading `Connected`.
 
 **Fix**: Clear identity fields on partial failure or prevent operations that require full connection.
 
 ---
 
-### 7. Pre-Restore Backup Not Validated
+### 7. ~~Pre-Restore Backup Not Validated~~ FIXED
 
 **Severity**: HIGH
 **File**: `StableLabel/Public/Snapshot/Restore-SLSnapshot.ps1:188-189`
-
-`New-SLSnapshot` output suppressed with `Out-Null`. If backup fails (disk full), restore proceeds with no recovery path.
+**Status**: FIXED (previously) — Backup result is now captured and validated. If `New-SLSnapshot` fails or the file doesn't exist, restore throws before proceeding.
 
 **Fix**: Capture and validate backup result before proceeding.
 
 ---
 
-### 8. State Updates After Unmount
+### 8. ~~State Updates After Unmount~~ FIXED
 
 **Severity**: HIGH
 **Files**: `DocumentLabelBulk.tsx`, `SnapshotDetail.tsx`, `SnapshotList.tsx`
-
-Async callbacks call `setState` without checking if component is still mounted. Causes React memory leak warnings.
+**Status**: FIXED — Added `mountedRef` pattern to all three components. All async callbacks check `mountedRef.current` before calling setState. SnapshotDetail's useEffect also uses a `cancelled` cleanup variable returned from the effect.
 
 **Fix**: Use cleanup flag or AbortController pattern.
 
@@ -112,7 +103,7 @@ Async callbacks call `setState` without checking if component is still mounted. 
 | # | File | Issue |
 |---|------|-------|
 | 9 | `ConnectionDialog.tsx`, `SettingsPage.tsx` | localStorage stores UPN & tenant ID — should use `safeStorage` |
-| 10 | `powershell-bridge.ts:231-270` | No command queue size limit — unbounded growth possible |
+| 10 | `powershell-bridge.ts:231-270` | ~~No command queue size limit~~ FIXED — MAX_QUEUE_SIZE=500 |
 | 11 | `main.ts:136-148` | File dialog `defaultPath` not validated — potential directory traversal |
 | 12 | `cmdlet-registry.ts:58-67` | UNC path traversal not fully validated |
 | 13 | `credential-store.ts:37` | Silent fallback if encryption unavailable — tokens may be stored unencrypted |

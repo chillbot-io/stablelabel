@@ -8,6 +8,8 @@ import { logger } from './logger';
 const PS_READY_TIMEOUT_MS = 10_000;
 let COMMAND_TIMEOUT_MS = 600_000;
 const PROCESS_CLEANUP_DELAY_MS = 2_000;
+const MAX_BUFFER_BYTES = 50 * 1024 * 1024; // 50 MB — reject runaway commands
+const MAX_QUEUE_SIZE = 500; // Prevent unbounded command queue growth
 
 interface PsResult {
   success: boolean;
@@ -200,6 +202,24 @@ export class PowerShellBridge {
       const chunk = data.toString();
       this.outputBuffer += chunk;
 
+      // Guard against runaway commands exhausting memory
+      if (this.outputBuffer.length > MAX_BUFFER_BYTES) {
+        logger.error('PS_BRIDGE', `stdout buffer exceeded ${MAX_BUFFER_BYTES} bytes — aborting command`);
+        const reject = this.currentReject;
+        this.currentMarker = null;
+        this.currentResolve = null;
+        this.currentReject = null;
+        if (this.currentTimeout) {
+          clearTimeout(this.currentTimeout);
+          this.currentTimeout = null;
+        }
+        this.outputBuffer = '';
+        this.processing = false;
+        reject?.(new Error(`Command output exceeded maximum buffer size (${MAX_BUFFER_BYTES} bytes)`));
+        this.processQueue();
+        return;
+      }
+
       // Only check new chunks for device codes — avoids O(n^2) regex on growing buffer
       this.checkForDeviceCode(chunk);
 
@@ -218,6 +238,11 @@ export class PowerShellBridge {
       const chunk = data.toString();
       logger.error('PS_STDERR', chunk);
       this.stderrBuffer += chunk;
+
+      // Cap stderr buffer — truncate from start to keep recent output
+      if (this.stderrBuffer.length > MAX_BUFFER_BYTES) {
+        this.stderrBuffer = this.stderrBuffer.slice(-MAX_BUFFER_BYTES);
+      }
 
       // Only check new chunks for device codes — avoids O(n^2) regex on growing buffer
       this.checkForDeviceCode(chunk);
@@ -304,6 +329,11 @@ export class PowerShellBridge {
     return new Promise<string>((resolve, reject) => {
       if (!this.process?.stdin) {
         reject(new Error('PowerShell process not available'));
+        return;
+      }
+      // Reject if queue is full to prevent unbounded memory growth
+      if (this.commandQueue.length >= MAX_QUEUE_SIZE) {
+        reject(new Error(`Command queue full (${MAX_QUEUE_SIZE} pending commands)`));
         return;
       }
       // sendRaw resolves with string; invokeStructured resolves with PsResult — both use the same queue
@@ -485,8 +515,17 @@ export class PowerShellBridge {
       } catch {
         // Process may already be dead
       }
+      // Graceful SIGTERM after delay, then SIGKILL escalation if still alive
       setTimeout(() => {
-        proc.kill();
+        try {
+          proc.kill();
+        } catch { /* already dead */ }
+        // Escalate to SIGKILL if process survives SIGTERM
+        setTimeout(() => {
+          try {
+            proc.kill('SIGKILL');
+          } catch { /* already dead */ }
+        }, PROCESS_CLEANUP_DELAY_MS);
       }, PROCESS_CLEANUP_DELAY_MS);
     }
   }

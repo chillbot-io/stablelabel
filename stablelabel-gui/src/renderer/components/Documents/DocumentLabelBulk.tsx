@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { usePowerShell } from '../../hooks/usePowerShell';
 import { useElapsedTime } from '../../hooks/useElapsedTime';
 import { TextField, TextArea, ToggleField } from '../common/FormFields';
@@ -9,6 +9,8 @@ import ShowPowerShell from '../common/ShowPowerShell';
 
 export default function DocumentLabelBulk() {
   const { invoke } = usePowerShell();
+  const mountedRef = useRef(true);
+  useEffect(() => () => { mountedRef.current = false; }, []);
   const [itemsText, setItemsText] = useState('');
   const [labelName, setLabelName] = useState('');
   const [labelId, setLabelId] = useState('');
@@ -55,10 +57,11 @@ export default function DocumentLabelBulk() {
         Justification: justification.trim() || undefined,
         DryRun: dryRun || undefined,
       });
+      if (!mountedRef.current) return;
       if (r.success && r.data) setResult(r.data);
       else setError(r.error ?? 'Bulk operation failed');
-    } catch (e) { setError(e instanceof Error ? e.message : 'Failed'); }
-    setLoading(false);
+    } catch (e) { if (mountedRef.current) setError(e instanceof Error ? e.message : 'Failed'); }
+    if (mountedRef.current) setLoading(false);
   };
 
   return (

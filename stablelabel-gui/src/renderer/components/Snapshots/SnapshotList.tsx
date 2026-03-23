@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { usePowerShell } from '../../hooks/usePowerShell';
 import { usePagination } from '../../hooks/usePagination';
 import type { SnapshotSummary } from '../../lib/types';
@@ -11,6 +11,8 @@ interface Props {
 
 export default function SnapshotList({ onSelect, selectedName, refreshKey }: Props) {
   const { invoke } = usePowerShell();
+  const mountedRef = useRef(true);
+  useEffect(() => () => { mountedRef.current = false; }, []);
   const [items, setItems] = useState<SnapshotSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -20,10 +22,11 @@ export default function SnapshotList({ onSelect, selectedName, refreshKey }: Pro
     setLoading(true); setError(null);
     try {
       const r = await invoke<SnapshotSummary[]>('Get-SLSnapshot');
+      if (!mountedRef.current) return;
       if (r.success && Array.isArray(r.data)) setItems(r.data);
       else setError(r.error ?? 'Failed');
-    } catch (e) { setError(e instanceof Error ? e.message : 'Failed'); }
-    setLoading(false);
+    } catch (e) { if (mountedRef.current) setError(e instanceof Error ? e.message : 'Failed'); }
+    if (mountedRef.current) setLoading(false);
   };
 
   // eslint-disable-next-line react-hooks/exhaustive-deps -- invoke is stable
