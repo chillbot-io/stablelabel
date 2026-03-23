@@ -14,8 +14,10 @@ RUN pip install --no-cache-dir --prefix=/install '.[classifier]'
 
 # Bake the spaCy model into the image so the first classification request
 # doesn't stall downloading ~560 MB at runtime.
-ENV PYTHONPATH=/install/lib/python3.11/site-packages
-RUN python -m spacy download en_core_web_lg
+# Use pip install --prefix (not spacy download) so the model lands in /install/
+# alongside the other packages and gets copied to the runtime stage.
+RUN pip install --no-cache-dir --prefix=/install \
+    https://github.com/explosion/spacy-models/releases/download/en_core_web_lg-3.7.1/en_core_web_lg-3.7.1-py3-none-any.whl
 
 # ── Stage 2: Runtime ─────────────────────────────────────────
 FROM python:3.11-slim

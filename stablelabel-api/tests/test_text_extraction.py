@@ -143,6 +143,120 @@ class TestExtractXlsx:
         result = _extract_xlsx(content)
         assert result == ""
 
+    def test_extract_xlsx_inline_strings(self) -> None:
+        """Inline strings (<is><t>) in sheet cells should be extracted."""
+        ns = "http://schemas.openxmlformats.org/spreadsheetml/2006/main"
+        sheet_xml = (
+            f'<?xml version="1.0"?>'
+            f'<worksheet xmlns="{ns}">'
+            f"<sheetData>"
+            f'<row r="1">'
+            f'<c r="A1" t="inlineStr"><is><t>John Smith</t></is></c>'
+            f'<c r="B1" t="inlineStr"><is><t>SSN 123-45-6789</t></is></c>'
+            f"</row>"
+            f"</sheetData>"
+            f"</worksheet>"
+        )
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w") as zf:
+            zf.writestr("xl/worksheets/sheet1.xml", sheet_xml)
+        content = buf.getvalue()
+
+        result = _extract_xlsx(content)
+        assert "John Smith" in result
+        assert "SSN 123-45-6789" in result
+
+    def test_extract_xlsx_cell_values(self) -> None:
+        """Numeric cell values (<v>) should be extracted (catches numeric PII)."""
+        ns = "http://schemas.openxmlformats.org/spreadsheetml/2006/main"
+        sheet_xml = (
+            f'<?xml version="1.0"?>'
+            f'<worksheet xmlns="{ns}">'
+            f"<sheetData>"
+            f'<row r="1">'
+            f'<c r="A1" t="n"><v>123456789</v></c>'
+            f'<c r="B1"><v>98765</v></c>'
+            f"</row>"
+            f"</sheetData>"
+            f"</worksheet>"
+        )
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w") as zf:
+            zf.writestr("xl/worksheets/sheet1.xml", sheet_xml)
+        content = buf.getvalue()
+
+        result = _extract_xlsx(content)
+        assert "123456789" in result
+        assert "98765" in result
+
+    def test_extract_xlsx_skips_shared_string_refs(self) -> None:
+        """Cells with t='s' (shared string reference) should NOT duplicate values.
+
+        The shared string index (e.g. <v>0</v>) is just a lookup index,
+        not meaningful text. The actual text comes from sharedStrings.xml.
+        """
+        ns = "http://schemas.openxmlformats.org/spreadsheetml/2006/main"
+        sheet_xml = (
+            f'<?xml version="1.0"?>'
+            f'<worksheet xmlns="{ns}">'
+            f"<sheetData>"
+            f'<row r="1">'
+            f'<c r="A1" t="s"><v>0</v></c>'
+            f"</row>"
+            f"</sheetData>"
+            f"</worksheet>"
+        )
+        shared_strings_xml = (
+            f'<?xml version="1.0"?>'
+            f'<sst xmlns="{ns}">'
+            f"<si><t>Actual Text</t></si>"
+            f"</sst>"
+        )
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w") as zf:
+            zf.writestr("xl/worksheets/sheet1.xml", sheet_xml)
+            zf.writestr("xl/sharedStrings.xml", shared_strings_xml)
+        content = buf.getvalue()
+
+        result = _extract_xlsx(content)
+        assert "Actual Text" in result
+        # The index "0" should NOT appear as extracted text
+        # (shared string refs are skipped in sheet processing)
+        words = result.split()
+        assert "0" not in words
+
+    def test_extract_xlsx_combined_sources(self) -> None:
+        """Shared strings + inline strings + cell values all extracted together."""
+        ns = "http://schemas.openxmlformats.org/spreadsheetml/2006/main"
+        shared_strings_xml = (
+            f'<?xml version="1.0"?>'
+            f'<sst xmlns="{ns}">'
+            f"<si><t>FromShared</t></si>"
+            f"</sst>"
+        )
+        sheet_xml = (
+            f'<?xml version="1.0"?>'
+            f'<worksheet xmlns="{ns}">'
+            f"<sheetData>"
+            f'<row r="1">'
+            f'<c r="A1" t="s"><v>0</v></c>'
+            f'<c r="B1" t="inlineStr"><is><t>FromInline</t></is></c>'
+            f'<c r="C1" t="n"><v>42</v></c>'
+            f"</row>"
+            f"</sheetData>"
+            f"</worksheet>"
+        )
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w") as zf:
+            zf.writestr("xl/sharedStrings.xml", shared_strings_xml)
+            zf.writestr("xl/worksheets/sheet1.xml", sheet_xml)
+        content = buf.getvalue()
+
+        result = _extract_xlsx(content)
+        assert "FromShared" in result
+        assert "FromInline" in result
+        assert "42" in result
+
 
 # ── PPTX extraction ──────────────────────────────────────────
 

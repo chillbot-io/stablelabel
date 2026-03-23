@@ -80,7 +80,7 @@ async def trigger_scheduled_jobs(ctx: dict) -> None:
     """
     from app.worker.cron_eval import is_cron_due
 
-    arq_pool: ArqRedis = ctx["redis"]
+    arq_pool: ArqRedis = ctx["arq_pool"]
     now = datetime.now(UTC)
 
     async for db in get_session():

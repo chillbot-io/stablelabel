@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import threading
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
@@ -25,6 +26,7 @@ logger = logging.getLogger(__name__)
 # Lazy-loaded presidio — optional dependency
 _analyzer: Any = None
 _analyzer_loaded = False
+_analyzer_lock = threading.Lock()
 
 # Thread pool for CPU-bound presidio work so we never block the event loop.
 _classifier_pool = ThreadPoolExecutor(max_workers=2, thread_name_prefix="presidio")
@@ -58,24 +60,30 @@ CHUNK_OVERLAP = 1_000  # 1 KB overlap to avoid splitting entities at boundaries
 
 
 def _get_analyzer() -> Any:
-    """Lazy-load the presidio analyzer engine."""
+    """Lazy-load the presidio analyzer engine (thread-safe)."""
     global _analyzer, _analyzer_loaded
 
     if _analyzer_loaded:
         return _analyzer
 
-    _analyzer_loaded = True
-    try:
-        from presidio_analyzer import AnalyzerEngine
+    with _analyzer_lock:
+        # Double-check after acquiring lock
+        if _analyzer_loaded:
+            return _analyzer
 
-        _analyzer = AnalyzerEngine()
-        logger.info("Presidio analyzer loaded successfully")
-    except ImportError:
-        logger.warning(
-            "presidio-analyzer not installed — content classification disabled. "
-            "Install with: pip install 'stablelabel-api[classifier]'"
-        )
-        _analyzer = None
+        try:
+            from presidio_analyzer import AnalyzerEngine
+
+            _analyzer = AnalyzerEngine()
+            logger.info("Presidio analyzer loaded successfully")
+        except ImportError:
+            logger.warning(
+                "presidio-analyzer not installed — content classification disabled. "
+                "Install with: pip install 'stablelabel-api[classifier]'"
+            )
+            _analyzer = None
+
+        _analyzer_loaded = True
 
     return _analyzer
 

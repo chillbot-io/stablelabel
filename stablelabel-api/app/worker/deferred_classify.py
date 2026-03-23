@@ -15,13 +15,10 @@ from __future__ import annotations
 
 import logging
 import uuid
-from datetime import UTC, datetime
 
-from redis.asyncio import Redis
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.config import Settings
 from app.db.base import get_session
 from app.db.models import (
     AuditEvent,
@@ -256,8 +253,6 @@ def _top_classification(
 
 
 async def _load_tenant_policies(db: AsyncSession, customer_tenant_id: uuid.UUID):
-    from app.services.policy_engine import policies_from_db
-
     stmt = (
         select(Policy)
         .where(

@@ -366,7 +366,7 @@ class ScanResult(Base):
     confidence: Mapped[float | None] = mapped_column(Float)
     label_applied: Mapped[str | None] = mapped_column(String(36))
     previous_label: Mapped[str | None] = mapped_column(String(36))
-    outcome: Mapped[str] = mapped_column(String(20), nullable=False)  # labelled | skipped | failed
+    outcome: Mapped[str] = mapped_column(String(20), nullable=False)  # labelled | skipped | failed | deferred
 
     __table_args__ = (
         Index("ix_scan_tenant_ts", "customer_tenant_id", "ts"),
