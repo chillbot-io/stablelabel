@@ -114,6 +114,51 @@ export interface Policy {
   updated_at: string;
 }
 
+// ── SIT Catalog ────────────────────────────────────────────
+
+export interface SitDefinition {
+  id: string;
+  name: string;
+  description: string;
+  category: string;
+  regulations: string[];
+  rules: SitRules;
+}
+
+export interface SitRules {
+  patterns: SitPattern[];
+  definitions: Record<string, SitPatternDefinition>;
+  file_scope?: {
+    file_patterns?: string[];
+    require_no_existing_label?: boolean;
+  };
+}
+
+export interface SitPattern {
+  confidence_level: number;
+  primary_match: SitPrimaryMatch;
+  corroborative_evidence?: {
+    min_matches: number;
+    max_matches?: number | null;
+    matches: SitEvidenceMatch[];
+  } | null;
+  proximity: number;
+}
+
+export type SitPrimaryMatch =
+  | { type: 'entity'; entity_types: string[]; min_confidence: number; min_count: number }
+  | { type: 'regex'; patterns: string[]; min_count: number };
+
+export type SitEvidenceMatch =
+  | { type: 'keyword_list'; id: string }
+  | { type: 'regex'; id: string }
+  | { type: 'inline_keyword'; keywords: string[]; case_sensitive: boolean }
+  | { type: 'inline_regex'; patterns: string[] };
+
+export type SitPatternDefinition =
+  | { type: 'keyword_list'; keywords: string[]; case_sensitive: boolean }
+  | { type: 'regex'; patterns: string[] };
+
 // ── Audit ───────────────────────────────────────────────────
 
 export interface AuditEvent {

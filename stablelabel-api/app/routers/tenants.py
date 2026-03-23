@@ -19,6 +19,7 @@ from app.core.rbac import require_role
 from app.db.base import get_session
 from app.db.models import AuditEvent, CustomerTenant, UserTenantAccess
 from app.dependencies import get_settings
+from app.services.policy_seeder import seed_builtin_policies
 
 router = APIRouter(prefix="/security/tenants", tags=["security"])
 
@@ -161,6 +162,9 @@ async def connect_tenant(
         event_type="tenant.connected",
         extra={"entra_tenant_id": body.entra_tenant_id},
     ))
+
+    # Seed built-in SIT policies (disabled, no label assigned yet)
+    await seed_builtin_policies(tenant.id, db)
 
     await db.commit()
     await db.refresh(tenant)

@@ -667,6 +667,9 @@ def policies_from_db(db_policies: list) -> list[PolicyRule]:
     for p in db_policies:
         if not p.is_enabled:
             continue
+        # Skip policies with no label assigned (built-in placeholder)
+        if p.target_label_id == "__unassigned__":
+            continue
 
         raw_rules = p.rules or {}
 

@@ -26,6 +26,7 @@ from app.core.rbac import check_tenant_access, require_role
 from app.db.base import get_session
 from app.db.models import Policy
 from app.models.policy_rules import PolicyRules
+from app.services.sit_catalog import get_sit_by_id, get_sit_catalog
 
 router = APIRouter(prefix="/tenants/{customer_tenant_id}/policies", tags=["policies"])
 
@@ -243,3 +244,74 @@ async def delete_policy(
 
     await db.delete(policy)
     await db.commit()
+
+
+# ── SIT Catalog routes ────────────────────────────────────────
+
+sit_router = APIRouter(prefix="/sit-catalog", tags=["sit-catalog"])
+
+
+@sit_router.get("")
+async def list_sit_catalog(
+    user: CurrentUser = Depends(require_role("Viewer")),
+) -> list[dict]:
+    """Return the full catalog of pre-built Sensitive Information Types.
+
+    Each entry includes id, name, description, category, regulations,
+    and the full SIT-aligned rules definition.
+    """
+    return get_sit_catalog()
+
+
+@sit_router.get("/{sit_id}")
+async def get_sit_definition(
+    sit_id: str,
+    user: CurrentUser = Depends(require_role("Viewer")),
+) -> dict:
+    """Get a single SIT definition by ID."""
+    sit = get_sit_by_id(sit_id)
+    if not sit:
+        raise HTTPException(404, f"SIT '{sit_id}' not found")
+    return sit
+
+
+class CreateFromSitRequest(BaseModel):
+    sit_id: str
+    target_label_id: str
+    name: str | None = None
+    priority: int = 0
+    is_enabled: bool = True
+
+
+@router.post("/from-sit", response_model=PolicyResponse, status_code=201)
+async def create_policy_from_sit(
+    customer_tenant_id: str,
+    body: CreateFromSitRequest,
+    user: CurrentUser = Depends(require_role("Operator")),
+    db: AsyncSession = Depends(get_session),
+) -> PolicyResponse:
+    """Create a policy from a pre-built SIT catalog entry.
+
+    Copies the SIT's rules into a new policy and associates it
+    with the specified target label.
+    """
+    await check_tenant_access(user, customer_tenant_id, db)
+
+    sit = get_sit_by_id(body.sit_id)
+    if not sit:
+        raise HTTPException(404, f"SIT '{body.sit_id}' not found in catalog")
+
+    policy = Policy(
+        customer_tenant_id=uuid.UUID(customer_tenant_id),
+        name=body.name or sit["name"],
+        rules=sit["rules"],
+        target_label_id=body.target_label_id,
+        priority=body.priority,
+        is_enabled=body.is_enabled,
+        is_builtin=False,
+    )
+    db.add(policy)
+    await db.commit()
+    await db.refresh(policy)
+
+    return _policy_to_response(policy)
