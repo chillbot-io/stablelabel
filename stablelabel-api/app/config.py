@@ -47,7 +47,7 @@ class Settings(BaseSettings):
     consent_redirect_uri: str = "http://localhost:8000/onboard/callback"
 
     # ── CORS ────────────────────────────────────────────────────
-    cors_origins: str = "http://localhost:5173,http://localhost:3000"
+    cors_origins: str = "http://localhost:80,http://localhost:5173"
 
     # ── Classifier (optional) ─────────────────────────────────
     classifier_enabled: bool = False

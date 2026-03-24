@@ -78,7 +78,7 @@ async def list_sites(
         sites = await graph.get_all_pages(
             tenant.entra_tenant_id, f"/sites?search={encoded_search}"
         )
-    except (StableLabelError, Exception) as exc:
+    except StableLabelError as exc:
         logger.warning("Site search failed for tenant %s: %s", customer_tenant_id, exc)
         return []
 

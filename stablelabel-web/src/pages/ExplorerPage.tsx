@@ -79,7 +79,7 @@ export default function ExplorerPage() {
     if (!selected || !selectedDrive) return;
     setLabeling(true);
     try {
-      await api.post(`/tenants/${selected.id}/documents/apply-label?drive_id=${selectedDrive}&item_id=${item.id}`, {
+      await api.post(`/tenants/${selected.id}/documents/apply-label`, {
         drive_id: selectedDrive,
         item_id: item.id,
         sensitivity_label_id: labelId,
