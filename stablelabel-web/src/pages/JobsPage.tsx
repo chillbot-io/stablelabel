@@ -238,15 +238,18 @@ function CreateJobDialog({
       .catch(() => {});
   }, [tenantId]);
 
-  // Search sites when scope is "sites"
+  // Search sites when scope is "sites" (debounced)
   useEffect(() => {
     if (scopeType !== 'sites') return;
-    setLoadingSites(true);
-    const query = siteSearch ? `?search=${encodeURIComponent(siteSearch)}` : '';
-    api.get<SiteOption[]>(`/tenants/${tenantId}/sites${query}`)
-      .then(setSites)
-      .catch(() => setSites([]))
-      .finally(() => setLoadingSites(false));
+    const timer = setTimeout(() => {
+      setLoadingSites(true);
+      const query = siteSearch ? `?search=${encodeURIComponent(siteSearch)}` : '';
+      api.get<SiteOption[]>(`/tenants/${tenantId}/sites${query}`)
+        .then(setSites)
+        .catch(() => setSites([]))
+        .finally(() => setLoadingSites(false));
+    }, 300);
+    return () => clearTimeout(timer);
   }, [tenantId, scopeType, siteSearch]);
 
   const toggleSite = (siteId: string) => {
