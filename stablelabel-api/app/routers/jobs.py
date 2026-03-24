@@ -523,21 +523,28 @@ async def job_progress_stream(
     await check_tenant_access(user, customer_tenant_id, db)
     await _get_job(job_id, customer_tenant_id, db)  # 404 if not found
 
+    # Capture IDs for the generator — the dependency-injected session is
+    # NOT used inside the loop.  Instead each poll opens a fresh session
+    # so the DB connection returns to the pool between sleeps.
+    _job_id = uuid.UUID(job_id)
+    _tenant_id = uuid.UUID(customer_tenant_id)
+
     async def event_generator():
         last_progress = None
 
         while True:
-            # Check if client disconnected
             if await request.is_disconnected():
                 break
 
-            # Reload job state from DB
-            stmt = select(Job).where(
-                Job.id == uuid.UUID(job_id),
-                Job.customer_tenant_id == uuid.UUID(customer_tenant_id),
-            )
-            result = await db.execute(stmt)
-            job = result.scalar_one_or_none()
+            # Open a short-lived session per poll so the connection is
+            # released back to the pool between iterations.
+            async for poll_db in get_session():
+                stmt = select(Job).where(
+                    Job.id == _job_id,
+                    Job.customer_tenant_id == _tenant_id,
+                )
+                result = await poll_db.execute(stmt)
+                job = result.scalar_one_or_none()
 
             if not job:
                 yield _sse_event({"error": "Job not found"}, event="error")
@@ -562,8 +569,6 @@ async def job_progress_stream(
             if job.status in _TERMINAL_STATUSES:
                 break
 
-            # Expire SQLAlchemy's identity map so next query gets fresh data
-            db.expire_all()
             await asyncio.sleep(_SSE_POLL_INTERVAL)
 
     return StreamingResponse(
