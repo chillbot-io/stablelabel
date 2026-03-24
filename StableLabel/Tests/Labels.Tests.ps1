@@ -105,13 +105,31 @@ Describe 'New-SLLabelPolicy' {
         { New-SLLabelPolicy -Name 'Test' -Labels 'Confidential' } | Should -Throw '*Not connected to Compliance*'
     }
 
-    It 'Creates a label policy' {
-        Mock New-LabelPolicy { [PSCustomObject]@{ Name = 'Finance Policy'; Labels = @('Confidential') } }
-        $result = New-SLLabelPolicy -Name 'Finance Policy' -Labels 'Confidential' -Confirm:$false
-        $result.Name | Should -Be 'Finance Policy'
+    It 'Creates a label policy with correct parameters' {
+        Mock New-LabelPolicy { [PSCustomObject]@{ Name = 'Finance Policy' } }
+        $null = New-SLLabelPolicy -Name 'Finance Policy' -Labels 'Confidential','Internal' -Confirm:$false
         Should -Invoke New-LabelPolicy -Times 1 -ParameterFilter {
-            $Name -eq 'Finance Policy'
+            $Name -eq 'Finance Policy' -and
+            $Labels.Count -eq 2 -and
+            $Labels -contains 'Confidential' -and
+            $Labels -contains 'Internal'
         }
+    }
+
+    It 'Writes audit entry on successful create' {
+        Mock New-LabelPolicy { [PSCustomObject]@{ Name = 'Test' } }
+        $auditPath = $script:SLConfig.AuditLogPath
+        if (Test-Path $auditPath) { Remove-Item $auditPath -Force }
+        $null = New-SLLabelPolicy -Name 'Test' -Labels 'Public' -Confirm:$false
+        Test-Path $auditPath | Should -BeTrue
+        $entries = Get-Content $auditPath | ForEach-Object { $_ | ConvertFrom-Json }
+        $createEntry = $entries | Where-Object { $_.action -eq 'New-LabelPolicy' -and $_.result -ne 'dry-run' }
+        $createEntry | Should -Not -BeNullOrEmpty
+    }
+
+    It 'Propagates error when New-LabelPolicy throws' {
+        Mock New-LabelPolicy { throw 'Policy creation failed' }
+        { New-SLLabelPolicy -Name 'Bad Policy' -Labels 'Public' -Confirm:$false } | Should -Throw '*Policy creation failed*'
     }
 
     It 'Returns dry-run result with -DryRun' {
@@ -202,13 +220,30 @@ Describe 'Set-SLLabelPolicy' {
         ($json | ConvertFrom-Json).Action | Should -Be 'Set-LabelPolicy'
     }
 
-    It 'Updates a label policy' {
-        Mock Set-LabelPolicy { [PSCustomObject]@{ Name = 'Global Policy'; Comment = 'Updated' } }
-        $result = Set-SLLabelPolicy -Identity 'Global Policy' -Comment 'Updated' -Confirm:$false
-        $result.Comment | Should -Be 'Updated'
+    It 'Updates a label policy with correct parameters' {
+        Mock Set-LabelPolicy { [PSCustomObject]@{ Name = 'Global Policy' } }
+        $null = Set-SLLabelPolicy -Identity 'Global Policy' -Comment 'Updated' -AddLabels 'Secret' -Confirm:$false
         Should -Invoke Set-LabelPolicy -Times 1 -ParameterFilter {
-            $Identity -eq 'Global Policy'
+            $Identity -eq 'Global Policy' -and
+            $Comment -eq 'Updated' -and
+            $AddLabels -contains 'Secret'
         }
+    }
+
+    It 'Writes audit entry on successful update' {
+        Mock Set-LabelPolicy { [PSCustomObject]@{ Name = 'Global Policy' } }
+        $auditPath = $script:SLConfig.AuditLogPath
+        if (Test-Path $auditPath) { Remove-Item $auditPath -Force }
+        $null = Set-SLLabelPolicy -Identity 'Global Policy' -Comment 'Changed' -Confirm:$false
+        Test-Path $auditPath | Should -BeTrue
+        $entries = Get-Content $auditPath | ForEach-Object { $_ | ConvertFrom-Json }
+        $updateEntry = $entries | Where-Object { $_.action -eq 'Set-LabelPolicy' -and $_.result -ne 'dry-run' }
+        $updateEntry | Should -Not -BeNullOrEmpty
+    }
+
+    It 'Propagates error when Set-LabelPolicy throws' {
+        Mock Set-LabelPolicy { throw 'Access denied' }
+        { Set-SLLabelPolicy -Identity 'Global Policy' -Comment 'Updated' -Confirm:$false } | Should -Throw '*Access denied*'
     }
 }
 
@@ -240,6 +275,22 @@ Describe 'Remove-SLLabelPolicy' {
         Should -Invoke Remove-LabelPolicy -Times 1 -ParameterFilter {
             $Identity -eq 'Old Policy'
         }
+    }
+
+    It 'Writes audit entry on successful remove' {
+        Mock Remove-LabelPolicy { }
+        $auditPath = $script:SLConfig.AuditLogPath
+        if (Test-Path $auditPath) { Remove-Item $auditPath -Force }
+        $null = Remove-SLLabelPolicy -Identity 'Old Policy' -Confirm:$false
+        Test-Path $auditPath | Should -BeTrue
+        $entries = Get-Content $auditPath | ForEach-Object { $_ | ConvertFrom-Json }
+        $removeEntry = $entries | Where-Object { $_.action -eq 'Remove-LabelPolicy' -and $_.result -ne 'dry-run' }
+        $removeEntry | Should -Not -BeNullOrEmpty
+    }
+
+    It 'Propagates error when Remove-LabelPolicy throws' {
+        Mock Remove-LabelPolicy { throw 'Policy not found' }
+        { Remove-SLLabelPolicy -Identity 'Missing Policy' -Confirm:$false } | Should -Throw '*Policy not found*'
     }
 }
 
@@ -329,13 +380,31 @@ Describe 'New-SLAutoLabelPolicy' {
         ($json | ConvertFrom-Json).DryRun | Should -BeTrue
     }
 
-    It 'Creates an auto-label policy' {
+    It 'Creates an auto-label policy with correct parameters' {
         Mock New-AutoSensitivityLabelPolicy { [PSCustomObject]@{ Name = 'PII Auto-Label' } }
-        $result = New-SLAutoLabelPolicy -Name 'PII Auto-Label' -ApplySensitivityLabel 'Confidential' -Confirm:$false
-        $result.Name | Should -Be 'PII Auto-Label'
+        $null = New-SLAutoLabelPolicy -Name 'PII Auto-Label' -ApplySensitivityLabel 'Confidential' -ExchangeLocation 'All' -Mode 'TestWithNotifications' -Confirm:$false
         Should -Invoke New-AutoSensitivityLabelPolicy -Times 1 -ParameterFilter {
-            $Name -eq 'PII Auto-Label'
+            $Name -eq 'PII Auto-Label' -and
+            $ApplySensitivityLabel -eq 'Confidential' -and
+            $ExchangeLocation -contains 'All' -and
+            $Mode -eq 'TestWithNotifications'
         }
+    }
+
+    It 'Writes audit entry on successful auto-label create' {
+        Mock New-AutoSensitivityLabelPolicy { [PSCustomObject]@{ Name = 'Test' } }
+        $auditPath = $script:SLConfig.AuditLogPath
+        if (Test-Path $auditPath) { Remove-Item $auditPath -Force }
+        $null = New-SLAutoLabelPolicy -Name 'Test' -ApplySensitivityLabel 'Internal' -Confirm:$false
+        Test-Path $auditPath | Should -BeTrue
+        $entries = Get-Content $auditPath | ForEach-Object { $_ | ConvertFrom-Json }
+        $createEntry = $entries | Where-Object { $_.action -eq 'New-AutoSensitivityLabelPolicy' -and $_.result -ne 'dry-run' }
+        $createEntry | Should -Not -BeNullOrEmpty
+    }
+
+    It 'Propagates error when New-AutoSensitivityLabelPolicy throws' {
+        Mock New-AutoSensitivityLabelPolicy { throw 'Duplicate policy name' }
+        { New-SLAutoLabelPolicy -Name 'Dupe' -ApplySensitivityLabel 'Confidential' -Confirm:$false } | Should -Throw '*Duplicate policy name*'
     }
 }
 
@@ -373,13 +442,30 @@ Describe 'Set-SLAutoLabelPolicy' {
         ($json | ConvertFrom-Json).Action | Should -Be 'Set-AutoSensitivityLabelPolicy'
     }
 
-    It 'Updates an auto-label policy' {
-        Mock Set-AutoSensitivityLabelPolicy { [PSCustomObject]@{ Name = 'PII Auto-Label'; Mode = 'Enable' } }
-        $result = Set-SLAutoLabelPolicy -Identity 'PII Auto-Label' -Mode 'Enable' -Confirm:$false
-        $result.Mode | Should -Be 'Enable'
+    It 'Updates an auto-label policy with correct parameters' {
+        Mock Set-AutoSensitivityLabelPolicy { [PSCustomObject]@{ Name = 'PII Auto-Label' } }
+        $null = Set-SLAutoLabelPolicy -Identity 'PII Auto-Label' -Mode 'Enable' -AddSharePointLocation 'https://site.com' -Confirm:$false
         Should -Invoke Set-AutoSensitivityLabelPolicy -Times 1 -ParameterFilter {
-            $Identity -eq 'PII Auto-Label'
+            $Identity -eq 'PII Auto-Label' -and
+            $Mode -eq 'Enable' -and
+            $AddSharePointLocation -contains 'https://site.com'
         }
+    }
+
+    It 'Writes audit entry on successful auto-label update' {
+        Mock Set-AutoSensitivityLabelPolicy { [PSCustomObject]@{ Name = 'PII Auto-Label' } }
+        $auditPath = $script:SLConfig.AuditLogPath
+        if (Test-Path $auditPath) { Remove-Item $auditPath -Force }
+        $null = Set-SLAutoLabelPolicy -Identity 'PII Auto-Label' -Mode 'Enable' -Confirm:$false
+        Test-Path $auditPath | Should -BeTrue
+        $entries = Get-Content $auditPath | ForEach-Object { $_ | ConvertFrom-Json }
+        $updateEntry = $entries | Where-Object { $_.action -eq 'Set-AutoSensitivityLabelPolicy' -and $_.result -ne 'dry-run' }
+        $updateEntry | Should -Not -BeNullOrEmpty
+    }
+
+    It 'Propagates error when Set-AutoSensitivityLabelPolicy throws' {
+        Mock Set-AutoSensitivityLabelPolicy { throw 'Policy not found' }
+        { Set-SLAutoLabelPolicy -Identity 'Missing' -Mode 'Enable' -Confirm:$false } | Should -Throw '*Policy not found*'
     }
 }
 

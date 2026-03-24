@@ -50,7 +50,9 @@ Describe 'New-SLSnapshot' {
         $script:SLConnection.ComplianceConnected = $true
         $script:SLConnection.ComplianceSessionStart = [datetime]::UtcNow
         $script:SLConnection.ComplianceCommandCount = 0
-        $script:SLConfig.SnapshotPath = Join-Path $TestDrive 'snapshots'
+        $script:testSnapshotDir = Join-Path $TestDrive "snap-$(New-Guid)"
+        New-Item -ItemType Directory -Path $script:testSnapshotDir -Force | Out-Null
+        $script:SLConfig.SnapshotPath = $script:testSnapshotDir
     }
 
     It 'Requires Compliance connection' {
@@ -62,21 +64,21 @@ Describe 'New-SLSnapshot' {
         Mock Invoke-SLComplianceCommand {
             @([PSCustomObject]@{ Name = 'Policy1'; Enabled = $true })
         }
-        $result = New-SLSnapshot -Name 'test-create' -Path $TestDrive
+        $result = New-SLSnapshot -Name 'test-create' -Path $script:testSnapshotDir
         $result | Should -Not -BeNullOrEmpty
         $result.Name | Should -Be 'test-create'
-        Test-Path (Join-Path $TestDrive 'test-create.json') | Should -BeTrue
+        Test-Path (Join-Path $script:testSnapshotDir 'test-create.json') | Should -BeTrue
     }
 
     It 'Returns JSON with -AsJson' {
         Mock Invoke-SLComplianceCommand { @() }
-        $json = New-SLSnapshot -Name 'test-json' -Path $TestDrive -AsJson
+        $json = New-SLSnapshot -Name 'test-json' -Path $script:testSnapshotDir -AsJson
         { $json | ConvertFrom-Json } | Should -Not -Throw
     }
 
     It 'Accepts Scope parameter' {
         Mock Invoke-SLComplianceCommand { @() }
-        $result = New-SLSnapshot -Name 'test-labels-only' -Scope Labels -Path $TestDrive
+        $result = New-SLSnapshot -Name 'test-labels-only' -Scope Labels -Path $script:testSnapshotDir
         $result | Should -Not -BeNullOrEmpty
         $result.Scope | Should -Be 'Labels'
     }
@@ -263,7 +265,9 @@ Describe 'Restore-SLSnapshot' {
         $script:SLConnection.ComplianceConnected = $true
         $script:SLConnection.ComplianceSessionStart = [datetime]::UtcNow
         $script:SLConnection.ComplianceCommandCount = 0
-        $script:SLConfig.SnapshotPath = Join-Path $TestDrive 'snapshots'
+        $script:testSnapshotDir = Join-Path $TestDrive "snap-$(New-Guid)"
+        New-Item -ItemType Directory -Path $script:testSnapshotDir -Force | Out-Null
+        $script:SLConfig.SnapshotPath = $script:testSnapshotDir
     }
 
     It 'Requires Compliance connection' {

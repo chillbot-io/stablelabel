@@ -126,6 +126,12 @@ Describe 'Connect-SLGraph' {
             $TenantId -eq 'tenant-abc'
         }
     }
+
+    It 'Throws on Connect-MgGraph failure' {
+        Mock Connect-MgGraph { throw 'Network timeout' }
+        { Connect-SLGraph } | Should -Throw '*Network timeout*'
+        $script:SLConnection.GraphConnected | Should -BeFalse
+    }
 }
 
 # =============================================================================
@@ -145,6 +151,12 @@ Describe 'Connect-SLCompliance' {
         $script:SLConnection.ComplianceSessionStart | Should -Not -BeNullOrEmpty
         $script:SLConnection.ComplianceConnected | Should -BeTrue
         $script:SLConnection.ComplianceCommandCount | Should -Be 0
+    }
+
+    It 'Throws on Connect-IPPSSession failure' {
+        Mock Connect-IPPSSession { throw 'Authentication failed' }
+        { Connect-SLCompliance -UserPrincipalName 'admin@contoso.com' } | Should -Throw '*Authentication failed*'
+        $script:SLConnection.ComplianceConnected | Should -BeFalse
     }
 }
 
