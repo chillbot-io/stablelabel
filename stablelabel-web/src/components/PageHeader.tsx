@@ -1,9 +1,11 @@
 /** Consistent page header with title, description, and optional actions. */
 
+import type { ReactNode } from 'react';
+
 interface Props {
   title: string;
   description?: string;
-  children?: React.ReactNode;
+  children?: ReactNode;
 }
 
 export default function PageHeader({ title, description, children }: Props) {

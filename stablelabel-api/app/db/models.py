@@ -355,10 +355,10 @@ class ScanResult(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     ts: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
-    customer_tenant_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("customer_tenants.id", ondelete="CASCADE"), nullable=False
-    )
-    job_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("jobs.id", ondelete="CASCADE"), nullable=False)
+    # No ForeignKey constraints — TimescaleDB hypertables don't support them.
+    # Referential integrity is enforced at the application layer.
+    customer_tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    job_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
     drive_id: Mapped[str] = mapped_column(String(255), nullable=False)
     item_id: Mapped[str] = mapped_column(String(255), nullable=False)
     file_name: Mapped[str] = mapped_column(String(500), nullable=False)
@@ -385,10 +385,10 @@ class ClassificationEvent(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     ts: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
-    customer_tenant_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("customer_tenants.id", ondelete="CASCADE"), nullable=False
-    )
-    job_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("jobs.id", ondelete="CASCADE"), nullable=False)
+    # No ForeignKey constraints — TimescaleDB hypertables don't support them.
+    # Referential integrity is enforced at the application layer.
+    customer_tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    job_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
     entity_type: Mapped[str] = mapped_column(String(100), nullable=False)
     entity_count: Mapped[int] = mapped_column(Integer, nullable=False)
     max_confidence: Mapped[float] = mapped_column(Float, nullable=False)
@@ -411,10 +411,10 @@ class JobMetric(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     ts: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
-    customer_tenant_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("customer_tenants.id", ondelete="CASCADE"), nullable=False
-    )
-    job_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("jobs.id", ondelete="CASCADE"), nullable=False)
+    # No ForeignKey constraints — TimescaleDB hypertables don't support them.
+    # Referential integrity is enforced at the application layer.
+    customer_tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    job_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
     batch_number: Mapped[int] = mapped_column(Integer, nullable=False)
     files_processed: Mapped[int] = mapped_column(Integer, nullable=False)
     files_failed: Mapped[int] = mapped_column(Integer, nullable=False)

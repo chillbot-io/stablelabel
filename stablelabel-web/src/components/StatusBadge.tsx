@@ -16,7 +16,7 @@ export default function StatusBadge({ status }: { status: string }) {
   const style = STATUS_STYLES[status] ?? 'bg-zinc-800 text-zinc-400 border-zinc-700';
   return (
     <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs border ${style}`}>
-      {status.replace('_', ' ')}
+      {status.replaceAll('_', ' ')}
     </span>
   );
 }

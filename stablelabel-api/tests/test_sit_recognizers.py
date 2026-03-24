@@ -335,8 +335,8 @@ class TestCompositeSitRecognizer:
             min_evidence=1,
             proximity=20,
         )
-        # SSN at start, "patient" far away
-        text = "123-45-6789" + ("x" * 500) + "patient"
+        # SSN at start, "patient" far away (spaces needed for \b word boundaries)
+        text = "123-45-6789 " + (" " * 500) + "patient"
         results = rec.analyze(text, ["SIT_TEST"])
         assert len(results) == 1
         assert results[0].score < 0.85  # reduced score
@@ -497,3 +497,615 @@ class TestClassifierSitIntegration:
         from app.services.classifier import clear_sit_recognizers, get_sit_entity_types
         clear_sit_recognizers()
         assert get_sit_entity_types() == []
+
+
+# ── _build_regex_recognizer direct tests ──────────────────────
+
+
+@pytest.mark.skipif(not _PRESIDIO_AVAILABLE, reason="presidio not installed")
+class TestBuildRegexRecognizer:
+    """Direct tests for the _build_regex_recognizer helper."""
+
+    def test_valid_patterns_build_recognizer(self) -> None:
+        from presidio_analyzer import PatternRecognizer
+        from app.services.sit_recognizers import _build_regex_recognizer
+
+        rec = _build_regex_recognizer(
+            entity_type="SIT_TEST",
+            name="test_rec",
+            primary_patterns=[r"\bFOO\d+\b"],
+            base_score=0.8,
+            context_words=["bar"],
+            language="en",
+        )
+        assert rec is not None
+        assert isinstance(rec, PatternRecognizer)
+        assert rec.supported_entities == ["SIT_TEST"]
+        assert rec.context == ["bar"]
+
+    def test_empty_patterns_returns_none(self) -> None:
+        from app.services.sit_recognizers import _build_regex_recognizer
+
+        rec = _build_regex_recognizer(
+            entity_type="SIT_TEST",
+            name="test_rec",
+            primary_patterns=[],
+            base_score=0.8,
+            context_words=[],
+            language="en",
+        )
+        assert rec is None
+
+    def test_all_invalid_patterns_returns_none(self) -> None:
+        from app.services.sit_recognizers import _build_regex_recognizer
+
+        rec = _build_regex_recognizer(
+            entity_type="SIT_TEST",
+            name="test_rec",
+            primary_patterns=["[invalid(", "(unclosed"],
+            base_score=0.8,
+            context_words=[],
+            language="en",
+        )
+        assert rec is None
+
+    def test_mixed_valid_invalid_patterns(self) -> None:
+        from presidio_analyzer import PatternRecognizer
+        from app.services.sit_recognizers import _build_regex_recognizer
+
+        rec = _build_regex_recognizer(
+            entity_type="SIT_TEST",
+            name="test_rec",
+            primary_patterns=["[invalid(", r"\bOK\d+\b"],
+            base_score=0.7,
+            context_words=[],
+            language="en",
+        )
+        assert rec is not None
+        assert isinstance(rec, PatternRecognizer)
+        # Only the valid pattern should be present
+        assert len(rec.patterns) == 1
+
+    def test_no_context_words_sets_none(self) -> None:
+        from app.services.sit_recognizers import _build_regex_recognizer
+
+        rec = _build_regex_recognizer(
+            entity_type="SIT_TEST",
+            name="test_rec",
+            primary_patterns=[r"\bX\b"],
+            base_score=0.5,
+            context_words=[],
+            language="en",
+        )
+        assert rec is not None
+        assert rec.context is None
+
+    def test_multiple_valid_patterns(self) -> None:
+        from app.services.sit_recognizers import _build_regex_recognizer
+
+        rec = _build_regex_recognizer(
+            entity_type="SIT_TEST",
+            name="test_rec",
+            primary_patterns=[r"\bA\d+\b", r"\bB\d+\b", r"\bC\d+\b"],
+            base_score=0.9,
+            context_words=["kw1", "kw2"],
+            language="en",
+        )
+        assert rec is not None
+        assert len(rec.patterns) == 3
+
+
+# ── _build_composite_recognizer direct tests ──────────────────
+
+
+@pytest.mark.skipif(not _PRESIDIO_AVAILABLE, reason="presidio not installed")
+class TestBuildCompositeRecognizer:
+    """Direct tests for the _build_composite_recognizer helper."""
+
+    def test_known_entity_types_build_recognizer(self) -> None:
+        from app.services.sit_recognizers import _build_composite_recognizer, CompositeSitRecognizer
+
+        rec = _build_composite_recognizer(
+            entity_type="SIT_TEST",
+            name="test_comp",
+            entity_types=["US_SSN"],
+            min_confidence=0.5,
+            min_count=1,
+            base_score=0.85,
+            context_words=["patient"],
+            evidence_regex=[],
+            min_evidence_matches=1,
+            proximity=300,
+            language="en",
+        )
+        assert rec is not None
+        assert isinstance(rec, CompositeSitRecognizer)
+        assert rec.supported_entities == ["SIT_TEST"]
+
+    def test_unknown_entity_type_returns_none(self) -> None:
+        from app.services.sit_recognizers import _build_composite_recognizer
+
+        rec = _build_composite_recognizer(
+            entity_type="SIT_TEST",
+            name="test_comp",
+            entity_types=["COMPLETELY_UNKNOWN_TYPE"],
+            min_confidence=0.5,
+            min_count=1,
+            base_score=0.85,
+            context_words=[],
+            evidence_regex=[],
+            min_evidence_matches=0,
+            proximity=300,
+            language="en",
+        )
+        assert rec is None
+
+    def test_multiple_entity_types_combines_patterns(self) -> None:
+        from app.services.sit_recognizers import _build_composite_recognizer
+
+        rec = _build_composite_recognizer(
+            entity_type="SIT_MULTI",
+            name="test_multi",
+            entity_types=["US_SSN", "EMAIL_ADDRESS"],
+            min_confidence=0.5,
+            min_count=1,
+            base_score=0.8,
+            context_words=[],
+            evidence_regex=[],
+            min_evidence_matches=0,
+            proximity=300,
+            language="en",
+        )
+        assert rec is not None
+        # Should have patterns from both entity types
+        expected_count = len(ENTITY_PATTERNS["US_SSN"]) + len(ENTITY_PATTERNS["EMAIL_ADDRESS"])
+        assert len(rec._primary_compiled) == expected_count
+
+    def test_empty_entity_types_returns_none(self) -> None:
+        from app.services.sit_recognizers import _build_composite_recognizer
+
+        rec = _build_composite_recognizer(
+            entity_type="SIT_TEST",
+            name="test_comp",
+            entity_types=[],
+            min_confidence=0.5,
+            min_count=1,
+            base_score=0.85,
+            context_words=[],
+            evidence_regex=[],
+            min_evidence_matches=0,
+            proximity=300,
+            language="en",
+        )
+        assert rec is None
+
+
+# ── CompositeSitRecognizer __init__ and load edge cases ───────
+
+
+@pytest.mark.skipif(not _PRESIDIO_AVAILABLE, reason="presidio not installed")
+class TestCompositeSitRecognizerInit:
+    """Test __init__, load, and edge cases of CompositeSitRecognizer."""
+
+    def test_invalid_primary_pattern_skipped(self) -> None:
+        from app.services.sit_recognizers import CompositeSitRecognizer
+
+        rec = CompositeSitRecognizer(
+            supported_entity="SIT_TEST",
+            name="test",
+            primary_patterns=["[invalid(", r"\b\d{3}-\d{2}-\d{4}\b"],
+            base_score=0.8,
+        )
+        # Only the valid pattern should be compiled
+        assert len(rec._primary_compiled) == 1
+
+    def test_invalid_evidence_regex_skipped(self) -> None:
+        from app.services.sit_recognizers import CompositeSitRecognizer
+
+        rec = CompositeSitRecognizer(
+            supported_entity="SIT_TEST",
+            name="test",
+            primary_patterns=[r"\btest\b"],
+            evidence_regex=["[bad(", r"\bgood\b"],
+            min_evidence_matches=1,
+            base_score=0.8,
+        )
+        assert len(rec._evidence_regex_compiled) == 1
+
+    def test_load_is_noop(self) -> None:
+        from app.services.sit_recognizers import CompositeSitRecognizer
+
+        rec = CompositeSitRecognizer(
+            supported_entity="SIT_TEST",
+            name="test",
+            primary_patterns=[r"\btest\b"],
+        )
+        # load() should not raise
+        rec.load()
+
+    def test_no_evidence_required_flag(self) -> None:
+        from app.services.sit_recognizers import CompositeSitRecognizer
+
+        rec = CompositeSitRecognizer(
+            supported_entity="SIT_TEST",
+            name="test",
+            primary_patterns=[r"\btest\b"],
+            min_evidence_matches=0,
+        )
+        assert rec._no_evidence_required is True
+
+        rec2 = CompositeSitRecognizer(
+            supported_entity="SIT_TEST",
+            name="test2",
+            primary_patterns=[r"\btest\b"],
+            min_evidence_matches=2,
+        )
+        assert rec2._no_evidence_required is False
+
+    def test_context_words_lowercased(self) -> None:
+        from app.services.sit_recognizers import CompositeSitRecognizer
+
+        rec = CompositeSitRecognizer(
+            supported_entity="SIT_TEST",
+            name="test",
+            primary_patterns=[r"\btest\b"],
+            context_words=["Patient", "DIAGNOSIS", "Ssn"],
+        )
+        assert rec._context_words == ["patient", "diagnosis", "ssn"]
+
+    def test_all_primary_patterns_invalid(self) -> None:
+        from app.services.sit_recognizers import CompositeSitRecognizer
+
+        rec = CompositeSitRecognizer(
+            supported_entity="SIT_TEST",
+            name="test",
+            primary_patterns=["[bad(", "(also_bad"],
+            base_score=0.8,
+        )
+        assert len(rec._primary_compiled) == 0
+        # analyze should return empty since no patterns can match
+        results = rec.analyze("any text 123-45-6789", ["SIT_TEST"])
+        assert results == []
+
+
+# ── CompositeSitRecognizer.analyze additional edge cases ──────
+
+
+@pytest.mark.skipif(not _PRESIDIO_AVAILABLE, reason="presidio not installed")
+class TestCompositeSitRecognizerAnalyzeEdgeCases:
+    """Additional edge cases for analyze() method."""
+
+    def _make(self, **kwargs):
+        from app.services.sit_recognizers import CompositeSitRecognizer
+        defaults = dict(
+            supported_entity="SIT_TEST",
+            name="test",
+            primary_patterns=[r"\b\d{3}-\d{2}-\d{4}\b"],
+            base_score=0.85,
+        )
+        defaults.update(kwargs)
+        return CompositeSitRecognizer(**defaults)
+
+    def test_regex_evidence_used_when_keywords_insufficient(self) -> None:
+        """When keywords don't meet min_evidence, regex evidence fills the gap."""
+        rec = self._make(
+            context_words=["nonexistent_keyword"],
+            evidence_regex=[r"\b\d{2}/\d{2}/\d{4}\b"],
+            min_evidence_matches=2,
+        )
+        # Has one keyword no-match, one regex match → total 1, needs 2 → reduced
+        text = "123-45-6789 DOB: 01/15/1990"
+        results = rec.analyze(text, ["SIT_TEST"])
+        assert len(results) == 1
+        assert results[0].score < 0.85  # reduced
+
+    def test_keyword_evidence_sufficient_skips_regex(self) -> None:
+        """When keywords meet min_evidence, regex checking is skipped."""
+        rec = self._make(
+            context_words=["patient", "diagnosis"],
+            evidence_regex=[r"\b\d{2}/\d{2}/\d{4}\b"],
+            min_evidence_matches=1,
+        )
+        text = "patient 123-45-6789"
+        results = rec.analyze(text, ["SIT_TEST"])
+        assert len(results) == 1
+        assert results[0].score == 0.85
+
+    def test_combined_keyword_and_regex_evidence(self) -> None:
+        """Keywords + regex together meet min_evidence threshold."""
+        rec = self._make(
+            context_words=["patient"],
+            evidence_regex=[r"\bMRN\d+\b"],
+            min_evidence_matches=2,
+        )
+        text = "patient 123-45-6789 MRN12345"
+        results = rec.analyze(text, ["SIT_TEST"])
+        assert len(results) == 1
+        assert results[0].score == 0.85
+
+    def test_reduced_score_floor_at_0_1(self) -> None:
+        """Reduced score should not go below 0.1."""
+        rec = self._make(
+            base_score=0.2,
+            context_words=["nonexistent"],
+            min_evidence_matches=1,
+        )
+        text = "123-45-6789"
+        results = rec.analyze(text, ["SIT_TEST"])
+        assert len(results) == 1
+        # max(0.1, 0.2 - 0.3) == 0.1
+        assert results[0].score == pytest.approx(0.1)
+
+    def test_multiple_matches_with_evidence(self) -> None:
+        """Multiple primary matches each independently checked for evidence."""
+        rec = self._make(
+            context_words=["patient"],
+            min_evidence_matches=1,
+            proximity=20,
+        )
+        # First SSN has "patient" nearby, second does not
+        text = "patient 123-45-6789" + (" " * 500) + "987-65-4321"
+        results = rec.analyze(text, ["SIT_TEST"])
+        assert len(results) == 2
+        scores = sorted([r.score for r in results])
+        # One full, one reduced
+        assert scores[0] < 0.85
+        assert scores[1] == 0.85
+
+    def test_analyze_positions_correct(self) -> None:
+        """Verify start/end positions in results are accurate."""
+        rec = self._make(min_evidence_matches=0)
+        text = "prefix 123-45-6789 suffix"
+        results = rec.analyze(text, ["SIT_TEST"])
+        assert len(results) == 1
+        assert text[results[0].start:results[0].end] == "123-45-6789"
+
+
+# ── SitRecognizerFactory.compile additional coverage ──────────
+
+
+@pytest.mark.skipif(not _PRESIDIO_AVAILABLE, reason="presidio not installed")
+class TestSitRecognizerFactoryCompileDetails:
+    """Additional compile tests for thorough coverage of the compilation loop."""
+
+    def test_entity_primary_with_evidence_regex(self) -> None:
+        """Entity-primary with regex evidence passes evidence_regex through."""
+        from app.services.sit_recognizers import CompositeSitRecognizer
+
+        rules = {
+            "patterns": [{
+                "confidence_level": 80,
+                "primary_match": {
+                    "type": "entity",
+                    "entity_types": ["US_SSN"],
+                    "min_confidence": 0.7,
+                    "min_count": 1,
+                },
+                "corroborative_evidence": {
+                    "min_matches": 1,
+                    "matches": [
+                        {"type": "inline_regex", "patterns": [r"\bMRN\d+\b"]},
+                    ],
+                },
+                "proximity": 200,
+            }],
+        }
+        recognizers = SitRecognizerFactory.compile("MEDICAL", rules)
+        assert len(recognizers) == 1
+        rec = recognizers[0]
+        assert isinstance(rec, CompositeSitRecognizer)
+        assert len(rec._evidence_regex_compiled) == 1
+
+    def test_entity_primary_no_evidence(self) -> None:
+        """Entity-primary with no corroborative evidence (evidence is None)."""
+        from app.services.sit_recognizers import CompositeSitRecognizer
+
+        rules = {
+            "patterns": [{
+                "confidence_level": 70,
+                "primary_match": {
+                    "type": "entity",
+                    "entity_types": ["EMAIL_ADDRESS"],
+                    "min_count": 1,
+                },
+            }],
+        }
+        recognizers = SitRecognizerFactory.compile("EMAIL_SIT", rules)
+        assert len(recognizers) == 1
+        rec = recognizers[0]
+        assert isinstance(rec, CompositeSitRecognizer)
+        assert rec._no_evidence_required is True
+
+    def test_unknown_primary_type_skipped(self) -> None:
+        """A pattern with an unknown primary_match type is silently skipped."""
+        rules = {
+            "patterns": [{
+                "confidence_level": 75,
+                "primary_match": {
+                    "type": "unknown_type",
+                },
+            }],
+        }
+        recognizers = SitRecognizerFactory.compile("SKIP", rules)
+        assert recognizers == []
+
+    def test_regex_primary_all_invalid_returns_empty(self) -> None:
+        """Regex-primary where all patterns are invalid produces no recognizer."""
+        rules = {
+            "patterns": [{
+                "confidence_level": 75,
+                "primary_match": {
+                    "type": "regex",
+                    "patterns": ["[bad("],
+                },
+            }],
+        }
+        recognizers = SitRecognizerFactory.compile("INVALID_ALL", rules)
+        assert recognizers == []
+
+    def test_multi_pattern_naming_suffixes(self) -> None:
+        """When multiple patterns exist, recognizer names get _cNN suffixes."""
+        rules = {
+            "patterns": [
+                {
+                    "confidence_level": 85,
+                    "primary_match": {"type": "regex", "patterns": [r"\bA\d+\b"]},
+                },
+                {
+                    "confidence_level": 65,
+                    "primary_match": {"type": "regex", "patterns": [r"\bB\d+\b"]},
+                },
+            ],
+        }
+        recognizers = SitRecognizerFactory.compile("MULTI", rules)
+        assert len(recognizers) == 2
+        names = [r.name for r in recognizers]
+        assert "SIT_MULTI_c85" in names
+        assert "SIT_MULTI_c65" in names
+
+    def test_single_pattern_no_suffix(self) -> None:
+        """When only one pattern exists, recognizer name has no suffix."""
+        rules = {
+            "patterns": [{
+                "confidence_level": 85,
+                "primary_match": {"type": "regex", "patterns": [r"\bX\d+\b"]},
+            }],
+        }
+        recognizers = SitRecognizerFactory.compile("SINGLE", rules)
+        assert len(recognizers) == 1
+        assert recognizers[0].name == "SIT_SINGLE"
+
+    def test_compile_default_values(self) -> None:
+        """Test that default confidence, proximity etc. are applied."""
+        from app.services.sit_recognizers import CompositeSitRecognizer
+
+        rules = {
+            "patterns": [{
+                # No confidence_level → defaults to 75
+                "primary_match": {
+                    "type": "entity",
+                    "entity_types": ["US_SSN"],
+                    # No min_confidence → defaults to 0.5
+                    # No min_count → defaults to 1
+                },
+                # No proximity → defaults to 300
+            }],
+        }
+        recognizers = SitRecognizerFactory.compile("DEFAULTS", rules)
+        assert len(recognizers) == 1
+        rec = recognizers[0]
+        assert isinstance(rec, CompositeSitRecognizer)
+        assert rec._base_score == 0.75
+        assert rec._proximity == 300
+
+    def test_compile_with_language(self) -> None:
+        """Test that language parameter is passed through."""
+        rules = {
+            "patterns": [{
+                "confidence_level": 75,
+                "primary_match": {"type": "regex", "patterns": [r"\btest\b"]},
+            }],
+        }
+        recognizers = SitRecognizerFactory.compile("LANG", rules, language="de")
+        assert len(recognizers) == 1
+        assert recognizers[0].supported_language == "de"
+
+
+# ── register_sit_recognizers edge cases ───────────────────────
+
+
+@pytest.mark.skipif(not _PRESIDIO_AVAILABLE, reason="presidio not installed")
+class TestRegisterSitRecognizersEdgeCases:
+    """Edge cases for the register_sit_recognizers function."""
+
+    def test_empty_definitions_list(self) -> None:
+        from presidio_analyzer import AnalyzerEngine
+        from app.services.sit_recognizers import register_sit_recognizers
+
+        analyzer = AnalyzerEngine()
+        result = register_sit_recognizers(analyzer, [])
+        assert result == []
+
+    def test_missing_name_skipped(self) -> None:
+        from presidio_analyzer import AnalyzerEngine
+        from app.services.sit_recognizers import register_sit_recognizers
+
+        analyzer = AnalyzerEngine()
+        sit_defs = [{
+            "rules": {
+                "patterns": [{
+                    "confidence_level": 75,
+                    "primary_match": {"type": "regex", "patterns": [r"\btest\b"]},
+                }],
+            },
+        }]
+        result = register_sit_recognizers(analyzer, sit_defs)
+        assert result == []
+
+    def test_missing_patterns_skipped(self) -> None:
+        from presidio_analyzer import AnalyzerEngine
+        from app.services.sit_recognizers import register_sit_recognizers
+
+        analyzer = AnalyzerEngine()
+        sit_defs = [{"name": "TEST", "rules": {}}]
+        result = register_sit_recognizers(analyzer, sit_defs)
+        assert result == []
+
+    def test_empty_patterns_skipped(self) -> None:
+        from presidio_analyzer import AnalyzerEngine
+        from app.services.sit_recognizers import register_sit_recognizers
+
+        analyzer = AnalyzerEngine()
+        sit_defs = [{"name": "TEST", "rules": {"patterns": []}}]
+        result = register_sit_recognizers(analyzer, sit_defs)
+        assert result == []
+
+    def test_duplicate_entity_types_not_duplicated(self) -> None:
+        from presidio_analyzer import AnalyzerEngine
+        from app.services.sit_recognizers import register_sit_recognizers
+
+        analyzer = AnalyzerEngine()
+        # Two definitions with same name → same entity_type
+        sit_defs = [
+            {
+                "name": "SAME",
+                "rules": {
+                    "patterns": [{
+                        "confidence_level": 75,
+                        "primary_match": {"type": "regex", "patterns": [r"\bA\b"]},
+                    }],
+                },
+            },
+            {
+                "name": "SAME",
+                "rules": {
+                    "patterns": [{
+                        "confidence_level": 85,
+                        "primary_match": {"type": "regex", "patterns": [r"\bB\b"]},
+                    }],
+                },
+            },
+        ]
+        result = register_sit_recognizers(analyzer, sit_defs)
+        assert result == ["SIT_SAME"]  # No duplicates
+
+    def test_mixed_valid_invalid_definitions(self) -> None:
+        from presidio_analyzer import AnalyzerEngine
+        from app.services.sit_recognizers import register_sit_recognizers
+
+        analyzer = AnalyzerEngine()
+        sit_defs = [
+            {"name": "", "rules": {"patterns": []}},  # skipped: empty name
+            {"rules": {"patterns": []}},  # skipped: no name
+            {
+                "name": "VALID",
+                "rules": {
+                    "patterns": [{
+                        "confidence_level": 75,
+                        "primary_match": {"type": "regex", "patterns": [r"\bVALID\b"]},
+                    }],
+                },
+            },
+        ]
+        result = register_sit_recognizers(analyzer, sit_defs)
+        assert result == ["SIT_VALID"]

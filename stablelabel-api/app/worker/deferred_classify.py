@@ -300,19 +300,23 @@ async def _increment_job_counter(
 ) -> None:
     """Atomically increment a job counter when a deferred file completes.
 
+    Uses SQL-level increment to avoid lost-update race conditions when
+    multiple deferred tasks complete concurrently for the same job.
+
     counter_type: "labelled" | "skipped" | "failed"
     """
-    job = await db.get(Job, job_id)
-    if not job:
-        return
-
-    if counter_type == "labelled":
-        job.processed_files = (job.processed_files or 0) + 1
-    elif counter_type == "skipped":
-        job.processed_files = (job.processed_files or 0) + 1
-        job.skipped_files = (job.skipped_files or 0) + 1
+    values: dict = {
+        "processed_files": Job.processed_files + 1,
+    }
+    if counter_type == "skipped":
+        values["skipped_files"] = Job.skipped_files + 1
     elif counter_type == "failed":
-        job.processed_files = (job.processed_files or 0) + 1
-        job.failed_files = (job.failed_files or 0) + 1
+        values["failed_files"] = Job.failed_files + 1
 
+    stmt = (
+        update(Job)
+        .where(Job.id == job_id)
+        .values(**values)
+    )
+    await db.execute(stmt)
     await db.commit()

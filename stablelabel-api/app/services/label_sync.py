@@ -17,6 +17,7 @@ Why polling over webhooks:
 from __future__ import annotations
 
 import logging
+import uuid
 from datetime import UTC, datetime
 
 import httpx
@@ -74,7 +75,7 @@ async def sync_labels_for_all_tenants(
 
 async def _upsert_label_definitions(
     db: AsyncSession,
-    customer_tenant_id: "str | object",
+    customer_tenant_id: uuid.UUID,
     labels: list,
 ) -> None:
     """Upsert parsed labels into the label_definitions table.

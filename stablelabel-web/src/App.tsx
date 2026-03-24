@@ -2,10 +2,13 @@ import {
   AuthenticatedTemplate,
   UnauthenticatedTemplate,
 } from '@azure/msal-react';
+import { useEffect } from 'react';
 import { BrowserRouter, Route, Routes } from 'react-router-dom';
 import ErrorBoundary from '@/components/ErrorBoundary';
 import Layout from '@/components/Layout';
 import { ErrorProvider } from '@/contexts/ErrorContext';
+import { useAuth } from '@/hooks/useAuth';
+import { setTokenProvider } from '@/lib/api';
 import AuditPage from '@/pages/AuditPage';
 import AutoLabelPage from '@/pages/AutoLabelPage';
 import DashboardPage from '@/pages/DashboardPage';
@@ -18,6 +21,14 @@ import ReportsPage from '@/pages/ReportsPage';
 import SecurityPage from '@/pages/SecurityPage';
 import SettingsPage from '@/pages/SettingsPage';
 
+function AuthInit() {
+  const { getToken } = useAuth();
+  useEffect(() => {
+    setTokenProvider(getToken);
+  }, [getToken]);
+  return null;
+}
+
 export default function App() {
   return (
     <BrowserRouter>
@@ -26,6 +37,7 @@ export default function App() {
       </UnauthenticatedTemplate>
 
       <AuthenticatedTemplate>
+        <AuthInit />
         <ErrorBoundary>
         <ErrorProvider>
           <Routes>

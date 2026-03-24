@@ -302,7 +302,9 @@ class JobExecutor:
                     job.status = "running"
                     await self._db.commit()
 
-            elif job.status == "running":
+            # Use `if` (not `elif`) so that after enumeration transitions
+            # to "running", the labelling phase executes in the same run.
+            if job.status == "running":
                 await self._label(job, tenant_id, msp_tenant_id)
 
             # Check final status
@@ -1014,12 +1016,10 @@ class JobExecutor:
         Returns the extracted text, or None if the file should be skipped
         (too large, download failed, classifier disabled, etc.).
         """
-        try:
-            settings = Settings()
-            if not settings.classifier_enabled:
-                return None
-        except Exception:
-            pass
+        from app.dependencies import get_settings
+        settings = get_settings()
+        if not settings.classifier_enabled:
+            return None
 
         body = await self._graph.get(
             tenant_id,

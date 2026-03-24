@@ -26,6 +26,7 @@ describe('api client', () => {
       method: 'GET',
       headers: expect.objectContaining({ 'Content-Type': 'application/json' }),
       body: undefined,
+      signal: undefined,
     });
     expect(result).toEqual({ data: 'test' });
   });
@@ -43,6 +44,7 @@ describe('api client', () => {
       method: 'POST',
       headers: expect.objectContaining({ 'Content-Type': 'application/json' }),
       body: JSON.stringify({ name: 'new' }),
+      signal: undefined,
     });
   });
 
@@ -102,6 +104,7 @@ describe('api client', () => {
         Authorization: 'Bearer my-token',
       }),
       body: undefined,
+      signal: undefined,
     });
   });
 });

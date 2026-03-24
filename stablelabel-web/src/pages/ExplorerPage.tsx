@@ -46,7 +46,7 @@ export default function ExplorerPage() {
     setItems([]);
     setBreadcrumb([]);
     setSelectedDrive(null);
-    api.get<{ value: { id: string; name: string }[] }>(`/tenants/${selected.id}/drives`)
+    api.get<{ value: { id: string; name: string }[] }>(`/tenants/${selected.id}/drives`, { signal: controller.signal })
       .then((data) => { if (!controller.signal.aborted) setDrives(data.value ?? []); })
       .catch((err) => { if (!controller.signal.aborted) showError(err.message ?? 'Failed to load drives'); });
     return () => controller.abort();
@@ -79,7 +79,7 @@ export default function ExplorerPage() {
     if (!selected || !selectedDrive) return;
     setLabeling(true);
     try {
-      await api.post(`/tenants/${selected.id}/documents/apply-label?drive_id=${selectedDrive}&item_id=${item.id}`, {
+      await api.post(`/tenants/${selected.id}/documents/apply-label`, {
         drive_id: selectedDrive,
         item_id: item.id,
         sensitivity_label_id: labelId,
@@ -168,7 +168,7 @@ export default function ExplorerPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {items
+                  {[...items]
                     .sort((a, b) => (a.folder && !b.folder ? -1 : !a.folder && b.folder ? 1 : a.name.localeCompare(b.name)))
                     .map((item) => (
                       <tr key={item.id} className="border-b border-zinc-800/50 hover:bg-zinc-800/30">

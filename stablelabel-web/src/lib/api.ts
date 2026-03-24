@@ -5,6 +5,10 @@
  * as a Bearer token in the Authorization header.
  */
 
+export interface RequestOptions {
+  signal?: AbortSignal;
+}
+
 let _getToken: (() => Promise<string | null>) | null = null;
 
 /** Called once from AuthProvider to wire up token acquisition. */
@@ -18,6 +22,7 @@ async function request<T>(
   method: string,
   path: string,
   body?: unknown,
+  options?: RequestOptions,
 ): Promise<T> {
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
@@ -34,6 +39,7 @@ async function request<T>(
     method,
     headers,
     body: body ? JSON.stringify(body) : undefined,
+    signal: options?.signal,
   });
 
   if (res.status === 204) {
@@ -58,7 +64,7 @@ export class ApiError extends Error {
   }
 }
 
-async function uploadFile<T>(path: string, file: File): Promise<T> {
+async function uploadFile<T>(path: string, file: File, options?: RequestOptions): Promise<T> {
   const headers: Record<string, string> = {};
 
   if (_getToken) {
@@ -75,6 +81,7 @@ async function uploadFile<T>(path: string, file: File): Promise<T> {
     method: 'POST',
     headers,
     body: formData,
+    signal: options?.signal,
   });
 
   if (!res.ok) {
@@ -86,10 +93,10 @@ async function uploadFile<T>(path: string, file: File): Promise<T> {
 }
 
 export const api = {
-  get: <T>(path: string) => request<T>('GET', path),
-  post: <T>(path: string, body?: unknown) => request<T>('POST', path, body),
-  put: <T>(path: string, body?: unknown) => request<T>('PUT', path, body),
-  patch: <T>(path: string, body?: unknown) => request<T>('PATCH', path, body),
-  delete: <T>(path: string) => request<T>('DELETE', path),
-  upload: <T>(path: string, file: File) => uploadFile<T>(path, file),
+  get: <T>(path: string, options?: RequestOptions) => request<T>('GET', path, undefined, options),
+  post: <T>(path: string, body?: unknown, options?: RequestOptions) => request<T>('POST', path, body, options),
+  put: <T>(path: string, body?: unknown, options?: RequestOptions) => request<T>('PUT', path, body, options),
+  patch: <T>(path: string, body?: unknown, options?: RequestOptions) => request<T>('PATCH', path, body, options),
+  delete: <T>(path: string, options?: RequestOptions) => request<T>('DELETE', path, undefined, options),
+  upload: <T>(path: string, file: File, options?: RequestOptions) => uploadFile<T>(path, file, options),
 };

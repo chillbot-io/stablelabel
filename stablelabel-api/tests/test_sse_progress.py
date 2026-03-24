@@ -1,12 +1,12 @@
-"""Tests for SSE progress event formatting and terminal state definitions.
+"""Tests for SSE progress event formatting and terminal/SSE-stop state definitions.
 
-Imports real TERMINAL_STATUSES from app.core.job_states.
+Imports real state sets from app.core.job_states.
 Duplicates _sse_event since it lives in a module with jose dependency.
 """
 
 import json
 
-from app.core.job_states import TERMINAL_STATUSES
+from app.core.job_states import SSE_STOP_STATUSES, TERMINAL_STATUSES
 
 
 def _sse_event(data: dict, event: str = "progress") -> str:
@@ -54,8 +54,8 @@ class TestTerminalStatuses:
     def test_rolled_back_is_terminal(self) -> None:
         assert "rolled_back" in TERMINAL_STATUSES
 
-    def test_paused_is_terminal(self) -> None:
-        assert "paused" in TERMINAL_STATUSES
+    def test_paused_is_not_terminal(self) -> None:
+        assert "paused" not in TERMINAL_STATUSES
 
     def test_running_is_not_terminal(self) -> None:
         assert "running" not in TERMINAL_STATUSES
@@ -68,3 +68,16 @@ class TestTerminalStatuses:
 
     def test_rolling_back_is_not_terminal(self) -> None:
         assert "rolling_back" not in TERMINAL_STATUSES
+
+
+class TestSseStopStatuses:
+    """SSE_STOP_STATUSES = terminal states + paused."""
+
+    def test_includes_all_terminal(self) -> None:
+        assert TERMINAL_STATUSES.issubset(SSE_STOP_STATUSES)
+
+    def test_paused_stops_sse(self) -> None:
+        assert "paused" in SSE_STOP_STATUSES
+
+    def test_running_does_not_stop_sse(self) -> None:
+        assert "running" not in SSE_STOP_STATUSES

@@ -25,6 +25,23 @@ jobs:
       - run: npm ci
       - run: npm test
 
+  python-tests:
+    name: Python Tests (pytest)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: stablelabel-api
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+
+      - run: pip install -e ".[dev]"
+      - run: pytest --tb=short -q
+
   powershell-tests:
     name: PowerShell Tests (Pester)
     runs-on: ubuntu-latest

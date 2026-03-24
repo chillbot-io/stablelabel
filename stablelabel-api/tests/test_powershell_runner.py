@@ -192,3 +192,170 @@ class TestUnsupportedErrorDetection:
         from app.core.exceptions import GraphLockedError
         exc = GraphLockedError("File is locked")
         assert LabelManagementService._is_unsupported_error(exc) is False
+
+
+# ── PowerShellRunner invoke() and _build_script() tests ─────────
+
+
+from unittest.mock import AsyncMock, MagicMock, patch
+import asyncio
+
+
+class TestPowerShellRunnerInvoke:
+    @pytest.mark.asyncio
+    async def test_invoke_raises_when_pwsh_not_available(self) -> None:
+        runner = PowerShellRunner(client_id="id", client_secret="secret")
+        runner._pwsh_path = None
+        with pytest.raises(PowerShellNotAvailableError, match="pwsh binary not found"):
+            await runner.invoke("Get-Label")
+
+    @pytest.mark.asyncio
+    async def test_invoke_success_json_output(self) -> None:
+        runner = PowerShellRunner(client_id="id", client_secret="secret")
+        runner._pwsh_path = "/usr/bin/pwsh"
+
+        mock_proc = AsyncMock()
+        mock_proc.communicate.return_value = (b'{"id": "abc", "name": "Test"}', b"")
+        mock_proc.returncode = 0
+        mock_proc.kill = MagicMock()
+
+        with patch("asyncio.create_subprocess_exec", return_value=mock_proc):
+            with patch("asyncio.wait_for", return_value=(b'{"id": "abc", "name": "Test"}', b"")):
+                result = await runner.invoke("Get-Label", {"Name": "Test"}, tenant_id="t1")
+
+        assert result.success is True
+        assert result.data == {"id": "abc", "name": "Test"}
+        assert result.error == ""
+
+    @pytest.mark.asyncio
+    async def test_invoke_success_empty_stdout(self) -> None:
+        runner = PowerShellRunner(client_id="id", client_secret="secret")
+        runner._pwsh_path = "/usr/bin/pwsh"
+
+        mock_proc = AsyncMock()
+        mock_proc.communicate.return_value = (b"", b"")
+        mock_proc.returncode = 0
+        mock_proc.kill = MagicMock()
+
+        with patch("asyncio.create_subprocess_exec", return_value=mock_proc):
+            with patch("asyncio.wait_for", return_value=(b"", b"")):
+                result = await runner.invoke("Get-Label")
+
+        assert result.success is True
+        assert result.data == {}
+
+    @pytest.mark.asyncio
+    async def test_invoke_timeout(self) -> None:
+        runner = PowerShellRunner(client_id="id", client_secret="secret")
+        runner._pwsh_path = "/usr/bin/pwsh"
+
+        mock_proc = AsyncMock()
+        mock_proc.kill = MagicMock()
+
+        with patch("asyncio.create_subprocess_exec", return_value=mock_proc):
+            with patch("asyncio.wait_for", side_effect=asyncio.TimeoutError):
+                with pytest.raises(PowerShellExecutionError, match="timed out"):
+                    await runner.invoke("Get-Label")
+
+        mock_proc.kill.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_invoke_nonzero_exit_code(self) -> None:
+        runner = PowerShellRunner(client_id="id", client_secret="secret")
+        runner._pwsh_path = "/usr/bin/pwsh"
+
+        mock_proc = AsyncMock()
+        mock_proc.communicate.return_value = (b"", b"Something went wrong")
+        mock_proc.returncode = 1
+        mock_proc.kill = MagicMock()
+
+        with patch("asyncio.create_subprocess_exec", return_value=mock_proc):
+            with patch("asyncio.wait_for", return_value=(b"", b"Something went wrong")):
+                with pytest.raises(PowerShellExecutionError, match="failed with exit code 1") as exc_info:
+                    await runner.invoke("Get-Label")
+
+        assert exc_info.value.stderr == "Something went wrong"
+        assert exc_info.value.exit_code == 1
+
+    @pytest.mark.asyncio
+    async def test_invoke_non_json_output(self) -> None:
+        runner = PowerShellRunner(client_id="id", client_secret="secret")
+        runner._pwsh_path = "/usr/bin/pwsh"
+
+        mock_proc = AsyncMock()
+        mock_proc.communicate.return_value = (b"this is not json", b"")
+        mock_proc.returncode = 0
+        mock_proc.kill = MagicMock()
+
+        with patch("asyncio.create_subprocess_exec", return_value=mock_proc):
+            with patch("asyncio.wait_for", return_value=(b"this is not json", b"")):
+                result = await runner.invoke("Get-Label")
+
+        assert result.success is True
+        assert "Non-JSON output" in result.error
+        assert "this is not json" in result.error
+
+    @pytest.mark.asyncio
+    async def test_invoke_json_list_output(self) -> None:
+        runner = PowerShellRunner(client_id="id", client_secret="secret")
+        runner._pwsh_path = "/usr/bin/pwsh"
+
+        json_list = b'[{"id": "1"}, {"id": "2"}]'
+        mock_proc = AsyncMock()
+        mock_proc.communicate.return_value = (json_list, b"")
+        mock_proc.returncode = 0
+        mock_proc.kill = MagicMock()
+
+        with patch("asyncio.create_subprocess_exec", return_value=mock_proc):
+            with patch("asyncio.wait_for", return_value=(json_list, b"")):
+                result = await runner.invoke("Get-Label")
+
+        assert result.success is True
+        assert isinstance(result.data, list)
+        assert len(result.data) == 2
+
+
+class TestBuildScript:
+    def test_build_script_with_params(self) -> None:
+        runner = PowerShellRunner(client_id="myid", client_secret="mysecret")
+        script = runner._build_script("New-Label", {"Name": "Confidential", "DisplayName": "My Label"}, "tenant123")
+
+        assert "New-Label" in script
+        assert '$params["Name"] = "Confidential"' in script
+        assert '$params["DisplayName"] = "My Label"' in script
+        assert "Connect-IPPSSession" in script
+        assert "tenant123" in script
+
+    def test_build_script_empty_params(self) -> None:
+        runner = PowerShellRunner(client_id="myid", client_secret="mysecret")
+        script = runner._build_script("Get-Label", {}, "tenant123")
+
+        assert "Get-Label @params" in script
+        assert "$params = @{}" in script
+        # No param assignments should appear
+        assert '$params["' not in script.replace("$params = @{}", "")
+
+    def test_build_script_escapes_credentials(self) -> None:
+        runner = PowerShellRunner(client_id="app's-id", client_secret='sec"ret$val')
+        script = runner._build_script("Get-Label", {}, "t1")
+
+        # Client secret with special chars should be escaped
+        assert "sec`\"ret`$val" in script
+        # Client id with single quote should be escaped
+        assert "app''s-id" in script
+
+    def test_build_script_contains_error_handling(self) -> None:
+        runner = PowerShellRunner(client_id="id", client_secret="secret")
+        script = runner._build_script("Get-Label", {}, "t1")
+
+        assert "$ErrorActionPreference = 'Stop'" in script
+        assert "try {" in script
+        assert "catch {" in script
+        assert "finally {" in script
+        assert "Disconnect-ExchangeOnline" in script
+
+    def test_build_script_converts_to_json(self) -> None:
+        runner = PowerShellRunner(client_id="id", client_secret="secret")
+        script = runner._build_script("Get-Label", {}, "t1")
+
+        assert "ConvertTo-Json -Depth 10" in script

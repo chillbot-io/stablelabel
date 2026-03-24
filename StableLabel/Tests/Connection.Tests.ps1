@@ -126,6 +126,12 @@ Describe 'Connect-SLGraph' {
             $TenantId -eq 'tenant-abc'
         }
     }
+
+    It 'Throws on Connect-MgGraph failure' {
+        Mock Connect-MgGraph { throw 'Network timeout' }
+        { Connect-SLGraph } | Should -Throw '*Network timeout*'
+        $script:SLConnection.GraphConnected | Should -BeFalse
+    }
 }
 
 # =============================================================================
@@ -145,6 +151,12 @@ Describe 'Connect-SLCompliance' {
         $script:SLConnection.ComplianceSessionStart | Should -Not -BeNullOrEmpty
         $script:SLConnection.ComplianceConnected | Should -BeTrue
         $script:SLConnection.ComplianceCommandCount | Should -Be 0
+    }
+
+    It 'Throws on Connect-IPPSSession failure' {
+        Mock Connect-IPPSSession { throw 'Authentication failed' }
+        { Connect-SLCompliance -UserPrincipalName 'admin@contoso.com' } | Should -Throw '*Authentication failed*'
+        $script:SLConnection.ComplianceConnected | Should -BeFalse
     }
 }
 
@@ -323,5 +335,67 @@ Describe 'Connect-SLAll' {
         $result = Connect-SLAll -SkipPrereqs -UserPrincipalName 'admin@contoso.com'
         $graphStep = $result.Steps | Where-Object { $_.Step -eq 'Graph' }
         $graphStep.Status | Should -Be 'Deferred'
+    }
+
+    It 'Clears stale Graph state when Graph connection fails with -IncludeGraph' {
+        $script:SLConnection.GraphConnected = $true
+        $script:SLConnection.GraphAccessToken = 'stale-token'
+        Mock Connect-SLCompliance {
+            [PSCustomObject]@{ UserPrincipalName = 'admin@contoso.com' }
+        }
+        Mock Connect-SLGraph { throw 'Graph auth expired' }
+
+        $result = Connect-SLAll -SkipPrereqs -UserPrincipalName 'admin@contoso.com' -IncludeGraph
+        $script:SLConnection.GraphConnected | Should -BeFalse
+        # Stale token should be cleared
+        $script:SLConnection['GraphAccessToken'] | Should -BeNullOrEmpty
+    }
+
+    It 'Allows reconnection after disconnect' {
+        Mock Connect-SLCompliance {
+            [PSCustomObject]@{ UserPrincipalName = 'admin@contoso.com' }
+        }
+        Mock Disconnect-MgGraph { }
+
+        # Connect
+        $result1 = Connect-SLAll -SkipPrereqs -UserPrincipalName 'admin@contoso.com'
+        $result1.Status | Should -Be 'Connected'
+
+        # Disconnect Graph (if it were connected)
+        $script:SLConnection.GraphConnected = $true
+        $null = Disconnect-SLGraph
+        $script:SLConnection.GraphConnected | Should -BeFalse
+
+        # Reconnect
+        $result2 = Connect-SLAll -SkipPrereqs -UserPrincipalName 'admin@contoso.com'
+        $result2.Status | Should -Be 'Connected'
+    }
+}
+
+# =============================================================================
+# Invoke-SLComplianceCommand - Session Management
+# =============================================================================
+Describe 'Invoke-SLComplianceCommand - Session Management' {
+    BeforeEach {
+        $script:SLConnection.ComplianceConnected = $true
+        $script:SLConnection.ComplianceSessionStart = [datetime]::UtcNow
+        $script:SLConnection.ComplianceCommandCount = 0
+        $script:SLConnection.ComplianceLastCommandAt = [datetime]::UtcNow
+    }
+
+    It 'Increments command count on each invocation' {
+        Mock Get-LabelPolicy { @() }
+        $null = Invoke-SLComplianceCommand -ScriptBlock { Get-LabelPolicy } -OperationName 'Test'
+        $script:SLConnection.ComplianceCommandCount | Should -Be 1
+        $null = Invoke-SLComplianceCommand -ScriptBlock { Get-LabelPolicy } -OperationName 'Test'
+        $script:SLConnection.ComplianceCommandCount | Should -Be 2
+    }
+
+    It 'Updates ComplianceLastCommandAt on each invocation' {
+        $before = $script:SLConnection.ComplianceLastCommandAt
+        Start-Sleep -Milliseconds 50
+        Mock Get-LabelPolicy { @() }
+        $null = Invoke-SLComplianceCommand -ScriptBlock { Get-LabelPolicy } -OperationName 'Test'
+        $script:SLConnection.ComplianceLastCommandAt | Should -BeGreaterThan $before
     }
 }

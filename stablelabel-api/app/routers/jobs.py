@@ -20,7 +20,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.entra_auth import CurrentUser
-from app.core.job_states import COPY_ALLOWED_FROM, SPECIAL_ACTIONS, TERMINAL_STATUSES, VALID_TRANSITIONS
+from app.core.job_states import COPY_ALLOWED_FROM, SPECIAL_ACTIONS, SSE_STOP_STATUSES, VALID_TRANSITIONS
 from app.core.rbac import check_tenant_access, require_role
 from app.core.redis import JobSignal, send_job_signal
 from app.db.base import get_session
@@ -322,11 +322,13 @@ async def job_action(
                 f"(requires: completed, failed, or rolled_back)",
             )
 
+        # Strip runtime error state from copied config
+        clean_config = {k: v for k, v in job.config.items() if k != "error"}
         new_job = Job(
             customer_tenant_id=job.customer_tenant_id,
             created_by=uuid.UUID(user.id),
             name=f"{job.name} (copy)",
-            config=job.config,
+            config=clean_config,
             source_job_id=job.id,
             schedule_cron=job.schedule_cron,
         )
@@ -497,7 +499,7 @@ async def list_scan_results(
 
 # ── SSE progress stream ────────────────────────────────────────
 
-_TERMINAL_STATUSES = TERMINAL_STATUSES
+_SSE_STOP_STATUSES = SSE_STOP_STATUSES
 _SSE_POLL_INTERVAL = 2.0  # seconds between DB polls
 
 
@@ -521,21 +523,28 @@ async def job_progress_stream(
     await check_tenant_access(user, customer_tenant_id, db)
     await _get_job(job_id, customer_tenant_id, db)  # 404 if not found
 
+    # Capture IDs for the generator — the dependency-injected session is
+    # NOT used inside the loop.  Instead each poll opens a fresh session
+    # so the DB connection returns to the pool between sleeps.
+    _job_id = uuid.UUID(job_id)
+    _tenant_id = uuid.UUID(customer_tenant_id)
+
     async def event_generator():
         last_progress = None
 
         while True:
-            # Check if client disconnected
             if await request.is_disconnected():
                 break
 
-            # Reload job state from DB
-            stmt = select(Job).where(
-                Job.id == uuid.UUID(job_id),
-                Job.customer_tenant_id == uuid.UUID(customer_tenant_id),
-            )
-            result = await db.execute(stmt)
-            job = result.scalar_one_or_none()
+            # Open a short-lived session per poll so the connection is
+            # released back to the pool between iterations.
+            async for poll_db in get_session():
+                stmt = select(Job).where(
+                    Job.id == _job_id,
+                    Job.customer_tenant_id == _tenant_id,
+                )
+                result = await poll_db.execute(stmt)
+                job = result.scalar_one_or_none()
 
             if not job:
                 yield _sse_event({"error": "Job not found"}, event="error")
@@ -557,11 +566,9 @@ async def job_progress_stream(
                 last_progress = progress
 
             # Stop streaming on terminal states
-            if job.status in _TERMINAL_STATUSES:
+            if job.status in _SSE_STOP_STATUSES:
                 break
 
-            # Expire SQLAlchemy's identity map so next query gets fresh data
-            db.expire_all()
             await asyncio.sleep(_SSE_POLL_INTERVAL)
 
     return StreamingResponse(

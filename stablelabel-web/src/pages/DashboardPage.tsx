@@ -20,8 +20,8 @@ export default function DashboardPage() {
     const controller = new AbortController();
     setLoading(true);
     Promise.all([
-      api.get<OverviewStats>(`/tenants/${selected.id}/reports/overview`).catch(() => null),
-      api.get<{ items: Job[] }>(`/tenants/${selected.id}/jobs?page_size=5`).catch(() => ({ items: [] })),
+      api.get<OverviewStats>(`/tenants/${selected.id}/reports/overview`, { signal: controller.signal }).catch(() => null),
+      api.get<{ items: Job[] }>(`/tenants/${selected.id}/jobs?page_size=5`, { signal: controller.signal }).catch(() => ({ items: [] })),
     ]).then(([overview, jobs]) => {
       if (controller.signal.aborted) return;
       setStats(overview);
