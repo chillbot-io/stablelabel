@@ -24,8 +24,12 @@ msalInstance
     );
   })
   .catch((err) => {
-    root.innerHTML = `<div style="padding:2rem;color:#ef4444;font-family:system-ui">
-      <h1>Authentication Error</h1>
-      <p>${err instanceof Error ? err.message : 'Failed to initialize authentication'}</p>
-    </div>`;
+    const wrapper = document.createElement('div');
+    wrapper.style.cssText = 'padding:2rem;color:#ef4444;font-family:system-ui';
+    const h1 = document.createElement('h1');
+    h1.textContent = 'Authentication Error';
+    const p = document.createElement('p');
+    p.textContent = err instanceof Error ? err.message : 'Failed to initialize authentication';
+    wrapper.append(h1, p);
+    root.replaceChildren(wrapper);
   });

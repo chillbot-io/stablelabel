@@ -18,7 +18,7 @@ export default function TenantSelector({ tenants, selected, onSelect }: Props) {
       }}
       className="bg-zinc-800 border border-zinc-700 rounded-md px-3 py-1.5 text-sm text-zinc-200 focus:outline-none focus:ring-1 focus:ring-blue-500"
     >
-      {tenants.filter((t) => t.consent_status === 'active').map((t) => (
+      {tenants.filter((t) => t.consent_status === 'active' || t.id === selected?.id).map((t) => (
         <option key={t.id} value={t.id}>
           {t.display_name || t.entra_tenant_id}
         </option>

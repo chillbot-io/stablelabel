@@ -36,8 +36,8 @@ export default function App() {
         <LoginPage />
       </UnauthenticatedTemplate>
 
-      <AuthInit />
       <AuthenticatedTemplate>
+        <AuthInit />
         <ErrorBoundary>
         <ErrorProvider>
           <Routes>

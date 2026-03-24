@@ -387,7 +387,7 @@ function BulkRemoveDialog({ tenantId, onClose, onDone }: { tenantId: string; onC
         return;
       }
 
-      const headers = lines[0].split(',').map((h) => h.trim().toLowerCase());
+      const headers = parseCsvLine(lines[0]).map((h) => h.trim().toLowerCase());
       const driveIdx = headers.indexOf('drive_id');
       const itemIdx = headers.indexOf('item_id');
       const nameIdx = headers.indexOf('filename');
@@ -399,11 +399,11 @@ function BulkRemoveDialog({ tenantId, onClose, onDone }: { tenantId: string; onC
       }
 
       const items = lines.slice(1).map((line) => {
-        const cols = line.split(',').map((c) => c.trim());
+        const cols = parseCsvLine(line);
         return {
-          drive_id: cols[driveIdx],
-          item_id: cols[itemIdx],
-          filename: nameIdx >= 0 ? cols[nameIdx] : '',
+          drive_id: cols[driveIdx]?.trim() ?? '',
+          item_id: cols[itemIdx]?.trim() ?? '',
+          filename: nameIdx >= 0 ? cols[nameIdx]?.trim() ?? '' : '',
         };
       }).filter((i) => i.drive_id && i.item_id);
 
@@ -614,6 +614,35 @@ function countEntityTypes(policies: Policy[]): number {
     }
   }
   return types.size;
+}
+
+/** Parse a single CSV line, handling quoted fields with commas inside. */
+function parseCsvLine(line: string): string[] {
+  const fields: string[] = [];
+  let current = '';
+  let inQuotes = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (inQuotes) {
+      if (ch === '"' && line[i + 1] === '"') {
+        current += '"';
+        i++; // skip escaped quote
+      } else if (ch === '"') {
+        inQuotes = false;
+      } else {
+        current += ch;
+      }
+    } else if (ch === '"') {
+      inQuotes = true;
+    } else if (ch === ',') {
+      fields.push(current);
+      current = '';
+    } else {
+      current += ch;
+    }
+  }
+  fields.push(current);
+  return fields;
 }
 
 function conditionSummary(rules: Record<string, unknown>): string {
