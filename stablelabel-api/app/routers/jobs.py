@@ -20,7 +20,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.entra_auth import CurrentUser
-from app.core.job_states import COPY_ALLOWED_FROM, SPECIAL_ACTIONS, TERMINAL_STATUSES, VALID_TRANSITIONS
+from app.core.job_states import COPY_ALLOWED_FROM, SPECIAL_ACTIONS, SSE_STOP_STATUSES, VALID_TRANSITIONS
 from app.core.rbac import check_tenant_access, require_role
 from app.core.redis import JobSignal, send_job_signal
 from app.db.base import get_session
@@ -499,7 +499,7 @@ async def list_scan_results(
 
 # ── SSE progress stream ────────────────────────────────────────
 
-_TERMINAL_STATUSES = TERMINAL_STATUSES
+_SSE_STOP_STATUSES = SSE_STOP_STATUSES
 _SSE_POLL_INTERVAL = 2.0  # seconds between DB polls
 
 
@@ -566,7 +566,7 @@ async def job_progress_stream(
                 last_progress = progress
 
             # Stop streaming on terminal states
-            if job.status in _TERMINAL_STATUSES:
+            if job.status in _SSE_STOP_STATUSES:
                 break
 
             await asyncio.sleep(_SSE_POLL_INTERVAL)

@@ -15,7 +15,12 @@ SPECIAL_ACTIONS = {"copy"}
 
 COPY_ALLOWED_FROM = ("completed", "failed", "rolled_back")
 
-TERMINAL_STATUSES = frozenset({"completed", "failed", "rolled_back", "paused"})
+TERMINAL_STATUSES = frozenset({"completed", "failed", "rolled_back"})
+
+# Statuses where the SSE progress stream should stop (terminal + paused).
+# Paused is not truly terminal (resume/rollback are valid), but the stream
+# stops so the client can reconnect after the job is resumed.
+SSE_STOP_STATUSES = TERMINAL_STATUSES | {"paused"}
 
 ALL_STATES = frozenset({
     "pending", "enumerating", "running", "paused",
