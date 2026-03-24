@@ -788,3 +788,593 @@ class TestLoadTenantPolicies:
             result = await ex._load_tenant_policies(uuid.uuid4())
         mock_convert.assert_called_once()
         assert result == []
+
+
+# ── Enumerate / Label / Rollback tests ─────────────────────────
+
+import httpx
+from app.core.exceptions import StableLabelError
+from app.models.document import JobStatus, LabelJobResult
+from app.services.policy_engine import ClassificationResult
+
+
+class TestEnumerate:
+    """Tests for the _enumerate method."""
+
+    def _sites(self):
+        return [
+            {"id": "site-1", "displayName": "Site One"},
+            {"id": "site-2", "displayName": "Site Two"},
+        ]
+
+    def _drives(self, site_id):
+        return [{"id": f"drive-{site_id}"}]
+
+    def _items(self, drive_id):
+        return [
+            {"id": f"file-{drive_id}-1", "name": f"doc-{drive_id}-1.docx", "file": {}},
+            {"id": f"folder-{drive_id}", "name": "SomeFolder", "folder": {}},
+        ]
+
+    def _graph_side_effect(self, sites=None, drives_fn=None, items_fn=None):
+        _sites = sites or self._sites()
+        _drives_fn = drives_fn or self._drives
+        _items_fn = items_fn or self._items
+
+        async def _get_all_pages(tenant_id, url):
+            if "/sites" in url and "drives" not in url:
+                return _sites
+            if "/drives" in url and "search" not in url:
+                site_id = url.split("/sites/")[1].split("/drives")[0]
+                return _drives_fn(site_id)
+            if "search" in url:
+                drive_id = url.split("/drives/")[1].split("/root")[0]
+                return _items_fn(drive_id)
+            return []
+        return _get_all_pages
+
+    @pytest.mark.asyncio
+    @patch("app.worker.executor.check_job_signal", new_callable=AsyncMock, return_value=None)
+    async def test_enumerate_walks_sites_and_creates_checkpoints(self, mock_signal):
+        ex = _make_executor()
+        job = _make_job(status="enumerating", config={})
+        ex._get_latest_checkpoint = AsyncMock(return_value=None)
+        ex._graph.get_all_pages = AsyncMock(side_effect=self._graph_side_effect())
+
+        await ex._enumerate(job, "tenant-1")
+
+        # 2 sites, each with 1 file (folder is filtered out) → 2 checkpoints
+        add_calls = ex._db.add.call_args_list
+        checkpoint_calls = [c for c in add_calls if hasattr(c[0][0], "checkpoint_type") and c[0][0].checkpoint_type == "enumeration"]
+        assert len(checkpoint_calls) == 2
+        assert job.total_files == 2
+        assert ex._db.commit.await_count >= 2
+
+    @pytest.mark.asyncio
+    @patch("app.worker.executor.check_job_signal", new_callable=AsyncMock, return_value=None)
+    async def test_enumerate_skips_completed_sites(self, mock_signal):
+        ex = _make_executor()
+        job = _make_job(status="enumerating", config={})
+
+        last_cp = MagicMock()
+        last_cp.scope_cursor = {"sites_completed": ["site-1"], "total_files_found": 1}
+        last_cp.batch_number = 0
+        ex._get_latest_checkpoint = AsyncMock(return_value=last_cp)
+        ex._graph.get_all_pages = AsyncMock(side_effect=self._graph_side_effect())
+
+        await ex._enumerate(job, "tenant-1")
+
+        # Only site-2 should be processed → 1 checkpoint added
+        add_calls = ex._db.add.call_args_list
+        checkpoint_calls = [c for c in add_calls if hasattr(c[0][0], "checkpoint_type") and c[0][0].checkpoint_type == "enumeration"]
+        assert len(checkpoint_calls) == 1
+        added_cp = checkpoint_calls[0][0][0]
+        assert added_cp.scope_cursor["current_site"] == "site-2"
+
+    @pytest.mark.asyncio
+    @patch("app.worker.executor.check_job_signal", new_callable=AsyncMock, return_value=None)
+    async def test_enumerate_respects_site_scope(self, mock_signal):
+        ex = _make_executor()
+        job = _make_job(status="enumerating", config={"site_ids": ["site-1"]})
+        ex._get_latest_checkpoint = AsyncMock(return_value=None)
+        ex._graph.get_all_pages = AsyncMock(side_effect=self._graph_side_effect())
+
+        await ex._enumerate(job, "tenant-1")
+
+        add_calls = ex._db.add.call_args_list
+        checkpoint_calls = [c for c in add_calls if hasattr(c[0][0], "checkpoint_type") and c[0][0].checkpoint_type == "enumeration"]
+        assert len(checkpoint_calls) == 1
+        assert checkpoint_calls[0][0][0].scope_cursor["current_site"] == "site-1"
+
+    @pytest.mark.asyncio
+    async def test_enumerate_handles_signal(self):
+        ex = _make_executor()
+        job = _make_job(status="enumerating", config={})
+        ex._get_latest_checkpoint = AsyncMock(return_value=None)
+        ex._graph.get_all_pages = AsyncMock(side_effect=self._graph_side_effect())
+        ex._handle_signal = AsyncMock()
+
+        with patch("app.worker.executor.check_job_signal", new_callable=AsyncMock, return_value=JobSignal.PAUSE):
+            await ex._enumerate(job, "tenant-1")
+
+        ex._handle_signal.assert_awaited_once()
+        # Should return after first signal — no checkpoints written for sites
+        add_calls = ex._db.add.call_args_list
+        checkpoint_calls = [c for c in add_calls if hasattr(c[0][0], "checkpoint_type")]
+        assert len(checkpoint_calls) == 0
+
+    @pytest.mark.asyncio
+    @patch("app.worker.executor.check_job_signal", new_callable=AsyncMock, return_value=None)
+    async def test_enumerate_skips_failed_drives(self, mock_signal):
+        ex = _make_executor()
+        job = _make_job(status="enumerating", config={})
+        ex._get_latest_checkpoint = AsyncMock(return_value=None)
+
+        call_count = 0
+
+        async def _get_all_pages(tenant_id, url):
+            nonlocal call_count
+            if "/sites" in url and "drives" not in url:
+                return [{"id": "site-1"}]
+            if "/drives" in url and "search" not in url:
+                return [{"id": "drive-ok"}, {"id": "drive-bad"}]
+            if "search" in url:
+                drive_id = url.split("/drives/")[1].split("/root")[0]
+                if drive_id == "drive-bad":
+                    raise StableLabelError("drive access denied")
+                return [{"id": "file-1", "name": "doc.docx", "file": {}}]
+            return []
+
+        ex._graph.get_all_pages = AsyncMock(side_effect=_get_all_pages)
+
+        await ex._enumerate(job, "tenant-1")
+
+        # Should still create checkpoint with the file from drive-ok
+        assert job.total_files == 1
+
+    @pytest.mark.asyncio
+    @patch("app.worker.executor.check_job_signal", new_callable=AsyncMock, return_value=None)
+    async def test_enumerate_skips_failed_sites(self, mock_signal):
+        ex = _make_executor()
+        job = _make_job(status="enumerating", config={})
+        ex._get_latest_checkpoint = AsyncMock(return_value=None)
+
+        async def _get_all_pages(tenant_id, url):
+            if "/sites" in url and "drives" not in url:
+                return [{"id": "site-bad"}, {"id": "site-ok"}]
+            if "/sites/site-bad/drives" in url:
+                raise httpx.HTTPError("forbidden")
+            if "/sites/site-ok/drives" in url:
+                return [{"id": "drive-ok"}]
+            if "search" in url:
+                return [{"id": "file-1", "name": "doc.docx", "file": {}}]
+            return []
+
+        ex._graph.get_all_pages = AsyncMock(side_effect=_get_all_pages)
+
+        await ex._enumerate(job, "tenant-1")
+
+        # site-bad was skipped, site-ok produced 1 file
+        assert job.total_files == 1
+
+
+class TestLabel:
+    """Tests for the _label method."""
+
+    def _make_files(self, count=3):
+        return [
+            {"drive_id": f"d{i}", "item_id": f"item-{i}", "name": f"file-{i}.docx"}
+            for i in range(count)
+        ]
+
+    def _completed_result(self):
+        r = MagicMock()
+        r.status = JobStatus.COMPLETED
+        r.error = ""
+        return r
+
+    def _failed_result(self, error="some error"):
+        r = MagicMock()
+        r.status = JobStatus.FAILED
+        r.error = error
+        return r
+
+    def _silent_failure_result(self):
+        r = MagicMock()
+        r.status = JobStatus.SILENT_FAILURE
+        r.error = "no response"
+        return r
+
+    @pytest.mark.asyncio
+    @patch("app.worker.executor.check_job_signal", new_callable=AsyncMock, return_value=None)
+    async def test_label_static_mode(self, mock_signal):
+        ex = _make_executor()
+        job = _make_job(config={"target_label_id": "label-1"})
+        ex._collect_enumerated_files = AsyncMock(return_value=self._make_files(3))
+        ex._get_latest_checkpoint = AsyncMock(return_value=None)
+        ex._docs.apply_label = AsyncMock(return_value=self._completed_result())
+
+        await ex._label(job, "tenant-1")
+
+        assert ex._docs.apply_label.await_count == 3
+        assert job.processed_files == 3
+        assert job.failed_files == 0
+
+    @pytest.mark.asyncio
+    async def test_label_static_no_label_id_fails(self):
+        ex = _make_executor()
+        job = _make_job(config={"use_policies": False})
+        ex._fail_job = AsyncMock()
+
+        await ex._label(job, "tenant-1")
+
+        ex._fail_job.assert_awaited_once()
+        assert "target_label_id" in ex._fail_job.call_args[0][1]
+
+    @pytest.mark.asyncio
+    @patch("app.worker.executor.check_job_signal", new_callable=AsyncMock, return_value=None)
+    async def test_label_policy_mode(self, mock_signal):
+        ex = _make_executor()
+        job = _make_job(config={"use_policies": True})
+        ex._collect_enumerated_files = AsyncMock(return_value=self._make_files(2))
+        ex._get_latest_checkpoint = AsyncMock(return_value=None)
+        ex._load_tenant_policies = AsyncMock(return_value=[MagicMock()])
+        ex._resolve_label_via_policy = AsyncMock(return_value=("policy-label-1", None))
+        ex._docs.apply_label = AsyncMock(return_value=self._completed_result())
+
+        await ex._label(job, "tenant-1")
+
+        assert ex._docs.apply_label.await_count == 2
+        # Verify the label from policy was used in the assignment
+        first_call = ex._docs.apply_label.call_args_list[0]
+        assignment = first_call[0][1]
+        assert assignment.sensitivity_label_id == "policy-label-1"
+
+    @pytest.mark.asyncio
+    async def test_label_policy_no_policies_fails(self):
+        ex = _make_executor()
+        job = _make_job(config={"use_policies": True})
+        ex._load_tenant_policies = AsyncMock(return_value=[])
+        ex._fail_job = AsyncMock()
+
+        await ex._label(job, "tenant-1")
+
+        ex._fail_job.assert_awaited_once()
+        assert "policies" in ex._fail_job.call_args[0][1].lower()
+
+    @pytest.mark.asyncio
+    @patch("app.worker.executor.check_job_signal", new_callable=AsyncMock, return_value=None)
+    async def test_label_dry_run_no_apply(self, mock_signal):
+        ex = _make_executor()
+        job = _make_job(config={"target_label_id": "label-1", "dry_run": True})
+        ex._collect_enumerated_files = AsyncMock(return_value=self._make_files(2))
+        ex._get_latest_checkpoint = AsyncMock(return_value=None)
+
+        await ex._label(job, "tenant-1")
+
+        ex._docs.apply_label.assert_not_awaited()
+        # ScanResults should still be created
+        add_calls = ex._db.add.call_args_list
+        scan_results = [c for c in add_calls if hasattr(c[0][0], "outcome") and c[0][0].outcome == "labelled"]
+        assert len(scan_results) == 2
+
+    @pytest.mark.asyncio
+    @patch("app.worker.executor.check_job_signal", new_callable=AsyncMock, return_value=None)
+    async def test_label_handles_failed_apply(self, mock_signal):
+        ex = _make_executor()
+        job = _make_job(config={"target_label_id": "label-1"})
+        ex._collect_enumerated_files = AsyncMock(return_value=self._make_files(1))
+        ex._get_latest_checkpoint = AsyncMock(return_value=None)
+        ex._docs.apply_label = AsyncMock(return_value=self._failed_result("generic error"))
+
+        await ex._label(job, "tenant-1")
+
+        assert job.failed_files == 1
+        add_calls = ex._db.add.call_args_list
+        scan_results = [c for c in add_calls if hasattr(c[0][0], "outcome") and c[0][0].outcome == "failed"]
+        assert len(scan_results) == 1
+
+    @pytest.mark.asyncio
+    @patch("app.worker.executor.check_job_signal", new_callable=AsyncMock, return_value=None)
+    async def test_label_handles_unsupported_file_skip(self, mock_signal):
+        ex = _make_executor()
+        job = _make_job(config={"target_label_id": "label-1"})
+        ex._collect_enumerated_files = AsyncMock(return_value=self._make_files(1))
+        ex._get_latest_checkpoint = AsyncMock(return_value=None)
+        ex._docs.apply_label = AsyncMock(return_value=self._failed_result("Unsupported file type"))
+
+        await ex._label(job, "tenant-1")
+
+        assert job.skipped_files == 1
+        assert job.failed_files == 0
+
+    @pytest.mark.asyncio
+    @patch("app.worker.executor.check_job_signal", new_callable=AsyncMock, return_value=None)
+    async def test_label_handles_silent_failure(self, mock_signal):
+        ex = _make_executor()
+        job = _make_job(config={"target_label_id": "label-1"})
+        ex._collect_enumerated_files = AsyncMock(return_value=self._make_files(1))
+        ex._get_latest_checkpoint = AsyncMock(return_value=None)
+        ex._docs.apply_label = AsyncMock(return_value=self._silent_failure_result())
+
+        await ex._label(job, "tenant-1")
+
+        assert job.failed_files == 1
+        add_calls = ex._db.add.call_args_list
+        scan_results = [c for c in add_calls if hasattr(c[0][0], "outcome") and c[0][0].outcome == "failed"]
+        assert len(scan_results) == 1
+
+    @pytest.mark.asyncio
+    @patch("app.worker.executor.check_job_signal", new_callable=AsyncMock, return_value=None)
+    async def test_label_creates_audit_events_with_msp(self, mock_signal):
+        ex = _make_executor()
+        msp_id = uuid.uuid4()
+        job = _make_job(config={"target_label_id": "label-1"})
+        ex._collect_enumerated_files = AsyncMock(return_value=self._make_files(2))
+        ex._get_latest_checkpoint = AsyncMock(return_value=None)
+        ex._docs.apply_label = AsyncMock(return_value=self._completed_result())
+
+        await ex._label(job, "tenant-1", msp_tenant_id=msp_id)
+
+        add_calls = ex._db.add.call_args_list
+        audit_events = [c for c in add_calls if hasattr(c[0][0], "event_type") and c[0][0].event_type == "file.labelled"]
+        assert len(audit_events) == 2
+
+    @pytest.mark.asyncio
+    async def test_label_handles_signal_between_batches(self):
+        ex = _make_executor()
+        job = _make_job(config={"target_label_id": "label-1"})
+        # More files than batch size
+        files = self._make_files(_LABELLING_BATCH_SIZE + 10)
+        ex._collect_enumerated_files = AsyncMock(return_value=files)
+        ex._get_latest_checkpoint = AsyncMock(return_value=None)
+        ex._docs.apply_label = AsyncMock(return_value=self._completed_result())
+        ex._handle_signal = AsyncMock()
+
+        signal_calls = 0
+
+        async def _signal_side_effect(*args, **kwargs):
+            nonlocal signal_calls
+            signal_calls += 1
+            if signal_calls == 1:
+                return None  # First batch proceeds
+            return JobSignal.PAUSE  # Signal before second batch
+
+        with patch("app.worker.executor.check_job_signal", new_callable=AsyncMock, side_effect=_signal_side_effect):
+            await ex._label(job, "tenant-1")
+
+        ex._handle_signal.assert_awaited_once()
+        # Only first batch should have been processed
+        assert ex._docs.apply_label.await_count == _LABELLING_BATCH_SIZE
+
+    @pytest.mark.asyncio
+    @patch("app.worker.executor.check_job_signal", new_callable=AsyncMock, return_value=None)
+    async def test_label_resumes_from_checkpoint(self, mock_signal):
+        ex = _make_executor()
+        job = _make_job(config={"target_label_id": "label-1"})
+        files = self._make_files(5)
+        ex._collect_enumerated_files = AsyncMock(return_value=files)
+
+        last_cp = MagicMock()
+        last_cp.scope_cursor = {
+            "files_processed_index": 2,
+            "files_labelled": 2,
+            "files_skipped": 0,
+            "files_failed": 0,
+        }
+        last_cp.batch_number = 0
+        ex._get_latest_checkpoint = AsyncMock(return_value=last_cp)
+        ex._docs.apply_label = AsyncMock(return_value=self._completed_result())
+
+        await ex._label(job, "tenant-1")
+
+        # Only 3 remaining files should be processed
+        assert ex._docs.apply_label.await_count == 3
+
+    @pytest.mark.asyncio
+    @patch("app.worker.executor.check_job_signal", new_callable=AsyncMock, return_value=None)
+    async def test_label_policy_deferred_enqueued(self, mock_signal):
+        ex = _make_executor()
+        job = _make_job(config={"use_policies": True})
+        ex._collect_enumerated_files = AsyncMock(return_value=self._make_files(1))
+        ex._get_latest_checkpoint = AsyncMock(return_value=None)
+        ex._load_tenant_policies = AsyncMock(return_value=[MagicMock()])
+
+        deferred_cr = ClassificationResult(filename="big.docx", text_content="x" * 600000, error="deferred")
+        ex._resolve_label_via_policy = AsyncMock(return_value=(None, deferred_cr))
+        ex._enqueue_deferred_classification = AsyncMock(return_value=True)
+
+        await ex._label(job, "tenant-1")
+
+        ex._enqueue_deferred_classification.assert_awaited_once()
+        ex._docs.apply_label.assert_not_awaited()
+        # Deferred file should NOT be counted in processed totals
+        assert job.processed_files == 0
+
+    @pytest.mark.asyncio
+    @patch("app.worker.executor.check_job_signal", new_callable=AsyncMock, return_value=None)
+    async def test_label_policy_skip_no_match(self, mock_signal):
+        ex = _make_executor()
+        job = _make_job(config={"use_policies": True})
+        ex._collect_enumerated_files = AsyncMock(return_value=self._make_files(1))
+        ex._get_latest_checkpoint = AsyncMock(return_value=None)
+        ex._load_tenant_policies = AsyncMock(return_value=[MagicMock()])
+
+        cr = ClassificationResult(filename="test.docx")
+        ex._resolve_label_via_policy = AsyncMock(return_value=(None, cr))
+
+        await ex._label(job, "tenant-1")
+
+        ex._docs.apply_label.assert_not_awaited()
+        assert job.skipped_files == 1
+        add_calls = ex._db.add.call_args_list
+        scan_results = [c for c in add_calls if hasattr(c[0][0], "outcome") and c[0][0].outcome == "skipped"]
+        assert len(scan_results) == 1
+
+    @pytest.mark.asyncio
+    @patch("app.worker.executor.check_job_signal", new_callable=AsyncMock, return_value=None)
+    async def test_label_writes_metrics_and_checkpoint(self, mock_signal):
+        ex = _make_executor()
+        job = _make_job(config={"target_label_id": "label-1"})
+        ex._collect_enumerated_files = AsyncMock(return_value=self._make_files(3))
+        ex._get_latest_checkpoint = AsyncMock(return_value=None)
+        ex._docs.apply_label = AsyncMock(return_value=self._completed_result())
+
+        await ex._label(job, "tenant-1")
+
+        add_calls = ex._db.add.call_args_list
+        metrics = [c for c in add_calls if hasattr(c[0][0], "files_per_second")]
+        checkpoints = [c for c in add_calls if hasattr(c[0][0], "checkpoint_type") and c[0][0].checkpoint_type == "labelling"]
+        assert len(metrics) >= 1
+        assert len(checkpoints) >= 1
+
+
+class TestRollback:
+    """Tests for the _rollback method."""
+
+    def _make_labelling_checkpoints(self, applied_labels):
+        """Create mock labelling checkpoints with given applied_labels."""
+        cp = MagicMock()
+        cp.scope_cursor = {"applied_labels": applied_labels}
+        return [cp]
+
+    def _setup_rollback_executor(self, applied_labels, rollback_cp=None):
+        ex = _make_executor()
+        mock_result = MagicMock()
+        mock_result.scalars.return_value.all.return_value = self._make_labelling_checkpoints(applied_labels)
+        ex._db.execute = AsyncMock(return_value=mock_result)
+        ex._get_latest_checkpoint = AsyncMock(return_value=rollback_cp)
+        return ex
+
+    @pytest.mark.asyncio
+    @patch("app.worker.executor.check_job_signal", new_callable=AsyncMock, return_value=None)
+    async def test_rollback_restores_previous_labels(self, mock_signal):
+        labels = [
+            {"drive_id": "d1", "item_id": "i1", "label_id": "new-label", "previous_label_id": "old-label"},
+        ]
+        ex = self._setup_rollback_executor(labels)
+        ex._docs.apply_label = AsyncMock()
+
+        job = _make_job(status="rolling_back")
+        await ex._rollback(job, "tenant-1")
+
+        ex._docs.apply_label.assert_awaited_once()
+        assignment = ex._docs.apply_label.call_args[0][1]
+        assert assignment.sensitivity_label_id == "old-label"
+
+    @pytest.mark.asyncio
+    @patch("app.worker.executor.check_job_signal", new_callable=AsyncMock, return_value=None)
+    async def test_rollback_deletes_label_when_no_previous(self, mock_signal):
+        labels = [
+            {"drive_id": "d1", "item_id": "i1", "label_id": "new-label", "previous_label_id": ""},
+        ]
+        ex = self._setup_rollback_executor(labels)
+        ex._graph.post = AsyncMock()
+
+        job = _make_job(status="rolling_back")
+        await ex._rollback(job, "tenant-1")
+
+        ex._graph.post.assert_awaited_once()
+        call_url = ex._graph.post.call_args[0][1]
+        assert "deleteSensitivityLabel" in call_url
+        assert "d1" in call_url
+        assert "i1" in call_url
+
+    @pytest.mark.asyncio
+    @patch("app.worker.executor.check_job_signal", new_callable=AsyncMock, return_value=None)
+    async def test_rollback_nothing_to_rollback(self, mock_signal):
+        ex = self._setup_rollback_executor([])
+
+        job = _make_job(status="rolling_back")
+        await ex._rollback(job, "tenant-1")
+
+        ex._docs.apply_label.assert_not_awaited()
+        ex._graph.post.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    @patch("app.worker.executor.check_job_signal", new_callable=AsyncMock, return_value=None)
+    async def test_rollback_handles_failed_items(self, mock_signal):
+        labels = [
+            {"drive_id": "d1", "item_id": "i1", "label_id": "lbl", "previous_label_id": "old"},
+            {"drive_id": "d2", "item_id": "i2", "label_id": "lbl", "previous_label_id": "old2"},
+        ]
+        ex = self._setup_rollback_executor(labels)
+        # First call fails, second succeeds
+        ex._docs.apply_label = AsyncMock(side_effect=[StableLabelError("nope"), MagicMock()])
+
+        job = _make_job(status="rolling_back")
+        await ex._rollback(job, "tenant-1")
+
+        # Checkpoint should still be written
+        add_calls = ex._db.add.call_args_list
+        checkpoints = [c for c in add_calls if hasattr(c[0][0], "checkpoint_type") and c[0][0].checkpoint_type == "rollback"]
+        assert len(checkpoints) == 1
+        cp = checkpoints[0][0][0]
+        assert cp.items_failed == 1
+
+    @pytest.mark.asyncio
+    async def test_rollback_handles_signal(self):
+        # Create enough items to span multiple batches
+        labels = [
+            {"drive_id": f"d{i}", "item_id": f"i{i}", "label_id": "lbl", "previous_label_id": ""}
+            for i in range(_LABELLING_BATCH_SIZE + 10)
+        ]
+        ex = self._setup_rollback_executor(labels)
+        ex._graph.post = AsyncMock()
+        ex._handle_signal = AsyncMock()
+
+        call_count = 0
+
+        async def _signal_side_effect(*args, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                return None  # First batch proceeds
+            return JobSignal.PAUSE
+
+        with patch("app.worker.executor.check_job_signal", new_callable=AsyncMock, side_effect=_signal_side_effect):
+            job = _make_job(status="rolling_back")
+            await ex._rollback(job, "tenant-1")
+
+        ex._handle_signal.assert_awaited_once()
+        # Only first batch processed
+        assert ex._graph.post.await_count == _LABELLING_BATCH_SIZE
+
+    @pytest.mark.asyncio
+    @patch("app.worker.executor.check_job_signal", new_callable=AsyncMock, return_value=None)
+    async def test_rollback_creates_audit_events(self, mock_signal):
+        labels = [
+            {"drive_id": "d1", "item_id": "i1", "label_id": "lbl", "previous_label_id": "old"},
+            {"drive_id": "d2", "item_id": "i2", "label_id": "lbl", "previous_label_id": ""},
+        ]
+        msp_id = uuid.uuid4()
+        ex = self._setup_rollback_executor(labels)
+        ex._docs.apply_label = AsyncMock()
+        ex._graph.post = AsyncMock()
+
+        job = _make_job(status="rolling_back")
+        await ex._rollback(job, "tenant-1", msp_tenant_id=msp_id)
+
+        add_calls = ex._db.add.call_args_list
+        audit_events = [c for c in add_calls if hasattr(c[0][0], "event_type") and c[0][0].event_type == "file.rolled_back"]
+        assert len(audit_events) == 2
+
+    @pytest.mark.asyncio
+    @patch("app.worker.executor.check_job_signal", new_callable=AsyncMock, return_value=None)
+    async def test_rollback_resumes_from_checkpoint(self, mock_signal):
+        labels = [
+            {"drive_id": "d1", "item_id": "i1", "label_id": "lbl", "previous_label_id": ""},
+            {"drive_id": "d2", "item_id": "i2", "label_id": "lbl", "previous_label_id": ""},
+            {"drive_id": "d3", "item_id": "i3", "label_id": "lbl", "previous_label_id": ""},
+        ]
+        rollback_cp = MagicMock()
+        rollback_cp.scope_cursor = {"rolled_back_count": 2}
+        rollback_cp.batch_number = 0
+        ex = self._setup_rollback_executor(labels, rollback_cp=rollback_cp)
+        ex._graph.post = AsyncMock()
+
+        job = _make_job(status="rolling_back")
+        await ex._rollback(job, "tenant-1")
+
+        # Only 1 remaining item should be processed
+        assert ex._graph.post.await_count == 1

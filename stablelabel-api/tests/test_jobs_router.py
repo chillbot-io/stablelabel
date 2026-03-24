@@ -23,6 +23,7 @@ from app.db.models import Job, JobCheckpoint, ScanResult
 from app.dependencies import get_arq_pool
 from tests.conftest import (
     CUSTOMER_TENANT_ID,
+    MSP_TENANT_ID,
     OPERATOR_USER,
     OPERATOR_USER_ID,
     VIEWER_USER,
@@ -783,3 +784,157 @@ async def test_cancel_then_start_rejected(op_client: httpx.AsyncClient, arq_pool
 
     resp = await op_client.post(f"/tenants/{CT}/jobs/{job['id']}/start")
     assert resp.status_code == 409
+
+
+# ---------------------------------------------------------------------------
+# 12. GET /tenants/{id}/jobs — list jobs with status filter
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_list_jobs_filter_by_status(op_client: httpx.AsyncClient, arq_pool):
+    """Filtering by status should return only jobs with that status."""
+    await _create_job(op_client, "Job A")
+    await _create_job(op_client, "Job B")
+
+    # Start Job A so it moves to 'enumerating'
+    jobs_resp = await op_client.get(f"/tenants/{CT}/jobs")
+    all_jobs = jobs_resp.json()["items"]
+    # Items are ordered by created_at desc, so oldest is last
+    job_a = all_jobs[-1]
+    await op_client.post(f"/tenants/{CT}/jobs/{job_a['id']}/start")
+
+    # Filter by pending — should exclude the enumerating job
+    resp = await op_client.get(f"/tenants/{CT}/jobs", params={"status": "pending"})
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["total"] >= 1
+    assert all(j["status"] == "pending" for j in data["items"])
+    assert job_a["id"] not in [j["id"] for j in data["items"]]
+
+    # Filter by enumerating — should include only Job A
+    resp2 = await op_client.get(f"/tenants/{CT}/jobs", params={"status": "enumerating"})
+    assert resp2.status_code == 200
+    data2 = resp2.json()
+    assert all(j["status"] == "enumerating" for j in data2["items"])
+    assert job_a["id"] in [j["id"] for j in data2["items"]]
+
+
+# ---------------------------------------------------------------------------
+# 13. GET /tenants/{id}/jobs/{job_id} — get nonexistent job
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_get_nonexistent_job(op_client: httpx.AsyncClient):
+    """Getting a job that does not exist should return 404."""
+    fake_id = str(uuid.uuid4())
+    resp = await op_client.get(f"/tenants/{CT}/jobs/{fake_id}")
+    assert resp.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# 14. POST /tenants/{id}/jobs — create job on nonexistent tenant
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_create_job_tenant_not_found(db_session, arq_pool):
+    """Creating a job on a tenant that doesn't exist in CustomerTenant should 404.
+
+    We seed a UserTenantAccess row for a fake tenant so the RBAC check passes,
+    but the tenant lookup in create_job should fail with 404.
+    """
+    from app.db.models import UserTenantAccess
+
+    fake_tenant_id = uuid.uuid4()
+
+    db_session.add(UserTenantAccess(
+        user_id=OPERATOR_USER_ID,
+        customer_tenant_id=fake_tenant_id,
+        created_by="test",
+    ))
+    await db_session.flush()
+
+    app = _make_operator_client(db_session, arq_pool)
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
+        resp = await c.post(
+            f"/tenants/{fake_tenant_id}/jobs",
+            json={"name": "Ghost tenant job", "config": {}},
+        )
+    assert resp.status_code == 404
+    assert "Tenant not found" in resp.json()["detail"]
+
+
+# ---------------------------------------------------------------------------
+# 15. POST /tenants/{id}/jobs — create job when consent is not active
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_create_job_consent_not_active(db_session, arq_pool):
+    """Creating a job on a tenant whose consent_status is not 'active' should 400."""
+    from app.db.models import CustomerTenant, UserTenantAccess
+
+    inactive_tenant = CustomerTenant(
+        msp_tenant_id=MSP_TENANT_ID,
+        entra_tenant_id="inactive-entra-id",
+        display_name="Inactive Consent Tenant",
+        consent_status="pending",
+        consent_requested_at=datetime.now(timezone.utc),
+    )
+    db_session.add(inactive_tenant)
+    await db_session.flush()
+
+    db_session.add(UserTenantAccess(
+        user_id=OPERATOR_USER_ID,
+        customer_tenant_id=inactive_tenant.id,
+        created_by="test",
+    ))
+    await db_session.flush()
+
+    app = _make_operator_client(db_session, arq_pool)
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
+        resp = await c.post(
+            f"/tenants/{inactive_tenant.id}/jobs",
+            json={"name": "Should fail", "config": {}},
+        )
+    assert resp.status_code == 400
+    assert "consent not active" in resp.json()["detail"].lower()
+
+
+# ---------------------------------------------------------------------------
+# 16. GET /tenants/{id}/jobs/{job_id}/progress — SSE progress stream
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_progress_stream_nonexistent_job(op_client: httpx.AsyncClient):
+    """SSE progress endpoint should return 404 for a nonexistent job."""
+    fake_id = str(uuid.uuid4())
+    resp = await op_client.get(f"/tenants/{CT}/jobs/{fake_id}/progress")
+    assert resp.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_progress_stream_terminal_job(op_client: httpx.AsyncClient, arq_pool):
+    """SSE stream returns progress event and stops for a job in terminal state.
+
+    We create a job, then cancel it (which moves it to 'failed' — a terminal
+    status). The progress endpoint should emit at least one event and close.
+    """
+    job = await _create_job(op_client)
+    job_id = job["id"]
+
+    # Cancel moves pending -> failed (terminal), fully committed via the API
+    await op_client.post(f"/tenants/{CT}/jobs/{job_id}/cancel")
+
+    resp = await op_client.get(f"/tenants/{CT}/jobs/{job_id}/progress")
+    assert resp.status_code == 200
+    assert resp.headers["content-type"].startswith("text/event-stream")
+
+    body = resp.text
+    assert "event: progress" in body
+    assert '"status": "failed"' in body
