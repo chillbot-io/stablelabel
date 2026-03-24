@@ -5,7 +5,7 @@ import type { DeviceCodeInfo } from '../../hooks/usePowerShell';
 type ConnectStage = 'idle' | 'connecting' | 'done' | 'error';
 
 const COPIED_NOTIFICATION_MS = 2_000;
-const LAST_CONNECTION_KEY = 'stablelabel-last-connection';
+const PREFS_LAST_CONNECTION_KEY = 'lastConnection';
 
 interface StepInfo {
   Step: string;
@@ -37,20 +37,22 @@ interface ConnectionDialogProps {
   onConnected?: () => void;
 }
 
-function loadLastConnection(): LastConnection | null {
+async function loadLastConnection(): Promise<LastConnection | null> {
   try {
-    const raw = localStorage.getItem(LAST_CONNECTION_KEY);
-    if (!raw) return null;
-    return JSON.parse(raw) as LastConnection;
-  } catch (err) {
-    console.error('Failed to parse last connection from localStorage:', err);
+    const prefs = await window.stablelabel.getPreferences();
+    const entry = prefs[PREFS_LAST_CONNECTION_KEY];
+    if (!entry || typeof entry !== 'object') return null;
+    const { upn, tenantId, connectedAt } = entry as Record<string, unknown>;
+    if (typeof upn !== 'string' || typeof tenantId !== 'string') return null;
+    return { upn, tenantId, connectedAt: String(connectedAt ?? '') };
+  } catch {
     return null;
   }
 }
 
 function saveLastConnection(upn: string, tenantId: string): void {
   const entry: LastConnection = { upn, tenantId, connectedAt: new Date().toISOString() };
-  localStorage.setItem(LAST_CONNECTION_KEY, JSON.stringify(entry));
+  window.stablelabel.setPreferences({ [PREFS_LAST_CONNECTION_KEY]: entry }).catch(() => {});
 }
 
 export default function ConnectionDialog({ onClose, onConnected }: ConnectionDialogProps) {
@@ -65,7 +67,7 @@ export default function ConnectionDialog({ onClose, onConnected }: ConnectionDia
   const cleanupRef = useRef<(() => void) | null>(null);
 
   useEffect(() => {
-    setLastConnection(loadLastConnection());
+    loadLastConnection().then(setLastConnection);
     return () => { cleanupRef.current?.(); };
   }, []);
 
@@ -89,7 +91,7 @@ export default function ConnectionDialog({ onClose, onConnected }: ConnectionDia
 
     if (!result.success) {
       setStage('error');
-      setError(result.error || 'Connection failed');
+      setError(result.error ?? 'Connection failed');
       return;
     }
 

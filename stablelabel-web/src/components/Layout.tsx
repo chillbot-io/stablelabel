@@ -12,6 +12,7 @@ import {
   ScrollText,
   Settings,
   Shield,
+  Sparkles,
   Tags,
   Workflow,
 } from 'lucide-react';
@@ -27,6 +28,7 @@ interface NavItem {
 
 const navItems: NavItem[] = [
   { label: 'Dashboard', path: '/', icon: <LayoutDashboard size={18} /> },
+  { label: 'Auto-Label', path: '/auto-label', icon: <Sparkles size={18} /> },
   { label: 'Jobs', path: '/jobs', icon: <Workflow size={18} /> },
   { label: 'Explorer', path: '/explorer', icon: <FolderOpen size={18} /> },
   { label: 'Labels', path: '/labels', icon: <Tags size={18} /> },

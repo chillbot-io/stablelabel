@@ -38,7 +38,7 @@ export async function initFileLogging(userDataPath: string): Promise<void> {
         .sort((a, b) => b.mtime - a.mtime);
 
       for (const file of files.slice(MAX_LOG_FILES)) {
-        try { fs.unlinkSync(p.join(logDir!, file.name)); } catch { /* ignore */ }
+        try { fs.unlinkSync(p.join(logDir!, file.name)); } catch { /* file may already be deleted or locked */ }
       }
     } catch {
       // Rotation failed — not critical

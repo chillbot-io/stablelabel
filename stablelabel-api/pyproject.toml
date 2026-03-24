@@ -22,6 +22,7 @@ dependencies = [
 classifier = [
     "presidio-analyzer>=2.2",
     "spacy>=3.7",
+    "pdfminer.six>=20231228",
 ]
 dev = [
     "pytest>=8.0",

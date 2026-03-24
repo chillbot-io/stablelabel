@@ -115,28 +115,42 @@ app.whenReady().then(() => {
   ensureBridges();
 
   // Register IPC handlers — structured invocation only
+  // All handlers return structured results instead of throwing, so the
+  // renderer always gets a usable response even on unexpected errors (#30).
   ipcMain.handle('ps:invoke', async (_event, cmdlet: string, params: Record<string, unknown>) => {
-    if (!psBridge) throw new Error('PowerShell bridge not initialized');
+    try {
+      if (!psBridge) return { success: false, data: null, error: 'PowerShell bridge not initialized' };
 
-    // Validate cmdlet is in the registry (defense-in-depth — buildCommand checks too)
-    if (!CMDLET_REGISTRY[cmdlet]) {
-      return { success: false, data: null, error: `Cmdlet "${cmdlet}" is not permitted` };
+      // Validate cmdlet is in the registry (defense-in-depth — buildCommand checks too)
+      if (!CMDLET_REGISTRY[cmdlet]) {
+        return { success: false, data: null, error: `Cmdlet "${cmdlet}" is not permitted` };
+      }
+
+      return psBridge.invokeStructured(cmdlet, params);
+    } catch (err) {
+      return { success: false, data: null, error: err instanceof Error ? err.message : String(err) };
     }
-
-    return psBridge.invokeStructured(cmdlet, params);
   });
 
   ipcMain.handle('ps:check-pwsh', async () => {
-    if (!psBridge) throw new Error('PowerShell bridge not initialized');
-    return psBridge.checkPwshAvailable();
+    try {
+      if (!psBridge) return { available: false, error: 'PowerShell bridge not initialized' };
+      return psBridge.checkPwshAvailable();
+    } catch (err) {
+      return { available: false, error: err instanceof Error ? err.message : String(err) };
+    }
   });
 
   ipcMain.handle('ps:get-status', async () => {
-    if (!psBridge) return { initialized: false };
-    return {
-      initialized: psBridge.isInitialized(),
-      modulePath: getModulePath(),
-    };
+    try {
+      if (!psBridge) return { initialized: false };
+      return {
+        initialized: psBridge.isInitialized(),
+        modulePath: getModulePath(),
+      };
+    } catch {
+      return { initialized: false };
+    }
   });
 
   // ── File dialogs (M4) ───────────────────────────────────────────────
@@ -159,9 +173,17 @@ app.whenReady().then(() => {
     filters?: Array<{ name: string; extensions: string[] }>;
   }) => {
     if (!mainWindow) return null;
+    // Validate defaultPath — reject directory traversal and UNC paths
+    let safePath = options?.defaultPath;
+    if (safePath) {
+      const normalised = safePath.replace(/\\/g, '/');
+      if (normalised.includes('/../') || normalised.startsWith('//') || normalised.startsWith('\\\\')) {
+        safePath = undefined;
+      }
+    }
     const result = await dialog.showSaveDialog(mainWindow, {
       title: options?.title ?? 'Save File',
-      defaultPath: options?.defaultPath,
+      defaultPath: safePath,
       filters: options?.filters,
     });
     return result.canceled ? null : result.filePath ?? null;
@@ -170,6 +192,17 @@ app.whenReady().then(() => {
   // ── Credential vault ────────────────────────────────────────────────
   ipcMain.handle('credentials:clear', async () => {
     CredentialStore.clear();
+  });
+
+  // ── Encrypted preferences (replaces renderer localStorage for PII) ─
+  ipcMain.handle('preferences:get', async () => {
+    return CredentialStore.loadPrefs();
+  });
+
+  ipcMain.handle('preferences:set', async (_event, prefs: Record<string, unknown>) => {
+    if (typeof prefs !== 'object' || prefs === null) return false;
+    const existing = CredentialStore.loadPrefs();
+    return CredentialStore.savePrefs({ ...existing, ...prefs });
   });
 
   // ── Settings (pushed from renderer) ────────────────────────────────
@@ -184,22 +217,34 @@ app.whenReady().then(() => {
 
   // ── Classifier (Presidio + spaCy) ──────────────────────────────────
   ipcMain.handle('classifier:invoke', async (_event, action: string, params: Record<string, unknown>) => {
-    if (!classifierBridge) throw new Error('Classifier bridge not initialized');
-    // Validate action against allowlist (defense-in-depth)
-    if (!CLASSIFIER_ACTIONS.has(action)) {
-      return { success: false, data: null, error: `Unknown classifier action: "${action}"` };
+    try {
+      if (!classifierBridge) return { success: false, data: null, error: 'Classifier bridge not initialized' };
+      // Validate action against allowlist (defense-in-depth)
+      if (!CLASSIFIER_ACTIONS.has(action)) {
+        return { success: false, data: null, error: `Unknown classifier action: "${action}"` };
+      }
+      return classifierBridge.invoke(action, params);
+    } catch (err) {
+      return { success: false, data: null, error: err instanceof Error ? err.message : String(err) };
     }
-    return classifierBridge.invoke(action, params);
   });
 
   ipcMain.handle('classifier:check', async () => {
-    if (!classifierBridge) return { available: false, error: 'Not initialized' };
-    return classifierBridge.checkAvailable();
+    try {
+      if (!classifierBridge) return { available: false, error: 'Not initialized' };
+      return classifierBridge.checkAvailable();
+    } catch (err) {
+      return { available: false, error: err instanceof Error ? err.message : String(err) };
+    }
   });
 
   ipcMain.handle('classifier:get-status', async () => {
-    if (!classifierBridge) return { initialized: false };
-    return { initialized: classifierBridge.isInitialized() };
+    try {
+      if (!classifierBridge) return { initialized: false };
+      return { initialized: classifierBridge.isInitialized() };
+    } catch {
+      return { initialized: false };
+    }
   });
 
   createWindow();
@@ -228,15 +273,17 @@ app.whenReady().then(() => {
 });
 
 app.on('window-all-closed', () => {
+  // Dispose bridges on all platforms — no reason to keep PowerShell
+  // running when there are no windows. On macOS, bridges are re-created
+  // in the 'activate' handler when the user clicks the dock icon.
+  psBridge?.dispose();
+  psBridge = null;
+  classifierBridge?.dispose();
+  classifierBridge = null;
+
   if (process.platform !== 'darwin') {
-    // On non-macOS, dispose bridges and quit
-    psBridge?.dispose();
-    psBridge = null;
-    classifierBridge?.dispose();
-    classifierBridge = null;
     app.quit();
   }
-  // On macOS, keep bridges alive — app continues running without windows
 });
 
 app.on('activate', () => {

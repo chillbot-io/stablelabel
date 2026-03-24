@@ -88,3 +88,48 @@ class BulkLabelResponse(BaseModel):
     failed: int = 0
     skipped: int = 0
     results: list[LabelJobResult] = Field(default_factory=list)
+
+
+class RemoveLabelRequest(BaseModel):
+    """Request to remove a label from a single file."""
+
+    drive_id: str
+    item_id: str
+
+
+class RemovalMode(StrEnum):
+    LABEL_ONLY = "label_only"
+    ENCRYPTION_ONLY = "encryption_only"
+    LABEL_AND_ENCRYPTION = "label_and_encryption"
+
+
+class BulkRemoveRequest(BaseModel):
+    """Request to remove labels from multiple files."""
+
+    tenant_id: str
+    items: list[BulkItem] = Field(default_factory=list, max_length=10000)
+    mode: RemovalMode = RemovalMode.LABEL_ONLY
+    dry_run: bool = False
+
+
+class BulkRemoveResponse(BaseModel):
+    """Response for a bulk removal operation."""
+
+    job_id: str
+    tenant_id: str
+    mode: str
+    dry_run: bool = False
+    total: int = 0
+    completed: int = 0
+    failed: int = 0
+    results: list[LabelJobResult] = Field(default_factory=list)
+
+
+class CsvUploadResult(BaseModel):
+    """Response for CSV upload labeling."""
+
+    total_rows: int = 0
+    valid_rows: int = 0
+    invalid_rows: int = 0
+    errors: list[str] = Field(default_factory=list)
+    job_id: str = ""

@@ -18,6 +18,8 @@ if (typeof window !== 'undefined') {
       saveFileDialog: vi.fn().mockResolvedValue(null),
       clearCredentials: vi.fn().mockResolvedValue(undefined),
       updateSettings: vi.fn().mockResolvedValue(undefined),
+      getPreferences: vi.fn().mockResolvedValue({}),
+      setPreferences: vi.fn().mockResolvedValue(true),
       classifierInvoke: vi.fn().mockResolvedValue({ success: true, data: null }),
       checkClassifier: vi.fn().mockResolvedValue({ available: false }),
       getClassifierStatus: vi.fn().mockResolvedValue({ initialized: false }),

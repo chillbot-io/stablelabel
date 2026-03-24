@@ -28,13 +28,16 @@ from redis.asyncio import Redis
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from arq.connections import ArqRedis
+
 from app.core.exceptions import StableLabelError
 from app.core.redis import JobSignal, ack_job_signal, check_job_signal
 from app.db.models import (
     AuditEvent, ClassificationEvent, Job, JobCheckpoint, JobMetric, Policy, ScanResult,
 )
 from app.models.document import LabelAssignment, JobStatus
-from app.services.classifier import classify_content
+from app.config import Settings
+from app.services.classifier import classify_content_async, is_large_text
 from app.services.document_service import DocumentService
 from app.services.graph_client import GraphClient
 from app.services.policy_engine import (
@@ -49,6 +52,216 @@ logger = logging.getLogger(__name__)
 # Checkpoint every N files during labelling
 _LABELLING_BATCH_SIZE = 100
 
+# File size limits
+_MAX_FILE_SIZE = 5 * 1024 * 1024 * 1024  # 5 GB
+_STREAM_THRESHOLD = 50 * 1024 * 1024  # 50 MB — above this, stream to temp file
+
+# Zip bomb protection limits
+_ZIP_MAX_ENTRIES = 10_000  # max files inside a single archive
+_ZIP_MAX_UNCOMPRESSED = 200 * 1024 * 1024  # 200 MB total decompressed
+_ZIP_MAX_RATIO = 100  # max compression ratio (uncompressed / compressed)
+_ZIP_MAX_SINGLE_FILE = 100 * 1024 * 1024  # 100 MB for a single file inside the zip
+
+
+class _ZipBombError(Exception):
+    """Raised when a zip archive looks like a zip bomb."""
+
+
+def _validate_zip_safety(zf: "zipfile.ZipFile", filename: str) -> None:
+    """Check a zip archive for zip bomb characteristics.
+
+    Raises _ZipBombError if any limit is exceeded.
+    """
+    if len(zf.infolist()) > _ZIP_MAX_ENTRIES:
+        raise _ZipBombError(
+            f"{filename}: zip has {len(zf.infolist())} entries "
+            f"(limit {_ZIP_MAX_ENTRIES})"
+        )
+
+    total_uncompressed = 0
+    for info in zf.infolist():
+        # Check individual file size
+        if info.file_size > _ZIP_MAX_SINGLE_FILE:
+            raise _ZipBombError(
+                f"{filename}: entry '{info.filename}' is {info.file_size} bytes "
+                f"uncompressed (limit {_ZIP_MAX_SINGLE_FILE})"
+            )
+
+        # Check compression ratio per entry
+        if info.compress_size > 0:
+            ratio = info.file_size / info.compress_size
+            if ratio > _ZIP_MAX_RATIO:
+                raise _ZipBombError(
+                    f"{filename}: entry '{info.filename}' has compression ratio "
+                    f"{ratio:.0f}:1 (limit {_ZIP_MAX_RATIO}:1)"
+                )
+
+        total_uncompressed += info.file_size
+
+    if total_uncompressed > _ZIP_MAX_UNCOMPRESSED:
+        raise _ZipBombError(
+            f"{filename}: total uncompressed size {total_uncompressed} bytes "
+            f"(limit {_ZIP_MAX_UNCOMPRESSED})"
+        )
+
+
+def _extract_text_from_bytes(content: bytes, filename: str) -> str:
+    """Extract text from file content based on file extension.
+
+    Supports:
+      - Plain text (.txt, .csv, .json, .xml, .ps1, .md, etc.)
+      - Office OOXML (.docx, .xlsx, .pptx) via zipfile + XML parsing
+      - PDF via pdfminer.six (optional dependency)
+
+    Falls back to UTF-8 decode for unknown types.
+    """
+    ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
+
+    # OOXML formats — extract text from XML inside the ZIP
+    if ext in ("docx", "docm"):
+        return _extract_docx(content)
+    if ext in ("xlsx", "xlsm"):
+        return _extract_xlsx(content)
+    if ext in ("pptx", "pptm"):
+        return _extract_pptx(content)
+    if ext == "pdf":
+        return _extract_pdf(content)
+
+    # Default: UTF-8 text
+    try:
+        return content.decode("utf-8", errors="replace")
+    except (UnicodeDecodeError, AttributeError):
+        return ""
+
+
+def _extract_docx(content: bytes) -> str:
+    """Extract text from .docx by parsing word/document.xml inside the ZIP."""
+    import zipfile
+    import io
+    import xml.etree.ElementTree as ET
+
+    try:
+        with zipfile.ZipFile(io.BytesIO(content)) as zf:
+            _validate_zip_safety(zf, "docx")
+            if "word/document.xml" not in zf.namelist():
+                return ""
+            xml_content = zf.read("word/document.xml")
+            root = ET.fromstring(xml_content)
+            # Word namespace
+            ns = {"w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main"}
+            texts = [t.text for t in root.iter(f"{{{ns['w']}}}t") if t.text]
+            return " ".join(texts)
+    except _ZipBombError as exc:
+        logger.error("Zip bomb detected in docx: %s", exc)
+        return ""
+    except (zipfile.BadZipFile, ET.ParseError, KeyError):
+        return ""
+
+
+def _extract_xlsx(content: bytes) -> str:
+    """Extract text from .xlsx — shared strings, inline strings, and cell values.
+
+    Excel stores text in three places:
+      1. xl/sharedStrings.xml — shared string table (most text cells)
+      2. Sheet XML <is><t> — inline strings
+      3. Sheet XML <v> — raw cell values (numbers, dates, formulas)
+    We read all three to ensure numeric PII (SSNs, account numbers) is captured.
+    """
+    import zipfile
+    import io
+    import xml.etree.ElementTree as ET
+
+    ns = {"s": "http://schemas.openxmlformats.org/spreadsheetml/2006/main"}
+
+    try:
+        with zipfile.ZipFile(io.BytesIO(content)) as zf:
+            _validate_zip_safety(zf, "xlsx")
+            texts: list[str] = []
+
+            # 1. Shared strings table
+            if "xl/sharedStrings.xml" in zf.namelist():
+                root = ET.fromstring(zf.read("xl/sharedStrings.xml"))
+                texts.extend(t.text for t in root.iter(f"{{{ns['s']}}}t") if t.text)
+
+            # 2 & 3. Walk sheet files for inline strings and raw cell values
+            for name in sorted(zf.namelist()):
+                if not name.startswith("xl/worksheets/sheet") or not name.endswith(".xml"):
+                    continue
+                root = ET.fromstring(zf.read(name))
+                for cell in root.iter(f"{{{ns['s']}}}c"):
+                    # Inline strings: <c><is><t>value</t></is></c>
+                    inline = cell.find(f"{{{ns['s']}}}is")
+                    if inline is not None:
+                        for t in inline.iter(f"{{{ns['s']}}}t"):
+                            if t.text:
+                                texts.append(t.text)
+                        continue
+                    # Raw values (numbers, formula results): <c><v>123</v></c>
+                    # Skip shared-string references (t="s") since we already have those
+                    cell_type = cell.get("t", "")
+                    if cell_type == "s":
+                        continue
+                    v = cell.find(f"{{{ns['s']}}}v")
+                    if v is not None and v.text:
+                        texts.append(v.text)
+
+            return " ".join(texts)
+    except _ZipBombError as exc:
+        logger.error("Zip bomb detected in xlsx: %s", exc)
+        return ""
+    except (zipfile.BadZipFile, ET.ParseError, KeyError):
+        return ""
+
+
+def _extract_pptx(content: bytes) -> str:
+    """Extract text from .pptx slide XML inside the ZIP."""
+    import zipfile
+    import io
+    import xml.etree.ElementTree as ET
+
+    try:
+        with zipfile.ZipFile(io.BytesIO(content)) as zf:
+            _validate_zip_safety(zf, "pptx")
+            texts: list[str] = []
+            ns = {"a": "http://schemas.openxmlformats.org/drawingml/2006/main"}
+            for name in sorted(zf.namelist()):
+                if name.startswith("ppt/slides/slide") and name.endswith(".xml"):
+                    root = ET.fromstring(zf.read(name))
+                    texts.extend(t.text for t in root.iter(f"{{{ns['a']}}}t") if t.text)
+            return " ".join(texts)
+    except _ZipBombError as exc:
+        logger.error("Zip bomb detected in pptx: %s", exc)
+        return ""
+    except (zipfile.BadZipFile, ET.ParseError, KeyError):
+        return ""
+
+
+def _extract_pdf(content: bytes) -> str:
+    """Extract text from PDF using pdfminer.six (optional dependency)."""
+    try:
+        from pdfminer.high_level import extract_text
+        import io
+
+        return extract_text(io.BytesIO(content))
+    except ImportError:
+        logger.debug("pdfminer.six not installed — skipping PDF text extraction")
+        return ""
+    except Exception:
+        return ""
+
+
+def _top_classification(
+    classification: ClassificationResult | None,
+) -> tuple[str | None, float | None]:
+    """Extract the highest-confidence entity type from a classification result.
+
+    Returns (entity_type, confidence) or (None, None) if no entities.
+    """
+    if not classification or not classification.entities:
+        return None, None
+    best = max(classification.entities, key=lambda e: e.confidence)
+    return best.entity_type, best.confidence
+
 
 class JobExecutor:
     """Executes a labelling job end-to-end with checkpointing and signal handling."""
@@ -59,11 +272,13 @@ class JobExecutor:
         graph: GraphClient,
         doc_service: DocumentService,
         redis: Redis,
+        arq_pool: ArqRedis | None = None,
     ) -> None:
         self._db = db
         self._graph = graph
         self._docs = doc_service
         self._redis = redis
+        self._arq_pool = arq_pool
 
     async def run(self, job_id: str) -> None:
         """Main entry point — dispatched by arq for start/resume."""
@@ -87,7 +302,7 @@ class JobExecutor:
                     job.status = "running"
                     await self._db.commit()
 
-            if job.status == "running":
+            elif job.status == "running":
                 await self._label(job, tenant_id, msp_tenant_id)
 
             # Check final status
@@ -152,9 +367,21 @@ class JobExecutor:
         total_files_found = cursor.get("total_files_found", 0)
 
         # Get all SharePoint sites for this tenant
-        sites = await self._graph.get_all_pages(
-            tenant_id, "/sites?search=*"
-        )
+        try:
+            sites = await self._graph.get_all_pages(
+                tenant_id, "/sites?search=*"
+            )
+        except (StableLabelError, httpx.HTTPError) as exc:
+            raise RuntimeError(f"Failed to enumerate SharePoint sites: {exc}") from exc
+
+        # Apply site scope filter if configured
+        scoped_site_ids: list[str] | None = job.config.get("site_ids")
+        if scoped_site_ids:
+            sites = [s for s in sites if s.get("id", "") in scoped_site_ids]
+            logger.info(
+                "Job %s: scoped to %d site(s) out of %d available",
+                job.id, len(sites), len(scoped_site_ids),
+            )
 
         for site in sites:
             site_id = site.get("id", "")
@@ -248,15 +475,21 @@ class JobExecutor:
     async def _label(self, job: Job, tenant_id: str, msp_tenant_id: uuid.UUID | None = None) -> None:
         """Apply labels to enumerated files.
 
-        Two modes:
+        Three modes:
           1. Static: job.config["target_label_id"] — apply one label to all files
           2. Policy-driven: job.config["use_policies"] = true — classify each file,
              evaluate policies, and pick the appropriate label per file
+          3. Dry-run: job.config["dry_run"] = true — classify and evaluate but don't
+             actually apply labels (works with both static and policy-driven)
         """
         use_policies = job.config.get("use_policies", False)
+        dry_run = job.config.get("dry_run", False)
         assignment_method = job.config.get("assignment_method", "standard")
         justification = job.config.get("justification_text", "")
         confirm_encryption = job.config.get("confirm_encryption", False)
+
+        if dry_run:
+            logger.info("Job %s: running in DRY-RUN mode — no labels will be applied", job.id)
 
         # Static mode requires a target label
         static_label_id = job.config.get("target_label_id", "")
@@ -322,15 +555,37 @@ class JobExecutor:
                 filename = file_info["name"]
 
                 # Determine which label to apply
+                file_classification: ClassificationResult | None = None
                 if use_policies:
-                    label_id = await self._resolve_label_via_policy(
+                    label_id, file_classification = await self._resolve_label_via_policy(
                         tenant_id, drive_id, item_id, filename, policy_rules,
                         job=job,
                     )
-                    if not label_id:
+
+                    # Large document → enqueue deferred async classification
+                    if file_classification and file_classification.error == "deferred":
+                        deferred = await self._enqueue_deferred_classification(
+                            job=job,
+                            tenant_id=tenant_id,
+                            msp_tenant_id=msp_tenant_id,
+                            drive_id=drive_id,
+                            item_id=item_id,
+                            filename=filename,
+                            text=file_classification.text_content,
+                            use_policies=True,
+                            static_label_id="",
+                            assignment_method=assignment_method,
+                            justification_text=justification,
+                            confirm_encryption=confirm_encryption,
+                            dry_run=dry_run,
+                        )
+                        if deferred:
+                            # Don't count toward batch totals — deferred task
+                            # will update job counters when it completes
+                            continue
+                        # If arq pool not available, fall back to skip
                         files_skipped += 1
                         batch_skipped += 1
-                        # Record scan result for skipped file
                         self._db.add(ScanResult(
                             customer_tenant_id=job.customer_tenant_id,
                             job_id=job.id,
@@ -339,9 +594,51 @@ class JobExecutor:
                             file_name=filename,
                             outcome="skipped",
                         ))
+                        continue
+
+                    if not label_id:
+                        files_skipped += 1
+                        batch_skipped += 1
+                        # Extract top classification for the scan result
+                        top_entity, top_conf = _top_classification(file_classification)
+                        self._db.add(ScanResult(
+                            customer_tenant_id=job.customer_tenant_id,
+                            job_id=job.id,
+                            drive_id=drive_id,
+                            item_id=item_id,
+                            file_name=filename,
+                            classification=top_entity,
+                            confidence=top_conf,
+                            outcome="skipped",
+                        ))
                         continue  # no policy matched — skip file
                 else:
                     label_id = static_label_id
+
+                top_entity, top_conf = _top_classification(file_classification)
+
+                # In dry-run mode: record what would happen without applying
+                if dry_run:
+                    files_labelled += 1
+                    batch_applied.append({
+                        "item_id": item_id,
+                        "drive_id": drive_id,
+                        "label_id": label_id,
+                        "previous_label_id": "",
+                        "dry_run": True,
+                    })
+                    self._db.add(ScanResult(
+                        customer_tenant_id=job.customer_tenant_id,
+                        job_id=job.id,
+                        drive_id=drive_id,
+                        item_id=item_id,
+                        file_name=filename,
+                        classification=top_entity,
+                        confidence=top_conf,
+                        label_applied=label_id,
+                        outcome="labelled",
+                    ))
+                    continue
 
                 assignment = LabelAssignment(
                     drive_id=drive_id,
@@ -372,6 +669,8 @@ class JobExecutor:
                         drive_id=drive_id,
                         item_id=item_id,
                         file_name=filename,
+                        classification=top_entity,
+                        confidence=top_conf,
                         label_applied=label_id,
                         outcome="labelled",
                     ))
@@ -395,6 +694,8 @@ class JobExecutor:
                             drive_id=drive_id,
                             item_id=item_id,
                             file_name=filename,
+                            classification=top_entity,
+                            confidence=top_conf,
                             label_applied=label_id,
                             outcome="skipped",
                         ))
@@ -407,6 +708,8 @@ class JobExecutor:
                             drive_id=drive_id,
                             item_id=item_id,
                             file_name=filename,
+                            classification=top_entity,
+                            confidence=top_conf,
                             label_applied=label_id,
                             outcome="failed",
                         ))
@@ -653,13 +956,20 @@ class JobExecutor:
         policy_rules: list[PolicyRule],
         *,
         job: Job | None = None,
-    ) -> str | None:
+    ) -> tuple[str | None, ClassificationResult]:
         """Classify a file's content and evaluate policies to pick a label.
 
-        Returns the target_label_id or None if no policy matched.
+        Returns (target_label_id, classification_result).
+        target_label_id is None if no policy matched.
+        If classification.error == "deferred", the caller must enqueue async
+        processing — no policy evaluation is done here.
         """
         # Download file content as text for classification
         classification = await self._classify_file(tenant_id, drive_id, item_id, filename)
+
+        # Large document → pass through so caller can enqueue deferred task
+        if classification.error == "deferred":
+            return None, classification
 
         # Persist classification events for detected entities
         if job and classification.entities:
@@ -685,9 +995,85 @@ class JobExecutor:
                 "File %s/%s matched policy '%s' → label %s",
                 drive_id, item_id, match.policy_name, match.target_label_id,
             )
-            return match.target_label_id
+            return match.target_label_id, classification
 
-        return None
+        return None, classification
+
+    async def _download_and_extract_text(
+        self,
+        tenant_id: str,
+        drive_id: str,
+        item_id: str,
+        filename: str,
+    ) -> str | None:
+        """Download a file via Graph and extract its text content.
+
+        Supports files up to 5 GB. Small files (< 50 MB) are downloaded into
+        memory; larger files are streamed to a temp file to avoid OOM.
+
+        Returns the extracted text, or None if the file should be skipped
+        (too large, download failed, classifier disabled, etc.).
+        """
+        try:
+            settings = Settings()
+            if not settings.classifier_enabled:
+                return None
+        except Exception:
+            pass
+
+        body = await self._graph.get(
+            tenant_id,
+            f"/drives/{drive_id}/items/{item_id}",
+            select="id,name,size,@microsoft.graph.downloadUrl",
+        )
+
+        size = body.get("size", 0)
+        if size > _MAX_FILE_SIZE:
+            logger.info(
+                "File %s/%s is %d bytes (> %d limit), skipping classification",
+                drive_id, item_id, size, _MAX_FILE_SIZE,
+            )
+            return None
+
+        download_url = body.get("@microsoft.graph.downloadUrl", "")
+        if not download_url:
+            return None
+
+        import httpx as _httpx
+        import tempfile
+
+        if size <= _STREAM_THRESHOLD:
+            # Small file — download into memory
+            async with _httpx.AsyncClient(timeout=60.0) as client:
+                resp = await client.get(download_url)
+                if resp.status_code != 200:
+                    return None
+            content = resp.content
+        else:
+            # Large file — stream to temp file to avoid holding it all in memory
+            logger.info(
+                "Streaming large file %s (%d bytes) to temp file",
+                filename, size,
+            )
+            try:
+                with tempfile.SpooledTemporaryFile(max_size=_STREAM_THRESHOLD) as tmp:
+                    async with _httpx.AsyncClient(timeout=300.0) as client:
+                        async with client.stream("GET", download_url) as resp:
+                            if resp.status_code != 200:
+                                return None
+                            async for chunk in resp.aiter_bytes(chunk_size=1024 * 1024):
+                                tmp.write(chunk)
+                    tmp.seek(0)
+                    content = tmp.read()
+            except (IOError, _httpx.HTTPError) as exc:
+                logger.warning(
+                    "Streaming download failed for %s/%s: %s",
+                    drive_id, item_id, exc,
+                )
+                return None
+
+        text = _extract_text_from_bytes(content, filename)
+        return text if text and text.strip() else None
 
     async def _classify_file(
         self,
@@ -696,53 +1082,106 @@ class JobExecutor:
         item_id: str,
         filename: str,
     ) -> ClassificationResult:
-        """Download file content and run it through the content classifier."""
+        """Download file content and run it through the content classifier.
+
+        Uses format-aware text extraction for Office/PDF files.
+        Respects the classifier_enabled config flag.
+
+        For small texts (<500 KB): classifies inline via thread pool.
+        For large texts (≥500 KB): returns a result with error="deferred"
+        so the caller can enqueue async processing.
+        """
         try:
-            # Get file content via Graph — small files only (< 4MB via direct download)
-            body = await self._graph.get(
-                tenant_id,
-                f"/drives/{drive_id}/items/{item_id}",
-                select="id,name,size,@microsoft.graph.downloadUrl",
+            text = await self._download_and_extract_text(
+                tenant_id, drive_id, item_id, filename,
             )
-
-            size = body.get("size", 0)
-            if size > 4 * 1024 * 1024:
-                # Too large for direct classification — skip content scan
-                # Still evaluate file_pattern rules with empty classification
+            if text is None:
                 return ClassificationResult(filename=filename)
 
-            download_url = body.get("@microsoft.graph.downloadUrl", "")
-            if not download_url:
-                return ClassificationResult(filename=filename)
+            # Large text → signal the caller to defer
+            if is_large_text(text):
+                return ClassificationResult(
+                    filename=filename,
+                    text_content=text,
+                    error="deferred",
+                )
 
-            # Download the raw content
-            import httpx
-
-            async with httpx.AsyncClient(timeout=30.0) as client:
-                resp = await client.get(download_url)
-                if resp.status_code != 200:
-                    return ClassificationResult(
-                        filename=filename,
-                        error=f"Download failed: {resp.status_code}",
-                    )
-
-            # Extract text (simple approach — works for plaintext-ish files)
-            try:
-                text = resp.content.decode("utf-8", errors="replace")
-            except (UnicodeDecodeError, AttributeError):
-                text = ""
-
-            if not text.strip():
-                return ClassificationResult(filename=filename)
-
-            # Run presidio classification
-            return classify_content(text, filename=filename)
+            # Small text → classify inline (runs in thread pool, won't block event loop)
+            return await classify_content_async(text, filename=filename)
 
         except Exception as exc:
             logger.warning(
                 "Classification failed for %s/%s: %s", drive_id, item_id, exc,
             )
             return ClassificationResult(filename=filename, error=str(exc))
+
+    # ── Deferred classification ──────────────────────────────────
+
+    async def _enqueue_deferred_classification(
+        self,
+        *,
+        job: Job,
+        tenant_id: str,
+        msp_tenant_id: uuid.UUID | None,
+        drive_id: str,
+        item_id: str,
+        filename: str,
+        text: str,
+        use_policies: bool,
+        static_label_id: str,
+        assignment_method: str,
+        justification_text: str,
+        confirm_encryption: bool,
+        dry_run: bool,
+    ) -> bool:
+        """Create a deferred ScanResult and enqueue async classification.
+
+        Returns True if successfully enqueued, False if arq pool unavailable.
+        """
+        if self._arq_pool is None:
+            logger.warning(
+                "arq pool not available — cannot defer classification for %s",
+                filename,
+            )
+            return False
+
+        # Create placeholder ScanResult with outcome="deferred"
+        scan_result = ScanResult(
+            customer_tenant_id=job.customer_tenant_id,
+            job_id=job.id,
+            drive_id=drive_id,
+            item_id=item_id,
+            file_name=filename,
+            outcome="deferred",
+        )
+        self._db.add(scan_result)
+        await self._db.flush()  # get the generated id
+
+        await self._arq_pool.enqueue_job(
+            "classify_and_label_file",
+            _job_id=f"deferred-{scan_result.id}",
+            tenant_id=tenant_id,
+            customer_tenant_id=str(job.customer_tenant_id),
+            msp_tenant_id=str(msp_tenant_id) if msp_tenant_id else None,
+            job_id=str(job.id),
+            drive_id=drive_id,
+            item_id=item_id,
+            filename=filename,
+            text=text,
+            scan_result_id=str(scan_result.id),
+            use_policies=use_policies,
+            static_label_id=static_label_id,
+            assignment_method=assignment_method,
+            justification_text=justification_text,
+            confirm_encryption=confirm_encryption,
+            dry_run=dry_run,
+        )
+
+        logger.info(
+            "Deferred classification enqueued for %s (%d chars), scan_result %s",
+            filename, len(text), scan_result.id,
+        )
+        return True
 
     # ── DB helpers ──────────────────────────────────────────────
 

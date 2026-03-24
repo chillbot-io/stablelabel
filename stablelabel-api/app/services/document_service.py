@@ -262,6 +262,92 @@ class DocumentService:
         )
         return response
 
+    # ── Bulk removal ─────────────────────────────────────────────
+
+    async def remove_label_bulk(
+        self,
+        tenant_id: str,
+        items: list[BulkItem],
+        *,
+        mode: str = "label_only",
+        dry_run: bool = False,
+        graph: "GraphClient | None" = None,
+    ) -> "BulkLabelResponse":
+        """Remove labels from multiple files.
+
+        Modes:
+          - label_only: Delete the sensitivity label via Graph
+          - encryption_only: Re-apply same label without protection
+          - label_and_encryption: Delete label (removes both)
+        """
+        from app.models.document import BulkRemoveResponse
+
+        job_id = str(uuid.uuid4())
+        response = BulkRemoveResponse(
+            job_id=job_id,
+            tenant_id=tenant_id,
+            mode=mode,
+            total=len(items),
+            dry_run=dry_run,
+        )
+
+        if dry_run:
+            response.completed = len(items)
+            response.results = [
+                LabelJobResult(
+                    drive_id=item.drive_id,
+                    item_id=item.item_id,
+                    filename=item.filename,
+                    status=JobStatus.COMPLETED,
+                )
+                for item in items
+            ]
+            return response
+
+        graph_client = graph or self._graph
+        sem = asyncio.Semaphore(self._max_concurrent)
+
+        async def _remove_one(item: BulkItem) -> LabelJobResult:
+            async with sem:
+                result = LabelJobResult(
+                    drive_id=item.drive_id,
+                    item_id=item.item_id,
+                    filename=item.filename,
+                )
+                try:
+                    if mode in ("label_only", "label_and_encryption"):
+                        await graph_client.post(
+                            tenant_id,
+                            f"/drives/{item.drive_id}/items/{item.item_id}/deleteSensitivityLabel",
+                        )
+                    elif mode == "encryption_only":
+                        # Extract current label, then re-apply without protection
+                        current = await self.extract_label(tenant_id, item.drive_id, item.item_id)
+                        if current and current.sensitivity_label_id:
+                            # Remove and re-apply as standard (no protection)
+                            await graph_client.post(
+                                tenant_id,
+                                f"/drives/{item.drive_id}/items/{item.item_id}/deleteSensitivityLabel",
+                            )
+                            assignment = LabelAssignment(
+                                drive_id=item.drive_id,
+                                item_id=item.item_id,
+                                sensitivity_label_id=current.sensitivity_label_id,
+                                assignment_method=AssignmentMethod.STANDARD,
+                            )
+                            await self.apply_label(tenant_id, assignment, verify=False)
+                    result.status = JobStatus.COMPLETED
+                except (StableLabelError, httpx.HTTPError) as exc:
+                    result.status = JobStatus.FAILED
+                    result.error = str(exc)
+                return result
+
+        results = await asyncio.gather(*[_remove_one(item) for item in items])
+        response.results = list(results)
+        response.completed = sum(1 for r in results if r.status == JobStatus.COMPLETED)
+        response.failed = sum(1 for r in results if r.status == JobStatus.FAILED)
+        return response
+
     # ── Verification ──────────────────────────────────────────────
 
     async def _verify_label(

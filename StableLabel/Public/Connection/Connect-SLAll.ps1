@@ -204,6 +204,11 @@ function Connect-SLAll {
                     Status = 'Failed'
                     Error  = $_.Exception.Message
                 })
+                # Clear any stale Graph connection state so downstream operations
+                # don't silently use credentials from a previous session
+                $script:SLConnection.Remove('GraphAccessToken')
+                $script:SLConnection.Remove('GraphTokenExpiry')
+                $script:SLConnection['GraphConnected'] = $false
                 # Graph failure is not fatal — Compliance is connected
                 Write-Warning "Graph connection failed (Compliance is connected): $_"
             }
@@ -230,8 +235,14 @@ function Connect-SLAll {
         }
 
         # ── Done ──────────────────────────────────────────────────────────
+        # If Graph was requested but failed, report partial status so callers
+        # know not to rely on Graph operations without re-authenticating
+        $overallStatus = if ($IncludeGraph -and -not $graphConnected) {
+            'PartiallyConnected'
+        } else { 'Connected' }
+
         $result = [PSCustomObject]@{
-            Status              = 'Connected'
+            Status              = $overallStatus
             UserPrincipalName   = $upn
             TenantId            = $tenantId
             GraphConnected      = $graphConnected

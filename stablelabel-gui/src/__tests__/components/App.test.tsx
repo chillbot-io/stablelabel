@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import App from '../../renderer/App';
 import { mockInvoke } from '../setup';
@@ -33,10 +33,12 @@ describe('App', () => {
     expect(screen.getByText('Graph')).toBeInTheDocument();
   });
 
-  it('starts on the Dashboard page', () => {
+  it('starts on the Dashboard page', async () => {
     render(<App />);
     expect(screen.getByRole('button', { name: 'Dashboard' })).toBeInTheDocument();
-    expect(screen.getByText('Not Connected')).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByText('Not Connected')).toBeInTheDocument();
+    });
   });
 
   it('navigates to Labels page via sidebar', async () => {
@@ -44,7 +46,9 @@ describe('App', () => {
     render(<App />);
 
     await user.click(screen.getByRole('button', { name: 'Labels' }));
-    expect(screen.queryByText('Not Connected')).not.toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.queryByText('Not Connected')).not.toBeInTheDocument();
+    });
   });
 
   it('navigates to Documents page', async () => {
@@ -52,7 +56,9 @@ describe('App', () => {
     render(<App />);
 
     await user.click(screen.getByText('Documents'));
-    expect(screen.getByText('Document Labels')).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByText('Document Labels')).toBeInTheDocument();
+    });
   });
 
   it('navigates to Snapshots page', async () => {
@@ -60,7 +66,9 @@ describe('App', () => {
     render(<App />);
 
     await user.click(screen.getByText('Snapshots'));
-    expect(screen.getByText('Capture, compare, and restore tenant config')).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByText('Capture, compare, and restore tenant config')).toBeInTheDocument();
+    });
   });
 
   it('navigates to Analysis page', async () => {
@@ -68,7 +76,9 @@ describe('App', () => {
     render(<App />);
 
     await user.click(screen.getByText('Analysis'));
-    expect(screen.getByText('Label reports and diagnostics')).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByText('Label reports and diagnostics')).toBeInTheDocument();
+    });
   });
 
   it('navigates back to Dashboard', async () => {
@@ -77,6 +87,8 @@ describe('App', () => {
 
     await user.click(screen.getByText('Documents'));
     await user.click(screen.getByRole('button', { name: 'Dashboard' }));
-    expect(screen.getByText('Sensitivity label overview')).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByText('Sensitivity label overview')).toBeInTheDocument();
+    });
   });
 });

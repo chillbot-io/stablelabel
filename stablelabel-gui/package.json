@@ -22,6 +22,7 @@
     "@electron-forge/maker-zip": "^7.11.0",
     "@electron-forge/plugin-auto-unpack-natives": "^7.11.0",
     "@electron-forge/plugin-vite": "^7.11.0",
+    "@testing-library/dom": "^10.4.1",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
     "@testing-library/user-event": "^14.6.1",
@@ -44,5 +45,9 @@
     "lucide-react": "^0.460.0",
     "react": "^18.3.0",
     "react-dom": "^18.3.0"
+  },
+  "overrides": {
+    "tar": "^7.5.11",
+    "@tootallnate/once": "^3.0.1"
   }
 }

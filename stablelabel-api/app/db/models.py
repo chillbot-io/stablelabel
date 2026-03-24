@@ -160,7 +160,7 @@ class Job(Base):
         ForeignKey("customer_tenants.id", ondelete="CASCADE"), nullable=False
     )
     created_by: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("users.id"), nullable=False
+        ForeignKey("users.id", ondelete="CASCADE"), nullable=False
     )
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     status: Mapped[str] = mapped_column(
@@ -317,13 +317,13 @@ class AuditEvent(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     msp_tenant_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("msp_tenants.id"), nullable=False
+        ForeignKey("msp_tenants.id", ondelete="CASCADE"), nullable=False
     )
     customer_tenant_id: Mapped[uuid.UUID | None] = mapped_column(
-        ForeignKey("customer_tenants.id")
+        ForeignKey("customer_tenants.id", ondelete="SET NULL")
     )
-    job_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("jobs.id"))
-    actor_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id"))
+    job_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("jobs.id", ondelete="SET NULL"))
+    actor_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
     event_type: Mapped[str] = mapped_column(String(50), nullable=False)
     target_file: Mapped[str | None] = mapped_column(Text)
     target_site: Mapped[str | None] = mapped_column(String(500))
@@ -366,7 +366,7 @@ class ScanResult(Base):
     confidence: Mapped[float | None] = mapped_column(Float)
     label_applied: Mapped[str | None] = mapped_column(String(36))
     previous_label: Mapped[str | None] = mapped_column(String(36))
-    outcome: Mapped[str] = mapped_column(String(20), nullable=False)  # labelled | skipped | failed
+    outcome: Mapped[str] = mapped_column(String(20), nullable=False)  # labelled | skipped | failed | deferred
 
     __table_args__ = (
         Index("ix_scan_tenant_ts", "customer_tenant_id", "ts"),

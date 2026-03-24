@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api } from '@/lib/api';
 import { useTenants } from '@/hooks/useTenants';
+import { useAuth } from '@/hooks/useAuth';
 import { useError } from '@/contexts/ErrorContext';
 import PageHeader from '@/components/PageHeader';
 import TenantSelector from '@/components/TenantSelector';
-import { ChevronRight, File, Folder } from 'lucide-react';
-import type { DriveItem } from '@/lib/types';
+import Modal from '@/components/Modal';
+import { ChevronRight, File, Folder, Tag, Trash2 } from 'lucide-react';
+import type { DriveItem, SensitivityLabel } from '@/lib/types';
 
 interface BreadcrumbEntry {
   label: string;
@@ -14,6 +16,7 @@ interface BreadcrumbEntry {
 }
 
 export default function ExplorerPage() {
+  const { user } = useAuth();
   const { tenants, selected, setSelected } = useTenants();
   const { showError } = useError();
   const [items, setItems] = useState<DriveItem[]>([]);
@@ -21,6 +24,20 @@ export default function ExplorerPage() {
   const [loading, setLoading] = useState(false);
   const [drives, setDrives] = useState<{ id: string; name: string }[]>([]);
   const [selectedDrive, setSelectedDrive] = useState<string | null>(null);
+  const [labelTarget, setLabelTarget] = useState<DriveItem | null>(null);
+  const [removeTarget, setRemoveTarget] = useState<DriveItem | null>(null);
+  const [labels, setLabels] = useState<SensitivityLabel[]>([]);
+  const [labeling, setLabeling] = useState(false);
+
+  const canEdit = user?.role !== 'Viewer';
+
+  // Load labels when tenant changes
+  useEffect(() => {
+    if (!selected) return;
+    api.get<SensitivityLabel[]>(`/tenants/${selected.id}/labels?appliable_only=true`)
+      .then(setLabels)
+      .catch(() => {});
+  }, [selected]);
 
   useEffect(() => {
     if (!selected) return;
@@ -56,6 +73,42 @@ export default function ExplorerPage() {
     setBreadcrumb(newBreadcrumb);
     setSelectedDrive(driveId);
     loadFolder(driveId, itemId);
+  };
+
+  const applyLabel = async (item: DriveItem, labelId: string) => {
+    if (!selected || !selectedDrive) return;
+    setLabeling(true);
+    try {
+      await api.post(`/tenants/${selected.id}/documents/apply-label?drive_id=${selectedDrive}&item_id=${item.id}`, {
+        drive_id: selectedDrive,
+        item_id: item.id,
+        sensitivity_label_id: labelId,
+      });
+      setLabelTarget(null);
+      // Reload folder to reflect updated label
+      const last = breadcrumb[breadcrumb.length - 1];
+      if (last) loadFolder(last.driveId, last.itemId);
+    } catch (err) {
+      showError(err instanceof Error ? err.message : 'Failed to apply label');
+    }
+    setLabeling(false);
+  };
+
+  const removeLabel = async (item: DriveItem) => {
+    if (!selected || !selectedDrive) return;
+    setLabeling(true);
+    try {
+      await api.post(`/tenants/${selected.id}/documents/remove-label`, {
+        drive_id: selectedDrive,
+        item_id: item.id,
+      });
+      setRemoveTarget(null);
+      const last = breadcrumb[breadcrumb.length - 1];
+      if (last) loadFolder(last.driveId, last.itemId);
+    } catch (err) {
+      showError(err instanceof Error ? err.message : 'Failed to remove label');
+    }
+    setLabeling(false);
   };
 
   return (
@@ -111,6 +164,7 @@ export default function ExplorerPage() {
                     <th className="text-left py-2 px-3 text-xs font-medium text-zinc-500 uppercase" scope="col">Name</th>
                     <th className="text-left py-2 px-3 text-xs font-medium text-zinc-500 uppercase w-32" scope="col">Size</th>
                     <th className="text-left py-2 px-3 text-xs font-medium text-zinc-500 uppercase w-40" scope="col">Label</th>
+                    {canEdit && <th className="text-right py-2 px-3 text-xs font-medium text-zinc-500 uppercase w-28" scope="col">Actions</th>}
                   </tr>
                 </thead>
                 <tbody>
@@ -137,6 +191,30 @@ export default function ExplorerPage() {
                         <td className="py-2 px-3 text-xs text-zinc-500">
                           {item.sensitivityLabel?.displayName ?? '--'}
                         </td>
+                        {canEdit && (
+                          <td className="py-2 px-3 text-right">
+                            {!item.folder && (
+                              <div className="flex justify-end gap-1">
+                                <button
+                                  onClick={() => setLabelTarget(item)}
+                                  title="Apply label"
+                                  className="p-1 rounded text-zinc-500 hover:text-blue-400 hover:bg-zinc-800 transition-colors"
+                                >
+                                  <Tag size={14} />
+                                </button>
+                                {item.sensitivityLabel && (
+                                  <button
+                                    onClick={() => setRemoveTarget(item)}
+                                    title="Remove label"
+                                    className="p-1 rounded text-zinc-500 hover:text-red-400 hover:bg-zinc-800 transition-colors"
+                                  >
+                                    <Trash2 size={14} />
+                                  </button>
+                                )}
+                              </div>
+                            )}
+                          </td>
+                        )}
                       </tr>
                     ))}
                 </tbody>
@@ -145,6 +223,50 @@ export default function ExplorerPage() {
           )}
         </div>
       </div>
+      {/* Apply Label Modal */}
+      {labelTarget && (
+        <Modal title={`Apply Label — ${labelTarget.name}`} onClose={() => setLabelTarget(null)}>
+          <div className="space-y-3">
+            <p className="text-sm text-zinc-400">Select a sensitivity label to apply to this file.</p>
+            <div className="space-y-1 max-h-60 overflow-y-auto">
+              {labels.map((l) => (
+                <button
+                  key={l.id}
+                  onClick={() => applyLabel(labelTarget, l.id)}
+                  disabled={labeling}
+                  className="w-full text-left px-3 py-2 rounded text-sm hover:bg-zinc-800 transition-colors disabled:opacity-50 flex items-center justify-between"
+                >
+                  <span className="text-zinc-200">{l.display_name || l.name}</span>
+                  {l.has_protection && <span className="text-xs text-yellow-500">Encrypted</span>}
+                </button>
+              ))}
+              {labels.length === 0 && <p className="text-xs text-zinc-500 py-2">No labels available</p>}
+            </div>
+          </div>
+          <div className="flex justify-end mt-4">
+            <button onClick={() => setLabelTarget(null)} className="px-3 py-1.5 text-sm rounded bg-zinc-800 hover:bg-zinc-700">Cancel</button>
+          </div>
+        </Modal>
+      )}
+
+      {/* Remove Label Confirmation */}
+      {removeTarget && (
+        <Modal title="Remove Label" onClose={() => setRemoveTarget(null)}>
+          <p className="text-sm text-zinc-400 mb-4">
+            Remove the sensitivity label <span className="text-zinc-200 font-medium">{removeTarget.sensitivityLabel?.displayName}</span> from <span className="text-zinc-200 font-medium">{removeTarget.name}</span>?
+          </p>
+          <div className="flex justify-end gap-2">
+            <button onClick={() => setRemoveTarget(null)} className="px-3 py-1.5 text-sm rounded bg-zinc-800 hover:bg-zinc-700">Cancel</button>
+            <button
+              onClick={() => removeLabel(removeTarget)}
+              disabled={labeling}
+              className="px-3 py-1.5 text-sm rounded bg-red-600 hover:bg-red-500 disabled:opacity-50"
+            >
+              {labeling ? 'Removing...' : 'Remove Label'}
+            </button>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }

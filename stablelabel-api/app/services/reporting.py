@@ -7,14 +7,15 @@ memory.
 
 Usage:
     reporting = ReportingService(database_url="postgresql://...")
-    summary = await reporting.job_summary(tenant_id)
-    detections = await reporting.entity_detections(tenant_id, days=30)
+    summary = await reporting.job_summary(tenant_id, msp_tenant_id)
+    detections = await reporting.entity_detections(tenant_id, msp_tenant_id, days=30)
 """
 
 from __future__ import annotations
 
 import asyncio
 import logging
+import threading
 import uuid
 from dataclasses import dataclass
 from datetime import datetime
@@ -41,6 +42,7 @@ class ReportingService:
         # Convert asyncpg URL to psycopg-style for DuckDB postgres_scanner
         self._pg_url = database_url.replace("postgresql+asyncpg://", "postgresql://")
         self._conn: duckdb.DuckDBPyConnection | None = None
+        self._lock = threading.Lock()
 
     def _get_conn(self):
         """Lazy-init DuckDB connection with postgres_scanner."""
@@ -58,17 +60,22 @@ class ReportingService:
             )
         return self._conn
 
-    def _query(self, sql: str, params: dict | None = None) -> list[dict[str, Any]]:
-        """Execute a SQL query and return results as dicts."""
-        conn = self._get_conn()
-        if params:
-            result = conn.execute(sql, list(params.values()))
-        else:
-            result = conn.execute(sql)
-        columns = [desc[0] for desc in result.description]
-        return [dict(zip(columns, row)) for row in result.fetchall()]
+    def _query(self, sql: str, params: list[Any] | None = None) -> list[dict[str, Any]]:
+        """Execute a SQL query and return results as dicts.
 
-    async def _async_query(self, sql: str, params: dict | None = None) -> list[dict[str, Any]]:
+        params should be a positional list matching $1, $2, … placeholders
+        in the SQL string.
+        """
+        with self._lock:
+            conn = self._get_conn()
+            if params:
+                result = conn.execute(sql, params)
+            else:
+                result = conn.execute(sql)
+            columns = [desc[0] for desc in result.description]
+            return [dict(zip(columns, row)) for row in result.fetchall()]
+
+    async def _async_query(self, sql: str, params: list[Any] | None = None) -> list[dict[str, Any]]:
         """Run query in thread pool to avoid blocking the event loop."""
         return await asyncio.to_thread(self._query, sql, params)
 
@@ -77,124 +84,147 @@ class ReportingService:
     async def job_summary(
         self,
         customer_tenant_id: uuid.UUID,
+        msp_tenant_id: uuid.UUID,
         days: int = 30,
     ) -> list[dict[str, Any]]:
         """Job execution summary — counts by status over time."""
         return await self._async_query(
             """
             SELECT
-                date_trunc('day', completed_at) AS day,
-                status,
+                date_trunc('day', j.completed_at) AS day,
+                j.status,
                 count(*) AS job_count,
-                sum(total_files) AS total_files,
-                sum(processed_files) AS processed_files,
-                sum(failed_files) AS failed_files,
-                sum(skipped_files) AS skipped_files
-            FROM jobs
-            WHERE customer_tenant_id = $1
-              AND created_at >= now() - INTERVAL '1 day' * $2
+                sum(j.total_files) AS total_files,
+                sum(j.processed_files) AS processed_files,
+                sum(j.failed_files) AS failed_files,
+                sum(j.skipped_files) AS skipped_files
+            FROM jobs j
+            JOIN customer_tenants ct ON ct.id = j.customer_tenant_id
+            WHERE j.customer_tenant_id = $1
+              AND ct.msp_tenant_id = $2
+              AND j.created_at >= now() - INTERVAL '1 day' * $3
             GROUP BY 1, 2
             ORDER BY 1 DESC
             """,
-            {"tenant": str(customer_tenant_id), "days": days},
+            [str(customer_tenant_id), str(msp_tenant_id), days],
         )
 
     async def entity_detections(
         self,
         customer_tenant_id: uuid.UUID,
+        msp_tenant_id: uuid.UUID,
         days: int = 30,
     ) -> list[dict[str, Any]]:
         """Entity type detection counts over time — for PII trend charts."""
         return await self._async_query(
             """
             SELECT
-                date_trunc('day', ts) AS day,
-                entity_type,
-                sum(entity_count) AS total_detections,
-                count(DISTINCT file_name) AS files_affected,
-                max(max_confidence) AS peak_confidence
-            FROM classification_events
-            WHERE customer_tenant_id = $1
-              AND ts >= now() - INTERVAL '1 day' * $2
+                date_trunc('day', ce.ts) AS day,
+                ce.entity_type,
+                sum(ce.entity_count) AS total_detections,
+                count(DISTINCT ce.file_name) AS files_affected,
+                max(ce.max_confidence) AS peak_confidence
+            FROM classification_events ce
+            JOIN customer_tenants ct ON ct.id = ce.customer_tenant_id
+            WHERE ce.customer_tenant_id = $1
+              AND ct.msp_tenant_id = $2
+              AND ce.ts >= now() - INTERVAL '1 day' * $3
             GROUP BY 1, 2
             ORDER BY 1 DESC, total_detections DESC
             """,
-            {"tenant": str(customer_tenant_id), "days": days},
+            [str(customer_tenant_id), str(msp_tenant_id), days],
         )
 
     async def label_distribution(
         self,
         customer_tenant_id: uuid.UUID,
+        msp_tenant_id: uuid.UUID,
         days: int = 30,
     ) -> list[dict[str, Any]]:
         """Label application distribution — for pie/bar charts."""
         return await self._async_query(
             """
             SELECT
-                label_applied,
-                outcome,
+                sr.label_applied,
+                sr.outcome,
                 count(*) AS file_count
-            FROM scan_results
-            WHERE customer_tenant_id = $1
-              AND ts >= now() - INTERVAL '1 day' * $2
-              AND label_applied IS NOT NULL
+            FROM scan_results sr
+            JOIN customer_tenants ct ON ct.id = sr.customer_tenant_id
+            WHERE sr.customer_tenant_id = $1
+              AND ct.msp_tenant_id = $2
+              AND sr.ts >= now() - INTERVAL '1 day' * $3
+              AND sr.label_applied IS NOT NULL
             GROUP BY 1, 2
             ORDER BY file_count DESC
             """,
-            {"tenant": str(customer_tenant_id), "days": days},
+            [str(customer_tenant_id), str(msp_tenant_id), days],
         )
 
     async def throughput_stats(
         self,
         customer_tenant_id: uuid.UUID,
+        msp_tenant_id: uuid.UUID,
         days: int = 7,
     ) -> list[dict[str, Any]]:
         """Throughput metrics — files/sec over time for performance monitoring."""
         return await self._async_query(
             """
             SELECT
-                date_trunc('hour', ts) AS hour,
-                avg(files_per_second) AS avg_fps,
-                max(files_per_second) AS max_fps,
-                sum(files_processed) AS total_processed,
-                sum(files_failed) AS total_failed,
-                avg(duration_ms) AS avg_batch_ms
-            FROM job_metrics
-            WHERE customer_tenant_id = $1
-              AND ts >= now() - INTERVAL '1 day' * $2
+                date_trunc('hour', jm.ts) AS hour,
+                avg(jm.files_per_second) AS avg_fps,
+                max(jm.files_per_second) AS max_fps,
+                sum(jm.files_processed) AS total_processed,
+                sum(jm.files_failed) AS total_failed,
+                avg(jm.duration_ms) AS avg_batch_ms
+            FROM job_metrics jm
+            JOIN customer_tenants ct ON ct.id = jm.customer_tenant_id
+            WHERE jm.customer_tenant_id = $1
+              AND ct.msp_tenant_id = $2
+              AND jm.ts >= now() - INTERVAL '1 day' * $3
             GROUP BY 1
             ORDER BY 1 DESC
             """,
-            {"tenant": str(customer_tenant_id), "days": days},
+            [str(customer_tenant_id), str(msp_tenant_id), days],
         )
 
     async def tenant_overview(
         self,
         customer_tenant_id: uuid.UUID,
+        msp_tenant_id: uuid.UUID,
     ) -> dict[str, Any]:
         """High-level tenant dashboard stats — single row summary."""
         rows = await self._async_query(
             """
             SELECT
-                (SELECT count(*) FROM jobs WHERE customer_tenant_id = $1)
+                (SELECT count(*) FROM jobs j
+                 JOIN customer_tenants ct ON ct.id = j.customer_tenant_id
+                 WHERE j.customer_tenant_id = $1 AND ct.msp_tenant_id = $2)
                     AS total_jobs,
-                (SELECT count(*) FROM jobs
-                 WHERE customer_tenant_id = $1 AND status = 'completed')
+                (SELECT count(*) FROM jobs j
+                 JOIN customer_tenants ct ON ct.id = j.customer_tenant_id
+                 WHERE j.customer_tenant_id = $1 AND ct.msp_tenant_id = $2
+                   AND j.status = 'completed')
                     AS completed_jobs,
-                (SELECT count(*) FROM scan_results
-                 WHERE customer_tenant_id = $1 AND outcome = 'labelled')
+                (SELECT count(*) FROM scan_results sr
+                 JOIN customer_tenants ct ON ct.id = sr.customer_tenant_id
+                 WHERE sr.customer_tenant_id = $1 AND ct.msp_tenant_id = $2
+                   AND sr.outcome = 'labelled')
                     AS files_labelled,
-                (SELECT count(*) FROM scan_results
-                 WHERE customer_tenant_id = $1 AND outcome = 'failed')
+                (SELECT count(*) FROM scan_results sr
+                 JOIN customer_tenants ct ON ct.id = sr.customer_tenant_id
+                 WHERE sr.customer_tenant_id = $1 AND ct.msp_tenant_id = $2
+                   AND sr.outcome = 'failed')
                     AS files_failed,
-                (SELECT count(DISTINCT entity_type) FROM classification_events
-                 WHERE customer_tenant_id = $1)
+                (SELECT count(DISTINCT ce.entity_type) FROM classification_events ce
+                 JOIN customer_tenants ct ON ct.id = ce.customer_tenant_id
+                 WHERE ce.customer_tenant_id = $1 AND ct.msp_tenant_id = $2)
                     AS entity_types_detected,
-                (SELECT sum(entity_count) FROM classification_events
-                 WHERE customer_tenant_id = $1)
+                (SELECT sum(ce.entity_count) FROM classification_events ce
+                 JOIN customer_tenants ct ON ct.id = ce.customer_tenant_id
+                 WHERE ce.customer_tenant_id = $1 AND ct.msp_tenant_id = $2)
                     AS total_detections
             """,
-            {"tenant": str(customer_tenant_id)},
+            [str(customer_tenant_id), str(msp_tenant_id)],
         )
         return rows[0] if rows else {}
 

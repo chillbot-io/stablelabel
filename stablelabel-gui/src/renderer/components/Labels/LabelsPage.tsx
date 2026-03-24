@@ -232,8 +232,7 @@ function PolicyFormWithData({ policyName, onSaved, onCancel, onDeleted }: { poli
   React.useEffect(() => {
     invoke<LabelPolicy>('Get-SLLabelPolicy', { Identity: policyName }).then((r) => {
       if (r.success && r.data) setPolicy(r.data);
-      setLoading(false);
-    });
+    }).catch(() => {}).finally(() => setLoading(false));
   }, [policyName, invoke]);
 
   if (loading) return <div className="p-6"><div className="h-32 bg-white/[0.06] rounded-lg animate-pulse" /></div>;
@@ -249,8 +248,7 @@ function AutoLabelFormWithData({ policyName, onSaved, onCancel, onDeleted }: { p
   React.useEffect(() => {
     invoke<AutoLabelPolicy>('Get-SLAutoLabelPolicy', { Identity: policyName }).then((r) => {
       if (r.success && r.data) setPolicy(r.data);
-      setLoading(false);
-    });
+    }).catch(() => {}).finally(() => setLoading(false));
   }, [policyName, invoke]);
 
   if (loading) return <div className="p-6"><div className="h-32 bg-white/[0.06] rounded-lg animate-pulse" /></div>;

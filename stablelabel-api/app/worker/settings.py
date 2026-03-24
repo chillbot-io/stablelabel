@@ -12,7 +12,7 @@ import uuid
 from datetime import UTC, datetime
 
 from arq import cron
-from arq.connections import ArqRedis
+from arq.connections import ArqRedis, create_pool
 from redis.asyncio import Redis
 from sqlalchemy import select
 
@@ -21,6 +21,7 @@ from app.core.redis import parse_redis_settings
 from app.db.base import dispose_engine, get_session, init_engine
 from app.db.models import Job
 from app.dependencies import get_document_service, get_graph_client, get_label_service, get_settings
+from app.worker.deferred_classify import classify_and_label_file
 from app.worker.executor import JobExecutor
 
 logger = logging.getLogger(__name__)
@@ -32,7 +33,7 @@ logger = logging.getLogger(__name__)
 async def run_job(ctx: dict, job_id: str) -> None:
     """arq task: execute a labelling job (start or resume)."""
     redis: Redis = ctx["redis"]
-    settings: Settings = ctx["settings"]
+    arq_pool: ArqRedis = ctx["arq_pool"]
 
     async for db in get_session():
         executor = JobExecutor(
@@ -40,6 +41,7 @@ async def run_job(ctx: dict, job_id: str) -> None:
             graph=get_graph_client(),
             doc_service=get_document_service(),
             redis=redis,
+            arq_pool=arq_pool,
         )
         await executor.run(job_id)
 
@@ -78,7 +80,7 @@ async def trigger_scheduled_jobs(ctx: dict) -> None:
     """
     from app.worker.cron_eval import is_cron_due
 
-    arq_pool: ArqRedis = ctx["redis"]
+    arq_pool: ArqRedis = ctx["arq_pool"]
     now = datetime.now(UTC)
 
     async for db in get_session():
@@ -131,11 +133,16 @@ async def startup(ctx: dict) -> None:
     init_engine(settings)
     ctx["settings"] = settings
     ctx["redis"] = Redis.from_url(settings.redis_url, decode_responses=True)
+    # arq pool for enqueuing deferred classification sub-tasks
+    ctx["arq_pool"] = await create_pool(parse_redis_settings(settings.redis_url))
     logger.info("Worker started — connected to Redis and PostgreSQL")
 
 
 async def shutdown(ctx: dict) -> None:
     """Called once when the worker shuts down."""
+    arq_pool: ArqRedis | None = ctx.get("arq_pool")
+    if arq_pool:
+        await arq_pool.aclose()
     redis: Redis | None = ctx.get("redis")
     if redis:
         await redis.aclose()
@@ -156,7 +163,7 @@ def _redis_settings():
 class WorkerSettings:
     """arq worker configuration — run with: arq app.worker.settings.WorkerSettings"""
 
-    functions = [run_job, rollback_job]
+    functions = [run_job, rollback_job, classify_and_label_file]
 
     cron_jobs = [
         cron(

@@ -3,9 +3,11 @@ import {
   UnauthenticatedTemplate,
 } from '@azure/msal-react';
 import { BrowserRouter, Route, Routes } from 'react-router-dom';
+import ErrorBoundary from '@/components/ErrorBoundary';
 import Layout from '@/components/Layout';
 import { ErrorProvider } from '@/contexts/ErrorContext';
 import AuditPage from '@/pages/AuditPage';
+import AutoLabelPage from '@/pages/AutoLabelPage';
 import DashboardPage from '@/pages/DashboardPage';
 import ExplorerPage from '@/pages/ExplorerPage';
 import JobsPage from '@/pages/JobsPage';
@@ -24,10 +26,12 @@ export default function App() {
       </UnauthenticatedTemplate>
 
       <AuthenticatedTemplate>
+        <ErrorBoundary>
         <ErrorProvider>
           <Routes>
             <Route element={<Layout />}>
               <Route index element={<DashboardPage />} />
+              <Route path="auto-label" element={<AutoLabelPage />} />
               <Route path="jobs" element={<JobsPage />} />
               <Route path="explorer" element={<ExplorerPage />} />
               <Route path="labels" element={<LabelsPage />} />
@@ -39,6 +43,7 @@ export default function App() {
             </Route>
           </Routes>
         </ErrorProvider>
+        </ErrorBoundary>
       </AuthenticatedTemplate>
     </BrowserRouter>
   );

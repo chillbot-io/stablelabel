@@ -117,7 +117,7 @@ async def consent_callback(
         settings = get_settings()
         expected_sig = hmac.new(
             settings.session_secret.encode(), ct_id_str.encode(), hashlib.sha256
-        ).hexdigest()[:16]
+        ).hexdigest()
         if hmac.compare_digest(sig, expected_sig):
             try:
                 stmt = select(CustomerTenant).where(
@@ -128,7 +128,7 @@ async def consent_callback(
                 result = await db.execute(stmt)
                 ct = result.scalar_one_or_none()
             except ValueError:
-                pass  # invalid UUID in state
+                logger.warning("Invalid UUID in consent callback state: %s", ct_id_str)
 
     # Fallback: if no valid state, reject — prevents cross-MSP claims
     if ct is None:

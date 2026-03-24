@@ -19,6 +19,7 @@ from app.core.rbac import require_role
 from app.db.base import get_session
 from app.db.models import AuditEvent, CustomerTenant, UserTenantAccess
 from app.dependencies import get_settings
+from app.services.policy_seeder import seed_builtin_policies
 
 router = APIRouter(prefix="/security/tenants", tags=["security"])
 
@@ -162,6 +163,9 @@ async def connect_tenant(
         extra={"entra_tenant_id": body.entra_tenant_id},
     ))
 
+    # Seed built-in SIT policies (disabled, no label assigned yet)
+    await seed_builtin_policies(tenant.id, db)
+
     await db.commit()
     await db.refresh(tenant)
 
@@ -171,7 +175,7 @@ async def connect_tenant(
     state_payload = str(tenant.id)
     state_sig = hmac.new(
         settings.session_secret.encode(), state_payload.encode(), hashlib.sha256
-    ).hexdigest()[:16]
+    ).hexdigest()
     state = f"{state_payload}:{state_sig}"
 
     consent_url = (

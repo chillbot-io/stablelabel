@@ -54,10 +54,14 @@ export function escapePS(value: string): string {
   return value.replace(/'/g, "''");
 }
 
-/** Validate a path-type value: no traversal, no dangerous chars. */
+/** Validate a path-type value: no traversal, no dangerous chars, no UNC. */
 function validatePath(value: string): void {
   if (DANGEROUS_CHARS.test(value)) {
     throw new Error('Path contains forbidden characters');
+  }
+  // Reject UNC paths (\\server\share or //server/share) — prevents exfiltration
+  if (value.startsWith('\\\\') || value.startsWith('//')) {
+    throw new Error('UNC paths are not permitted');
   }
   // Normalise separators for traversal check
   const normalised = value.replace(/\\/g, '/');
