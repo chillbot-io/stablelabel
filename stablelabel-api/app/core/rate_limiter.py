@@ -56,11 +56,15 @@ class TokenBucket:
         """Adjust tokens based on RateLimit-Remaining / RateLimit-Reset headers.
 
         Called after each Graph response to proactively slow down before 429.
+        Temporarily drains tokens rather than permanently reducing the rate,
+        so throughput recovers naturally after the reset window elapses.
         """
         if remaining <= 0:
             self._tokens = 0.0
         elif reset_seconds > 0:
-            self.rate = min(self.rate, remaining / reset_seconds)
+            # Cap available tokens to what the server says is remaining,
+            # but don't permanently reduce self.rate.
+            self._tokens = min(self._tokens, float(remaining))
 
 
 class TenantRateLimiters:

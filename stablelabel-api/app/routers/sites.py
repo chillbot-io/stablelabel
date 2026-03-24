@@ -11,6 +11,7 @@ import re
 import uuid
 from urllib.parse import quote
 
+import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from app.core.exceptions import StableLabelError
@@ -78,7 +79,7 @@ async def list_sites(
         sites = await graph.get_all_pages(
             tenant.entra_tenant_id, f"/sites?search={encoded_search}"
         )
-    except StableLabelError as exc:
+    except (StableLabelError, httpx.HTTPError) as exc:
         logger.warning("Site search failed for tenant %s: %s", customer_tenant_id, exc)
         return []
 

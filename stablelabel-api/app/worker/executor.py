@@ -302,7 +302,9 @@ class JobExecutor:
                     job.status = "running"
                     await self._db.commit()
 
-            elif job.status == "running":
+            # Use `if` (not `elif`) so that after enumeration transitions
+            # to "running", the labelling phase executes in the same run.
+            if job.status == "running":
                 await self._label(job, tenant_id, msp_tenant_id)
 
             # Check final status

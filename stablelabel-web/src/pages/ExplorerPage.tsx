@@ -168,7 +168,7 @@ export default function ExplorerPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {items
+                  {[...items]
                     .sort((a, b) => (a.folder && !b.folder ? -1 : !a.folder && b.folder ? 1 : a.name.localeCompare(b.name)))
                     .map((item) => (
                       <tr key={item.id} className="border-b border-zinc-800/50 hover:bg-zinc-800/30">

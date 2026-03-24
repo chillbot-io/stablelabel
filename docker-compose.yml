@@ -42,7 +42,7 @@ services:
       SL_DATABASE_URL: ${SL_DATABASE_URL:-postgresql+asyncpg://stablelabel:stablelabel@postgres:5432/stablelabel}
       SL_REDIS_URL: ${SL_REDIS_URL:-redis://redis:6379/0}
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
       interval: 10s
       timeout: 5s
       retries: 3
