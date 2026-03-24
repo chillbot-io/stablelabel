@@ -46,7 +46,7 @@ export default function ExplorerPage() {
     setItems([]);
     setBreadcrumb([]);
     setSelectedDrive(null);
-    api.get<{ value: { id: string; name: string }[] }>(`/tenants/${selected.id}/drives`)
+    api.get<{ value: { id: string; name: string }[] }>(`/tenants/${selected.id}/drives`, { signal: controller.signal })
       .then((data) => { if (!controller.signal.aborted) setDrives(data.value ?? []); })
       .catch((err) => { if (!controller.signal.aborted) showError(err.message ?? 'Failed to load drives'); });
     return () => controller.abort();

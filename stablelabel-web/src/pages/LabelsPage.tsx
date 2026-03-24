@@ -21,7 +21,7 @@ export default function LabelsPage() {
     const controller = new AbortController();
     setLoading(true);
     const query = filter === 'appliable' ? '?appliable_only=true' : '';
-    api.get<SensitivityLabel[]>(`/tenants/${selected.id}/labels${query}`)
+    api.get<SensitivityLabel[]>(`/tenants/${selected.id}/labels${query}`, { signal: controller.signal })
       .then((data) => { if (!controller.signal.aborted) setLabels(data); })
       .catch((err) => { if (!controller.signal.aborted) { setLabels([]); showError(err.message); } })
       .finally(() => { if (!controller.signal.aborted) setLoading(false); });

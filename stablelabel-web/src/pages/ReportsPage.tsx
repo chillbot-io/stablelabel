@@ -37,7 +37,7 @@ export default function ReportsPage() {
   useEffect(() => {
     if (!selected) return;
     const controller = new AbortController();
-    api.get<OverviewStats>(`/tenants/${selected.id}/reports/overview`)
+    api.get<OverviewStats>(`/tenants/${selected.id}/reports/overview`, { signal: controller.signal })
       .then((d) => { if (!controller.signal.aborted) setOverview(d); })
       .catch(() => { if (!controller.signal.aborted) setOverview(null); });
     return () => controller.abort();
@@ -48,7 +48,7 @@ export default function ReportsPage() {
     if (!selected || tab === 'overview') return;
     const controller = new AbortController();
     setLoading(true);
-    api.get<Record<string, unknown>[]>(`/tenants/${selected.id}/reports/${tab}?days=${days}`)
+    api.get<Record<string, unknown>[]>(`/tenants/${selected.id}/reports/${tab}?days=${days}`, { signal: controller.signal })
       .then((d) => { if (!controller.signal.aborted) setData(d); })
       .catch((err) => { if (!controller.signal.aborted) { setData([]); showError(err.message); } })
       .finally(() => { if (!controller.signal.aborted) setLoading(false); });
