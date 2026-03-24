@@ -1,11 +1,33 @@
 """Tests for the job executor signal handling and failure logic."""
 
+import io
 import uuid
-from unittest.mock import AsyncMock, MagicMock, call
+import zipfile
+from dataclasses import dataclass, field
+from unittest.mock import AsyncMock, MagicMock, call, patch
 
 import pytest
 
 from app.core.redis import JobSignal
+from app.worker.executor import (
+    JobExecutor,
+    _extract_text_from_bytes,
+    _extract_docx,
+    _extract_xlsx,
+    _extract_pptx,
+    _extract_pdf,
+    _validate_zip_safety,
+    _ZipBombError,
+    _top_classification,
+    _LABELLING_BATCH_SIZE,
+    _MAX_FILE_SIZE,
+    _STREAM_THRESHOLD,
+    _ZIP_MAX_ENTRIES,
+    _ZIP_MAX_UNCOMPRESSED,
+    _ZIP_MAX_RATIO,
+    _ZIP_MAX_SINGLE_FILE,
+)
+from app.services.policy_engine import ClassificationResult, EntityMatch
 
 
 class TestExecutorSignalHandling:
