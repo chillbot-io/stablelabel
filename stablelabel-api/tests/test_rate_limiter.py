@@ -8,10 +8,14 @@ import pytest
 
 from app.core.rate_limiter import TenantRateLimiters, TokenBucket
 
+# Module path prefix for patching references inside rate_limiter.py
+_RL = "app.core.rate_limiter"
+
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _make_bucket(
     rate: float = 10.0,
@@ -24,9 +28,23 @@ def _make_bucket(
         return TokenBucket(rate=rate, capacity=capacity)
 
 
+class _MockClock:
+    """Controllable clock: monotonic advances only when sleep is called."""
+
+    def __init__(self, start: float = 1000.0) -> None:
+        self.now = start
+
+    def monotonic(self) -> float:
+        return self.now
+
+    async def sleep(self, delay: float) -> None:  # noqa: RUF029
+        self.now += delay
+
+
 # ---------------------------------------------------------------------------
 # 1. Initial state (full capacity)
 # ---------------------------------------------------------------------------
+
 
 class TestTokenBucketInitialState:
     def test_starts_at_full_capacity(self) -> None:
@@ -56,6 +74,7 @@ class TestTokenBucketInitialState:
 #    positive wait when insufficient
 # ---------------------------------------------------------------------------
 
+
 class TestTokenBucketAcquire:
     @pytest.mark.asyncio
     async def test_acquire_no_wait_when_tokens_available(self) -> None:
@@ -73,18 +92,21 @@ class TestTokenBucketAcquire:
 
     @pytest.mark.asyncio
     async def test_acquire_returns_positive_wait_when_insufficient(self) -> None:
+        clock = _MockClock(start=1000.0)
         bucket = _make_bucket(rate=10.0, capacity=5.0, start_time=1000.0)
 
         # Drain all tokens
         with patch("time.monotonic", return_value=1000.0):
             await bucket.acquire(5.0)
-
         assert bucket._tokens == pytest.approx(0.0)
 
-        # Verify the math: deficit / rate = 1.0 / 10.0 = 0.1s wait needed
-        deficit = 1.0 - bucket._tokens
-        delay = deficit / bucket.rate
-        assert delay == pytest.approx(0.1)
+        with patch(f"{_RL}.time.monotonic", side_effect=clock.monotonic), patch(
+            f"{_RL}.asyncio.sleep", new=clock.sleep
+        ):
+            waited = await bucket.acquire(1.0)
+
+        assert waited > 0
+        assert waited == pytest.approx(0.1)  # 1 token / 10 rate = 0.1s
 
     @pytest.mark.asyncio
     async def test_acquire_default_cost_is_one(self) -> None:
@@ -106,6 +128,7 @@ class TestTokenBucketAcquire:
 # ---------------------------------------------------------------------------
 # 3. Token refill — tokens replenish over time based on rate
 # ---------------------------------------------------------------------------
+
 
 class TestTokenRefill:
     def test_refill_adds_tokens_based_on_elapsed_time(self) -> None:
@@ -158,6 +181,7 @@ class TestTokenRefill:
 # 4. Burst capacity — can burst up to capacity, then must wait
 # ---------------------------------------------------------------------------
 
+
 class TestBurstCapacity:
     @pytest.mark.asyncio
     async def test_burst_up_to_capacity(self) -> None:
@@ -173,6 +197,7 @@ class TestBurstCapacity:
 
     @pytest.mark.asyncio
     async def test_burst_exhausted_then_must_wait(self) -> None:
+        clock = _MockClock(start=1000.0)
         bucket = _make_bucket(rate=10.0, capacity=3.0, start_time=1000.0)
 
         # Drain bucket
@@ -180,11 +205,13 @@ class TestBurstCapacity:
             for _ in range(3):
                 await bucket.acquire(1.0)
 
-        # Bucket is empty — verify a deficit exists requiring a wait
-        assert bucket._tokens == pytest.approx(0.0)
-        deficit = 1.0 - bucket._tokens
-        delay = deficit / bucket.rate
-        assert delay > 0  # Would need to wait 0.1s
+        # Now bucket is empty; next acquire should wait
+        with patch(f"{_RL}.time.monotonic", side_effect=clock.monotonic), patch(
+            f"{_RL}.asyncio.sleep", new=clock.sleep
+        ):
+            waited = await bucket.acquire(1.0)
+
+        assert waited > 0
 
     @pytest.mark.asyncio
     async def test_tokens_never_exceed_capacity_after_long_idle(self) -> None:
@@ -201,6 +228,7 @@ class TestBurstCapacity:
 # ---------------------------------------------------------------------------
 # 5. Write cost (2 RU) vs read cost (1 RU)
 # ---------------------------------------------------------------------------
+
 
 class TestReadWriteCosts:
     @pytest.mark.asyncio
@@ -253,6 +281,7 @@ class TestReadWriteCosts:
 # 6. apply_server_hint(remaining, reset_seconds)
 # ---------------------------------------------------------------------------
 
+
 class TestApplyServerHint:
     def test_remaining_zero_drains_tokens(self) -> None:
         bucket = _make_bucket(rate=10.0, capacity=10.0)
@@ -273,7 +302,7 @@ class TestApplyServerHint:
     def test_remaining_does_not_increase_tokens(self) -> None:
         bucket = _make_bucket(rate=10.0, capacity=10.0)
         bucket._tokens = 2.0
-        # Server says 5 remaining, but bucket only has 2 — keep 2
+        # Server says 5 remaining, but bucket only has 2 -- keep 2
         bucket.apply_server_hint(remaining=5, reset_seconds=10.0)
         assert bucket._tokens == 2.0
 
@@ -325,8 +354,9 @@ class TestApplyServerHint:
 
 
 # ---------------------------------------------------------------------------
-# 7. TenantRateLimiters — lazy per-tenant init, same limiter for same tenant
+# 7. TenantRateLimiters -- lazy per-tenant init, same limiter for same tenant
 # ---------------------------------------------------------------------------
+
 
 class TestTenantRateLimiters:
     def test_creates_per_tenant(self) -> None:
@@ -388,6 +418,7 @@ class TestTenantRateLimiters:
 # 8. Edge cases
 # ---------------------------------------------------------------------------
 
+
 class TestEdgeCases:
     def test_zero_tokens_after_drain(self) -> None:
         bucket = _make_bucket(rate=10.0, capacity=5.0, start_time=1000.0)
@@ -408,7 +439,7 @@ class TestEdgeCases:
             bucket._refill()
 
         # elapsed = -1.0 => tokens = 5.0 + 10.0*(-1.0) = -5.0
-        # min(10.0, -5.0) = -5.0 — this is a known edge;
+        # min(10.0, -5.0) = -5.0 -- this is a known edge;
         # we verify the code doesn't raise
         assert bucket._last_refill == 999.0
 
@@ -443,14 +474,9 @@ class TestEdgeCases:
 
     @pytest.mark.asyncio
     async def test_concurrent_acquires_serialize_via_lock(self) -> None:
-        """Multiple concurrent acquires should be serialized by the lock.
-
-        We verify that sequential acquires under the lock work correctly
-        and tokens are consumed in order.
-        """
+        """Sequential acquires under the lock consume tokens in order."""
         bucket = _make_bucket(rate=10.0, capacity=5.0, start_time=1000.0)
 
-        # Sequential acquires with time frozen — first 5 get through
         with patch("time.monotonic", return_value=1000.0):
             results = []
             for _ in range(5):
@@ -460,8 +486,8 @@ class TestEdgeCases:
         assert all(w == 0.0 for w in results)
         assert bucket._tokens == pytest.approx(0.0)
 
-    def test_large_cost_exceeding_current_tokens(self) -> None:
-        """Acquire with cost larger than current tokens but <= capacity."""
+    def test_large_cost_exceeding_current_tokens_delay_math(self) -> None:
+        """Verify deficit/delay math for cost larger than current tokens."""
         bucket = _make_bucket(rate=10.0, capacity=10.0, start_time=1000.0)
         bucket._tokens = 2.0
 
@@ -469,6 +495,17 @@ class TestEdgeCases:
         deficit = 5.0 - bucket._tokens
         delay = deficit / bucket.rate
         assert delay == pytest.approx(0.3)
+
+    @pytest.mark.asyncio
+    async def test_large_cost_succeeds_after_refill(self) -> None:
+        """Acquire with cost > current tokens succeeds after time passes."""
+        bucket = _make_bucket(rate=10.0, capacity=10.0, start_time=1000.0)
+        bucket._tokens = 2.0
+
+        # Advance time so refill provides enough tokens
+        with patch("time.monotonic", return_value=1001.0):  # +10 tokens
+            waited = await bucket.acquire(5.0)
+        assert waited == 0.0  # Refill covered the deficit
 
     def test_refill_multiple_times_accumulates(self) -> None:
         bucket = _make_bucket(rate=2.0, capacity=10.0, start_time=1000.0)
@@ -486,7 +523,7 @@ class TestEdgeCases:
             bucket._refill()
         assert bucket._tokens == pytest.approx(6.0)
 
-    def test_acquire_waits_correct_delay(self) -> None:
+    def test_acquire_delay_math(self) -> None:
         """Verify the computed delay matches deficit / rate."""
         bucket = _make_bucket(rate=5.0, capacity=10.0, start_time=1000.0)
         bucket._tokens = 1.0
