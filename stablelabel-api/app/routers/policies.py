@@ -197,10 +197,10 @@ async def update_policy(
 
     if policy.is_builtin:
         # Built-in policies: only allow toggling enabled state
-        if body.is_enabled is not None:
-            policy.is_enabled = body.is_enabled
         if any(v is not None for v in [body.name, body.rules, body.target_label_id, body.priority]):
             raise HTTPException(400, "Built-in policies can only toggle is_enabled")
+        if body.is_enabled is not None:
+            policy.is_enabled = body.is_enabled
     else:
         if body.name is not None:
             policy.name = body.name

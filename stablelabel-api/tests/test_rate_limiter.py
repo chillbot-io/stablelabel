@@ -29,10 +29,12 @@ class TestTokenBucket:
         bucket.apply_server_hint(remaining=0, reset_seconds=5.0)
         assert bucket._tokens == 0.0
 
-    def test_server_hint_adjusts_rate(self) -> None:
+    def test_server_hint_caps_tokens(self) -> None:
         bucket = TokenBucket(rate=10.0, capacity=10.0)
         bucket.apply_server_hint(remaining=5, reset_seconds=10.0)
-        assert bucket.rate == 0.5  # 5 remaining / 10 seconds
+        # Tokens capped to remaining, rate unchanged
+        assert bucket._tokens == 5.0
+        assert bucket.rate == 10.0
 
 
 class TestTenantRateLimiters:

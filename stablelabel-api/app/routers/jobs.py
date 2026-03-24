@@ -322,11 +322,13 @@ async def job_action(
                 f"(requires: completed, failed, or rolled_back)",
             )
 
+        # Strip runtime error state from copied config
+        clean_config = {k: v for k, v in job.config.items() if k != "error"}
         new_job = Job(
             customer_tenant_id=job.customer_tenant_id,
             created_by=uuid.UUID(user.id),
             name=f"{job.name} (copy)",
-            config=job.config,
+            config=clean_config,
             source_job_id=job.id,
             schedule_cron=job.schedule_cron,
         )

@@ -102,12 +102,30 @@ async def trigger_scheduled_jobs(ctx: dict) -> None:
             if not is_cron_due(job.schedule_cron, now):
                 continue
 
+            # Guard: skip if a run was already triggered this minute
+            # (prevents duplicate jobs when the cron fires multiple times
+            # within the same matching minute)
+            recent_stmt = (
+                select(Job)
+                .where(
+                    Job.source_job_id == job.id,
+                    Job.created_at >= now.replace(second=0, microsecond=0),
+                )
+                .limit(1)
+            )
+            recent = (await db.execute(recent_stmt)).scalar_one_or_none()
+            if recent:
+                continue
+
+            # Strip runtime error state from copied config
+            clean_config = {k: v for k, v in job.config.items() if k != "error"}
+
             # Create a new job instance for this scheduled run
             new_job = Job(
                 customer_tenant_id=job.customer_tenant_id,
                 created_by=job.created_by,
                 name=f"{job.name} (scheduled {now.strftime('%Y-%m-%d %H:%M')})",
-                config=job.config,
+                config=clean_config,
                 source_job_id=job.id,
                 status="enumerating",
                 started_at=now,

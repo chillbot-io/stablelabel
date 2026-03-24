@@ -54,9 +54,12 @@ class ReportingService:
             self._conn = duckdb.connect(":memory:")
             self._conn.execute("INSTALL postgres_scanner")
             self._conn.execute("LOAD postgres_scanner")
+            # Use parameterized query to avoid SQL injection if the
+            # connection URL contains special characters (e.g., quotes
+            # in the password).
             self._conn.execute(
-                f"CALL postgres_attach('{self._pg_url}', "
-                f"source_schema='public', overwrite=true)"
+                "CALL postgres_attach($1, source_schema='public', overwrite=true)",
+                [self._pg_url],
             )
         return self._conn
 
