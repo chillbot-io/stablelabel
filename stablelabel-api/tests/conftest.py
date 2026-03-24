@@ -229,31 +229,56 @@ async def _seed(session: AsyncSession) -> None:
 
 
 def _build_app(
-    current_user: CurrentUser,
+    current_user: CurrentUser | None,
     session: AsyncSession,
+    service_overrides: dict | None = None,
 ):
-    """Build a minimal FastAPI app with dependency overrides."""
-    from fastapi import FastAPI
+    """Build a minimal FastAPI app with dependency overrides.
+
+    Args:
+        current_user: If None, requests raise 401 (unauthenticated).
+        session: The async DB session to inject.
+        service_overrides: Optional dict mapping dependency callables to mocks.
+    """
+    from fastapi import FastAPI, HTTPException
 
     from app.core.entra_auth import get_current_user
     from app.db.base import get_session
-    from app.routers import health, jobs, policies, tenants, users
+    from app.routers import (
+        audit,
+        documents,
+        health,
+        jobs,
+        labels,
+        onboard,
+        policies,
+        reports,
+        sites,
+        tenants,
+        users,
+    )
 
     app = FastAPI()
-    app.include_router(health.router)
-    app.include_router(jobs.router)
-    app.include_router(policies.router)
-    app.include_router(tenants.router)
-    app.include_router(users.router)
+    for r in (audit, documents, health, jobs, labels, onboard, policies, reports, sites, tenants, users):
+        app.include_router(r.router)
 
-    async def _override_user():
-        return current_user
+    if current_user is not None:
+        async def _override_user():
+            return current_user
+        app.dependency_overrides[get_current_user] = _override_user
+    else:
+        async def _no_user():
+            raise HTTPException(status_code=401, detail="Not authenticated")
+        app.dependency_overrides[get_current_user] = _no_user
 
     async def _override_session():
         yield session
 
-    app.dependency_overrides[get_current_user] = _override_user
     app.dependency_overrides[get_session] = _override_session
+
+    # Wire up any service mocks (graph client, label service, etc.)
+    if service_overrides:
+        app.dependency_overrides.update(service_overrides)
 
     return app
 
@@ -285,28 +310,7 @@ async def viewer_client(db_session: AsyncSession) -> AsyncIterator[httpx.AsyncCl
 @pytest.fixture()
 async def unauthenticated_client(db_session: AsyncSession) -> AsyncIterator[httpx.AsyncClient]:
     """Client with no auth override — routes should reject with 401."""
-    from fastapi import FastAPI, HTTPException
-
-    from app.core.entra_auth import get_current_user
-    from app.db.base import get_session
-    from app.routers import health, jobs, policies, tenants, users
-
-    app = FastAPI()
-    app.include_router(health.router)
-    app.include_router(jobs.router)
-    app.include_router(policies.router)
-    app.include_router(tenants.router)
-    app.include_router(users.router)
-
-    async def _no_user():
-        raise HTTPException(status_code=401, detail="Not authenticated")
-
-    async def _override_session():
-        yield db_session
-
-    app.dependency_overrides[get_current_user] = _no_user
-    app.dependency_overrides[get_session] = _override_session
-
+    app = _build_app(None, db_session)
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
         yield c
