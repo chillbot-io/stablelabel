@@ -125,13 +125,13 @@
 
 | # | Severity | Issue |
 |---|----------|-------|
-| 21 | CRITICAL | **No E2E tests exist** — zero integration tests for any user flow |
-| 22 | HIGH | **Tautological tests** — ~30% of assertions verify mock returns equal mock returns |
-| 23 | HIGH | **Only dry-run tested** — all mutation operations only tested with `-WhatIf` |
-| 24 | HIGH | **GUI tests only verify rendering** — no IPC, data flow, or interaction testing |
-| 25 | MEDIUM | **Shared test state** — snapshot/audit tests share `TestDrive` dirs without isolation |
-| 26 | MEDIUM | **Unrealistic mocks** — mock objects missing critical real API properties |
-| 27 | MEDIUM | **Zero tests for**: auth failure recovery, credential persistence, token refresh, concurrency, injection |
+| 21 | CRITICAL | ~~**No E2E tests exist**~~ FIXED — 14 E2E test files added covering auth, snapshots, labels, documents, settings, navigation, error recovery |
+| 22 | HIGH | ~~**Tautological tests**~~ FIXED — Replaced mock-returns-mock assertions with parameter forwarding verification in Labels.Tests.ps1; auto-label tests improved similarly |
+| 23 | HIGH | ~~**Only dry-run tested**~~ FIXED — Added non-dry-run mutation tests with audit log verification and error propagation tests for all New/Set/Remove operations |
+| 24 | HIGH | ~~**GUI tests only verify rendering**~~ FIXED — Added malformed JSON handling, large response parsing, concurrent command queuing, and security tests to powershell-bridge.test.ts; enhanced setup.ts mock shapes |
+| 25 | MEDIUM | ~~**Shared test state**~~ FIXED — Snapshot tests now use per-test GUID directories (`snap-$(New-Guid)`) for full isolation |
+| 26 | MEDIUM | ~~**Unrealistic mocks**~~ FIXED — setup.ts mocks now return realistic M365 Graph API shapes (full label properties, version info, connection state); added `mockLabelResponse()` helper |
+| 27 | MEDIUM | ~~**Zero tests for**~~ FIXED — Added auth failure recovery (stale Graph state cleanup), connection error propagation, session management (command count, idle tracking), reconnect cycles, Graph 404 errors, batch failure scenarios, Unicode/injection security tests |
 
 ---
 
