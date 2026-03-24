@@ -423,49 +423,38 @@ describe('PowerShellBridge', () => {
       consoleSpy.mockRestore();
     });
 
-    it('executes queued commands in order', async () => {
-      // Fire off 3 commands without awaiting
+    it('executes sequential commands reusing the same process', async () => {
+      // First command initializes and completes
       const promise1 = bridge.invokeStructured('Get-SLLabel');
-      const promise2 = bridge.invokeStructured('Get-SLLabel');
-      const promise3 = bridge.invokeStructured('Get-SLLabel');
-
       const proc = lastProc();
       await completeInit(proc);
       await vi.advanceTimersByTimeAsync(10);
-
-      // Complete first command
-      completeCommand(proc, 'Get-SLLabel', '{"order":1}');
+      completeCommand(proc, 'Get-SLLabel', '[{"order":1}]');
       const result1 = await promise1;
       expect(result1.success).toBe(true);
-      expect(result1.data).toEqual({ order: 1 });
+      expect(result1.data).toEqual([{ order: 1 }]);
 
+      // Second command reuses same process (no new spawn)
+      const spawnCountBefore = spawnedProcesses.length;
+      const promise2 = bridge.invokeStructured('Get-SLLabel');
       await vi.advanceTimersByTimeAsync(10);
 
-      // Complete second command — find the next unresolved Get-SLLabel write
-      const secondWrite = proc.stdin.write.mock.calls.filter((c: string[]) =>
+      // Should not have spawned a new process
+      expect(spawnedProcesses.length).toBe(spawnCountBefore);
+
+      // Find the second Get-SLLabel write (the one after the first)
+      const getLabelWrites = proc.stdin.write.mock.calls.filter((c: string[]) =>
         c[0]?.includes('Get-SLLabel') && !c[0]?.includes('Import-Module')
-      )[1]?.[0] as string;
-      const secondMarker = secondWrite?.split('\n').find((l: string) => l.startsWith("Write-Output '___SL_DONE_"))?.match(/'(.+)'/)?.[1];
-      if (secondMarker) {
-        proc.stdout.emit('data', Buffer.from(`{"order":2}\n${secondMarker}\n`));
+      );
+      const secondWrite = getLabelWrites[getLabelWrites.length - 1]?.[0] as string;
+      const marker = secondWrite?.split('\n').find((l: string) => l.startsWith("Write-Output '___SL_DONE_"))?.match(/'(.+)'/)?.[1];
+      if (marker) {
+        proc.stdout.emit('data', Buffer.from(`[{"order":2}]\n${marker}\n`));
       }
+
       const result2 = await promise2;
       expect(result2.success).toBe(true);
-      expect(result2.data).toEqual({ order: 2 });
-
-      await vi.advanceTimersByTimeAsync(10);
-
-      // Complete third command
-      const thirdWrite = proc.stdin.write.mock.calls.filter((c: string[]) =>
-        c[0]?.includes('Get-SLLabel') && !c[0]?.includes('Import-Module')
-      )[2]?.[0] as string;
-      const thirdMarker = thirdWrite?.split('\n').find((l: string) => l.startsWith("Write-Output '___SL_DONE_"))?.match(/'(.+)'/)?.[1];
-      if (thirdMarker) {
-        proc.stdout.emit('data', Buffer.from(`{"order":3}\n${thirdMarker}\n`));
-      }
-      const result3 = await promise3;
-      expect(result3.success).toBe(true);
-      expect(result3.data).toEqual({ order: 3 });
+      expect(result2.data).toEqual([{ order: 2 }]);
     });
 
     it('rejects unicode control characters in parameter values', async () => {
