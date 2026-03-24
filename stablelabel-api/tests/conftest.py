@@ -132,17 +132,26 @@ async def engine(pg_url):
     """Create async engine and apply all Alembic migrations."""
     eng = create_async_engine(pg_url, echo=False)
 
-    # Run Alembic migrations against the test database
-    from alembic import command
-    from alembic.config import Config
-
-    alembic_cfg = Config("alembic.ini")
-    alembic_cfg.set_main_option("sqlalchemy.url", pg_url.replace("+asyncpg", "+psycopg2"))
-
-    # Alembic runs synchronously — use a thread
+    # Run Alembic migrations synchronously using a sync engine
+    # (avoids conflict with env.py's async_engine_from_config)
     import asyncio
 
-    await asyncio.to_thread(command.upgrade, alembic_cfg, "head")
+    from sqlalchemy import create_engine, text
+
+    sync_url = pg_url.replace("+asyncpg", "+psycopg2")
+
+    def _run_migrations():
+        sync_engine = create_engine(sync_url)
+        with sync_engine.begin() as conn:
+            from alembic import command
+            from alembic.config import Config
+
+            alembic_cfg = Config("alembic.ini")
+            alembic_cfg.attributes["connection"] = conn
+            command.upgrade(alembic_cfg, "head")
+        sync_engine.dispose()
+
+    await asyncio.to_thread(_run_migrations)
 
     yield eng
     await eng.dispose()
