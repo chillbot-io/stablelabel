@@ -363,6 +363,159 @@ describe('PowerShellBridge', () => {
       );
       consoleSpy.mockRestore();
     });
+
+    it('handles malformed JSON response gracefully', async () => {
+      const invokePromise = bridge.invokeStructured('Get-SLLabel');
+      const proc = lastProc();
+      await completeInit(proc);
+      await vi.advanceTimersByTimeAsync(10);
+
+      // Send response that looks like JSON but is truncated/malformed
+      completeCommand(proc, 'Get-SLLabel', '{"name": "Confidential", broken');
+
+      const result = await invokePromise;
+      // Bridge should succeed but return the raw string instead of crashing
+      expect(result.success).toBe(true);
+      expect(typeof result.data).toBe('string');
+      expect(result.data).toContain('Confidential');
+    });
+
+    it('handles large JSON responses without truncation', async () => {
+      const invokePromise = bridge.invokeStructured('Get-SLLabel');
+      const proc = lastProc();
+      await completeInit(proc);
+      await vi.advanceTimersByTimeAsync(10);
+
+      // Generate a large array of label objects (~50KB)
+      const labels = Array.from({ length: 200 }, (_, i) => ({
+        id: `guid-${String(i).padStart(4, '0')}`,
+        name: `Label-${i}`,
+        displayName: `Label Display Name ${i}`,
+        description: `A description for label number ${i} that adds some bulk to the payload`,
+        color: '#' + String(i).padStart(6, '0'),
+        priority: i,
+        isActive: true,
+      }));
+      const largeJson = JSON.stringify(labels);
+      completeCommand(proc, 'Get-SLLabel', largeJson);
+
+      const result = await invokePromise;
+      expect(result.success).toBe(true);
+      expect(Array.isArray(result.data)).toBe(true);
+      expect(result.data).toHaveLength(200);
+      expect(result.data[199].name).toBe('Label-199');
+    });
+
+    it('captures stderr output as error when process closes', async () => {
+      const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+      const invokePromise = bridge.invokeStructured('Get-SLLabel');
+      const proc = lastProc();
+      await completeInit(proc);
+      await vi.advanceTimersByTimeAsync(10);
+
+      // Emit only stderr, then close the process without completing the command
+      proc.stderr.emit('data', Buffer.from('Connect-ExchangeOnline: Access denied'));
+      proc.emit('close', 1);
+
+      const result = await invokePromise;
+      expect(result.success).toBe(false);
+      expect(result.error).toBeDefined();
+      consoleSpy.mockRestore();
+    });
+
+    it('executes queued commands in order', async () => {
+      // Fire off 3 commands without awaiting
+      const promise1 = bridge.invokeStructured('Get-SLLabel');
+      const promise2 = bridge.invokeStructured('Get-SLLabel');
+      const promise3 = bridge.invokeStructured('Get-SLLabel');
+
+      const proc = lastProc();
+      await completeInit(proc);
+      await vi.advanceTimersByTimeAsync(10);
+
+      // Complete first command
+      completeCommand(proc, 'Get-SLLabel', '{"order":1}');
+      const result1 = await promise1;
+      expect(result1.success).toBe(true);
+      expect(result1.data).toEqual({ order: 1 });
+
+      await vi.advanceTimersByTimeAsync(10);
+
+      // Complete second command — find the next unresolved Get-SLLabel write
+      const secondWrite = proc.stdin.write.mock.calls.filter((c: string[]) =>
+        c[0]?.includes('Get-SLLabel') && !c[0]?.includes('Import-Module')
+      )[1]?.[0] as string;
+      const secondMarker = secondWrite?.split('\n').find((l: string) => l.startsWith("Write-Output '___SL_DONE_"))?.match(/'(.+)'/)?.[1];
+      if (secondMarker) {
+        proc.stdout.emit('data', Buffer.from(`{"order":2}\n${secondMarker}\n`));
+      }
+      const result2 = await promise2;
+      expect(result2.success).toBe(true);
+      expect(result2.data).toEqual({ order: 2 });
+
+      await vi.advanceTimersByTimeAsync(10);
+
+      // Complete third command
+      const thirdWrite = proc.stdin.write.mock.calls.filter((c: string[]) =>
+        c[0]?.includes('Get-SLLabel') && !c[0]?.includes('Import-Module')
+      )[2]?.[0] as string;
+      const thirdMarker = thirdWrite?.split('\n').find((l: string) => l.startsWith("Write-Output '___SL_DONE_"))?.match(/'(.+)'/)?.[1];
+      if (thirdMarker) {
+        proc.stdout.emit('data', Buffer.from(`{"order":3}\n${thirdMarker}\n`));
+      }
+      const result3 = await promise3;
+      expect(result3.success).toBe(true);
+      expect(result3.data).toEqual({ order: 3 });
+    });
+
+    it('rejects unicode control characters in parameter values', async () => {
+      const result = await bridge.invokeStructured('New-SLSnapshot', {
+        Name: 'test\u0000value',
+        Scope: 'All',
+      });
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('forbidden characters');
+    });
+
+    it('rejects very long parameter values (>10K chars)', async () => {
+      const longValue = 'A'.repeat(10001);
+      const result = await bridge.invokeStructured('New-SLSnapshot', {
+        Name: longValue,
+        Scope: 'All',
+      });
+      expect(result.success).toBe(false);
+      expect(result.error).toBeDefined();
+    });
+
+    it('rejects null bytes embedded in parameter values', async () => {
+      const result = await bridge.invokeStructured('New-SLSnapshot', {
+        Name: 'before\x00after',
+        Scope: 'All',
+      });
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('forbidden characters');
+    });
+
+    it('handles unicode text in parameter values when valid', async () => {
+      const invokePromise = bridge.invokeStructured('New-SLSnapshot', {
+        Name: 'Vertraulich-\u00C4\u00D6\u00DC',
+        Scope: 'All',
+      });
+
+      const proc = lastProc();
+      await completeInit(proc);
+      await vi.advanceTimersByTimeAsync(10);
+
+      const cmdWrite = proc.stdin.write.mock.calls.find((c: string[]) =>
+        c[0]?.includes('New-SLSnapshot')
+      )?.[0] as string;
+
+      expect(cmdWrite).toContain('Vertraulich-\u00C4\u00D6\u00DC');
+
+      completeCommand(proc, 'New-SLSnapshot', '{}');
+      const result = await invokePromise;
+      expect(result.success).toBe(true);
+    });
   });
 
   describe('device-code detection', () => {

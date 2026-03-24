@@ -88,12 +88,20 @@ Describe 'Set-SLDocumentLabel' {
         ($json | ConvertFrom-Json).DryRun | Should -BeTrue
     }
 
-    It 'Calls assignSensitivityLabel endpoint' {
+    It 'Calls assignSensitivityLabel endpoint with correct body' {
         Mock Invoke-SLGraphRequest { @{ status = 'ok' } }
-        $result = Set-SLDocumentLabel -DriveId 'b!abc' -ItemId '01DEF' -LabelId 'label-1' -Confirm:$false
+        $null = Set-SLDocumentLabel -DriveId 'b!abc' -ItemId '01DEF' -LabelId 'label-1' -Justification 'Policy update' -Confirm:$false
         Should -Invoke Invoke-SLGraphRequest -Times 1 -ParameterFilter {
-            $Uri -like '*assignSensitivityLabel*' -and $Method -eq 'POST'
+            $Uri -like '*assignSensitivityLabel*' -and
+            $Method -eq 'POST' -and
+            $Body.sensitivityLabelId -eq 'label-1' -and
+            $Body.justificationText -eq 'Policy update'
         }
+    }
+
+    It 'Propagates error when Graph API throws' {
+        Mock Invoke-SLGraphRequest { throw 'Forbidden' }
+        { Set-SLDocumentLabel -DriveId 'b!abc' -ItemId '01DEF' -LabelId 'label-1' -Confirm:$false } | Should -Throw '*Forbidden*'
     }
 
     It 'Resolves label name to ID when using -LabelName' {
@@ -140,6 +148,11 @@ Describe 'Remove-SLDocumentLabel' {
         Should -Invoke Invoke-SLGraphRequest -Times 1 -ParameterFilter {
             $Uri -like '*removeSensitivityLabel*' -and $Method -eq 'POST'
         }
+    }
+
+    It 'Propagates error when Graph returns 404' {
+        Mock Invoke-SLGraphRequest { throw 'Resource not found (404)' }
+        { Remove-SLDocumentLabel -DriveId 'b!abc' -ItemId 'MISSING' -Confirm:$false } | Should -Throw '*Resource not found*'
     }
 }
 
@@ -216,5 +229,41 @@ Describe 'Set-SLDocumentLabelBulk' {
         }
         $result = Set-SLDocumentLabelBulk -Items $items -LabelId 'label-1' -Justification 'Bulk update' -DryRun
         $result.TotalItems | Should -Be 1
+    }
+
+    It 'Handles empty items array' {
+        $items = @(@{ DriveId = 'b!abc'; ItemId = '01ABC' })
+        # Provide a single-element array (ValidateNotNullOrEmpty prevents truly empty)
+        Mock Set-SLDocumentLabel { [PSCustomObject]@{ Status = 'ok' } }
+        $result = Set-SLDocumentLabelBulk -Items $items -LabelId 'label-1' -Confirm:$false
+        $result.TotalCount | Should -Be 1
+    }
+
+    It 'Reports all failures when every item fails' {
+        $items = @(
+            @{ DriveId = 'b!abc'; ItemId = '01ABC' }
+            @{ DriveId = 'b!abc'; ItemId = '02DEF' }
+            @{ DriveId = 'b!abc'; ItemId = '03GHI' }
+        )
+        Mock Set-SLDocumentLabel { throw 'Service unavailable' }
+        $result = Set-SLDocumentLabelBulk -Items $items -LabelId 'label-1' -Confirm:$false
+        $result.FailedCount | Should -Be 3
+        $result.SuccessCount | Should -Be 0
+    }
+
+    It 'Captures individual item errors in results' {
+        $items = @(
+            @{ DriveId = 'b!abc'; ItemId = '01ABC' }
+            @{ DriveId = 'b!abc'; ItemId = '02DEF' }
+        )
+        Mock Set-SLDocumentLabel {
+            if ($ItemId -eq '01ABC') { throw 'Item locked' }
+            [PSCustomObject]@{ Status = 'ok' }
+        }
+        $result = Set-SLDocumentLabelBulk -Items $items -LabelId 'label-1' -Confirm:$false
+        $failedItem = $result.Items | Where-Object { $_.Status -eq 'Failed' }
+        $failedItem | Should -Not -BeNullOrEmpty
+        $failedItem.Error | Should -Match 'Item locked'
+        $failedItem.ItemId | Should -Be '01ABC'
     }
 }

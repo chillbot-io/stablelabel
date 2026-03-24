@@ -498,4 +498,20 @@ Describe 'Remove-SLAutoLabelPolicy' {
             $Identity -eq 'Old Auto-Label'
         }
     }
+
+    It 'Writes audit entry on successful auto-label remove' {
+        Mock Remove-AutoSensitivityLabelPolicy { }
+        $auditPath = $script:SLConfig.AuditLogPath
+        if (Test-Path $auditPath) { Remove-Item $auditPath -Force }
+        $null = Remove-SLAutoLabelPolicy -Identity 'Old Auto-Label' -Confirm:$false
+        Test-Path $auditPath | Should -BeTrue
+        $entries = Get-Content $auditPath | ForEach-Object { $_ | ConvertFrom-Json }
+        $removeEntry = $entries | Where-Object { $_.action -eq 'Remove-AutoSensitivityLabelPolicy' -and $_.result -ne 'dry-run' }
+        $removeEntry | Should -Not -BeNullOrEmpty
+    }
+
+    It 'Propagates error when Remove-AutoSensitivityLabelPolicy throws' {
+        Mock Remove-AutoSensitivityLabelPolicy { throw 'Policy in use' }
+        { Remove-SLAutoLabelPolicy -Identity 'Active Policy' -Confirm:$false } | Should -Throw '*Policy in use*'
+    }
 }
