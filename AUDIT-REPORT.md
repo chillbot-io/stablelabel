@@ -2,7 +2,7 @@
 
 **Date**: 2026-03-19
 **Scope**: Full codebase audit — Security, AI Slop, E2E/Tests, Application Logic, Electron Architecture
-**Updated**: 2026-03-23 — All CRITICAL, HIGH, MEDIUM, and LOW severity issues resolved. Removed findings referencing deleted components (DLP, Retention, FileShare, SuperUser)
+**Updated**: 2026-03-24 — All CRITICAL, HIGH, MEDIUM, and LOW severity issues resolved. Removed findings referencing deleted components (DLP, Retention, FileShare, SuperUser)
 
 ---
 
@@ -14,14 +14,11 @@
 
 ## CRITICAL & HIGH SEVERITY
 
-### 1. Restore-SLSnapshot Silently Skips Create/Update Operations
+### 1. ~~Restore-SLSnapshot Silently Skips Create/Update Operations~~ FIXED
 
 **Severity**: CRITICAL
 **File**: `StableLabel/Public/Snapshot/Restore-SLSnapshot.ps1:204-210`
-
-The restore function emits `Write-Warning` for Create/Update operations but sets `Status = 'Success'` anyway. Users think restore worked when it skipped the actual work.
-
-**Fix**: Set status to `'Skipped'` or `'Partial'` and surface clearly to the user.
+**Status**: FIXED — Added `$executed` flag tracking per step. Unmatched categories now report `Status = 'Skipped'`. Create operations returning `$null` report `Status = 'NoResult'`. Added `$skipCount` to final result object. Only truly executed operations report `Status = 'Success'`.
 
 ---
 
@@ -35,14 +32,11 @@ The restore function emits `Write-Warning` for Create/Update operations but sets
 
 ---
 
-### 3. PowerShell Bridge — No Spawn Error Handler
+### 3. ~~PowerShell Bridge — No Spawn Error Handler~~ FIXED
 
 **Severity**: HIGH
-**File**: `stablelabel-gui/src/powershell-bridge.ts:160-168`
-
-No `.on('error')` handler for the persistent PowerShell process. If the process fails to start after initialization, all subsequent commands hang forever.
-
-**Fix**: Add error handler that rejects pending commands and notifies the renderer.
+**File**: `stablelabel-gui/src/powershell-bridge.ts:201-227`
+**Status**: FIXED — Added `.on('error')` handler to persistent PowerShell process in `ensureInitialized()`. On spawn failure: logs error, sets `_initialized=false`, rejects in-flight command, drains command queue with error.
 
 ---
 

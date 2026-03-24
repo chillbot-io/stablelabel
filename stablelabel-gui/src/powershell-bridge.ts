@@ -198,6 +198,34 @@ export class PowerShellBridge {
       stdio: ['pipe', 'pipe', 'pipe'],
     });
 
+    this.process.on('error', (err) => {
+      logger.error('PS_BRIDGE', `PowerShell process error: ${err.message}`);
+      this._initialized = false;
+      this.process = null;
+
+      // Fail the in-flight command immediately
+      if (this.currentReject) {
+        const reject = this.currentReject;
+        this.currentMarker = null;
+        this.currentResolve = null;
+        this.currentReject = null;
+        if (this.currentTimeout) {
+          clearTimeout(this.currentTimeout);
+          this.currentTimeout = null;
+        }
+        this.processing = false;
+        reject(new Error(`PowerShell process error: ${err.message}`));
+      }
+
+      // Drain queued commands that haven't started yet
+      const queued = [...this.commandQueue];
+      this.commandQueue = [];
+      this.processing = false;
+      for (const entry of queued) {
+        entry.reject(new Error(`PowerShell process error: ${err.message}`));
+      }
+    });
+
     this.process.stdout?.on('data', (data: Buffer) => {
       const chunk = data.toString();
       this.outputBuffer += chunk;

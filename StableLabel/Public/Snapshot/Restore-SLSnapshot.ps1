@@ -191,10 +191,14 @@ function Restore-SLSnapshot {
         $results = [System.Collections.Generic.List[PSCustomObject]]::new()
         $successCount = 0
         $failCount = 0
+        $skipCount = 0
 
         foreach ($step in $plan) {
             Write-Verbose "Executing: [$($step.Phase)] $($step.Category) - $($step.Identity)"
             try {
+                $executed = $false
+                $cmdResult = $null
+
                 switch ($step.Phase) {
                     'Remove' {
                         # Use closure to safely pass variables — avoid scriptblock::Create
@@ -205,6 +209,7 @@ function Restore-SLSnapshot {
                         Invoke-SLComplianceCommand -ScriptBlock {
                             & $cmd -Identity $id -Confirm:$false
                         }.GetNewClosure() -OperationName "Restore: $($step.Command)"
+                        $executed = $true
                     }
                     'Create' {
                         $snapshotItem = $step.SnapshotItem
@@ -213,7 +218,8 @@ function Restore-SLSnapshot {
                                 $createParams = @{ Name = $snapshotItem.Name }
                                 if ($snapshotItem.Labels) { $createParams.Labels = @($snapshotItem.Labels) }
                                 if ($snapshotItem.Comment) { $createParams.Comment = $snapshotItem.Comment }
-                                New-SLLabelPolicy @createParams
+                                $cmdResult = New-SLLabelPolicy @createParams
+                                $executed = $true
                             }
                             'Auto-Label Policy' {
                                 $createParams = @{ Name = $snapshotItem.Name }
@@ -222,7 +228,8 @@ function Restore-SLSnapshot {
                                 if ($snapshotItem.SharePointLocation) { $createParams.SharePointLocation = @($snapshotItem.SharePointLocation) }
                                 if ($snapshotItem.OneDriveLocation) { $createParams.OneDriveLocation = @($snapshotItem.OneDriveLocation) }
                                 if ($snapshotItem.Mode) { $createParams.Mode = $snapshotItem.Mode }
-                                New-SLAutoLabelPolicy @createParams
+                                $cmdResult = New-SLAutoLabelPolicy @createParams
+                                $executed = $true
                             }
                         }
                     }
@@ -233,24 +240,46 @@ function Restore-SLSnapshot {
                                 $setParams = @{ Identity = $step.Identity }
                                 if ($snapshotItem.Labels) { $setParams.Labels = @($snapshotItem.Labels) }
                                 if ($snapshotItem.Comment) { $setParams.Comment = $snapshotItem.Comment }
-                                Set-SLLabelPolicy @setParams
+                                $cmdResult = Set-SLLabelPolicy @setParams
+                                $executed = $true
                             }
                             'Auto-Label Policy' {
                                 $setParams = @{ Identity = $step.Identity }
                                 if ($snapshotItem.ApplySensitivityLabel) { $setParams.ApplySensitivityLabel = $snapshotItem.ApplySensitivityLabel }
                                 if ($snapshotItem.Mode) { $setParams.Mode = $snapshotItem.Mode }
-                                Set-SLAutoLabelPolicy @setParams
+                                $cmdResult = Set-SLAutoLabelPolicy @setParams
+                                $executed = $true
                             }
                         }
                     }
                 }
 
-                $results.Add([PSCustomObject]@{
-                    Step    = $step
-                    Status  = 'Success'
-                    Error   = $null
-                })
-                $successCount++
+                if (-not $executed) {
+                    Write-Warning "Skipped: [$($step.Phase)] $($step.Category) - $($step.Identity): no matching category handler"
+                    $results.Add([PSCustomObject]@{
+                        Step    = $step
+                        Status  = 'Skipped'
+                        Error   = $null
+                    })
+                    $skipCount++
+                }
+                elseif ($step.Phase -eq 'Create' -and $null -eq $cmdResult) {
+                    Write-Warning "NoResult: [$($step.Phase)] $($step.Category) - $($step.Identity): command returned null"
+                    $results.Add([PSCustomObject]@{
+                        Step    = $step
+                        Status  = 'NoResult'
+                        Error   = $null
+                    })
+                    $skipCount++
+                }
+                else {
+                    $results.Add([PSCustomObject]@{
+                        Step    = $step
+                        Status  = 'Success'
+                        Error   = $null
+                    })
+                    $successCount++
+                }
 
                 Write-SLAuditEntry -Action "Restore-$($step.Phase)" -Target $step.Identity -Detail @{
                     Category = $step.Category
@@ -277,6 +306,7 @@ function Restore-SLSnapshot {
             TotalChanges      = $plan.Count
             Succeeded         = $successCount
             Failed            = $failCount
+            Skipped           = $skipCount
             Results           = $results
         }
 
