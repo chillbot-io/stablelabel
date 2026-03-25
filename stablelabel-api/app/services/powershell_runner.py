@@ -116,9 +116,15 @@ class PowerShellRunner:
                 f"Cmdlet '{cmdlet}' not in allowlist: {sorted(_ALLOWED_CMDLETS)}"
             )
 
-        script = self._build_script(cmdlet, params or {}, tenant_id)
+        script, env_vars = self._build_script(cmdlet, params or {}, tenant_id)
 
         try:
+            import os
+
+            # Pass secrets via environment variables to avoid injection.
+            # Script reads from env vars — no string interpolation of secrets.
+            run_env = {**os.environ, **env_vars}
+
             # Pass script via stdin to avoid secrets appearing in process listing.
             # Using "-Command -" reads the script from stdin.
             proc = await asyncio.create_subprocess_exec(
@@ -130,6 +136,7 @@ class PowerShellRunner:
                 stdin=asyncio.subprocess.PIPE,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
+                env=run_env,
             )
 
             stdout, stderr = await asyncio.wait_for(
@@ -177,44 +184,49 @@ class PowerShellRunner:
         cmdlet: str,
         params: dict[str, Any],
         tenant_id: str,
-    ) -> str:
-        """Build a PowerShell script that connects and runs the cmdlet.
+    ) -> tuple[str, dict[str, str]]:
+        """Build a PowerShell script and environment variables.
 
-        The script:
-          1. Creates a PSCredential from client_id/client_secret
-          2. Connects to Exchange Online (Security & Compliance endpoint)
-          3. Runs the cmdlet with parameters
-          4. Outputs result as JSON
-          5. Disconnects
+        Returns (script, env_vars). Secrets and parameters are passed via
+        environment variables to completely avoid string interpolation
+        injection. The cmdlet name is the only value interpolated into the
+        script, and it's validated against the allowlist before reaching here.
         """
-        # Build parameter string — PowerShell splatting style
-        param_assignments = []
-        for key, value in params.items():
-            ps_value = self._to_ps_value(value)
-            param_assignments.append(f'$params["{key}"] = {ps_value}')
+        env_vars = {
+            "SL_PS_CLIENT_ID": self._client_id,
+            "SL_PS_CLIENT_SECRET": self._client_secret,
+            "SL_PS_TENANT_ID": tenant_id,
+            "SL_PS_PARAMS_JSON": json.dumps(params),
+        }
 
-        params_block = "\n".join(param_assignments) if param_assignments else ""
-
-        # Use app-only auth via certificate or client secret
-        # ExchangeOnline module supports CBA (Certificate-Based Auth)
-        # For client secret, we use Connect-IPPSSession with credential
-        return f"""
+        script = f"""
 $ErrorActionPreference = 'Stop'
 
 try {{
+    # Read secrets from environment variables (no string interpolation)
+    $clientId = $env:SL_PS_CLIENT_ID
+    $clientSecret = $env:SL_PS_CLIENT_SECRET
+    $tenantId = $env:SL_PS_TENANT_ID
+    $paramsJson = $env:SL_PS_PARAMS_JSON
+
     # Create credential
-    $secureSecret = ConvertTo-SecureString -String '{self._escape_ps_string(self._client_secret)}' -AsPlainText -Force
-    $credential = New-Object System.Management.Automation.PSCredential('{self._escape_ps_string(self._client_id)}', $secureSecret)
+    $secureSecret = ConvertTo-SecureString -String $clientSecret -AsPlainText -Force
+    $credential = New-Object System.Management.Automation.PSCredential($clientId, $secureSecret)
 
     # Connect to Security & Compliance Center
     Import-Module ExchangeOnlineManagement -ErrorAction Stop
-    Connect-IPPSSession -AppId '{self._escape_ps_string(self._client_id)}' -Organization '{self._escape_ps_string(tenant_id)}' -CertificateThumbprint '' -Credential $credential -ErrorAction Stop
+    Connect-IPPSSession -AppId $clientId -Organization $tenantId -CertificateThumbprint '' -Credential $credential -ErrorAction Stop
 
-    # Build parameters
+    # Build parameters from JSON env var — no string interpolation
     $params = @{{}}
-    {params_block}
+    if ($paramsJson -and $paramsJson -ne '{{}}') {{
+        $parsed = $paramsJson | ConvertFrom-Json
+        $parsed.PSObject.Properties | ForEach-Object {{
+            $params[$_.Name] = $_.Value
+        }}
+    }}
 
-    # Execute cmdlet
+    # Execute cmdlet (name is validated against allowlist before reaching here)
     $result = {cmdlet} @params
 
     # Output as JSON
@@ -224,31 +236,9 @@ try {{
     Write-Error $_.Exception.Message
     exit 1
 }} finally {{
+    # Clear secrets from environment
+    $env:SL_PS_CLIENT_SECRET = $null
     Disconnect-ExchangeOnline -Confirm:$false -ErrorAction SilentlyContinue
 }}
 """
-
-    @staticmethod
-    def _to_ps_value(value: Any) -> str:
-        """Convert a Python value to a PowerShell literal."""
-        if isinstance(value, bool):
-            return "$true" if value else "$false"
-        if isinstance(value, (int, float)):
-            return str(value)
-        if isinstance(value, list):
-            items = ", ".join(
-                f'"{PowerShellRunner._escape_ps_string(str(v))}"' for v in value
-            )
-            return f"@({items})"
-        if isinstance(value, dict):
-            pairs = []
-            for k, v in value.items():
-                pairs.append(f'"{PowerShellRunner._escape_ps_string(str(k))}" = {PowerShellRunner._to_ps_value(v)}')
-            return "@{" + "; ".join(pairs) + "}"
-        # String
-        return f'"{PowerShellRunner._escape_ps_string(str(value))}"'
-
-    @staticmethod
-    def _escape_ps_string(s: str) -> str:
-        """Escape a string for use in PowerShell double-quoted strings."""
-        return s.replace("\\", "\\\\").replace('"', '`"').replace("'", "''").replace("$", "`$")
+        return script, env_vars

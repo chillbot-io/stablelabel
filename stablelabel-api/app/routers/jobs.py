@@ -364,6 +364,23 @@ async def job_action(
         await db.refresh(new_job)
         return _job_to_response(new_job)
 
+    # ── Guard: limit concurrent active jobs per tenant ─────
+    if action == "start":
+        _MAX_ACTIVE_JOBS_PER_TENANT = 5
+        active_count_stmt = select(func.count()).select_from(
+            select(Job).where(
+                Job.customer_tenant_id == uuid.UUID(customer_tenant_id),
+                Job.status.in_(["enumerating", "running", "rolling_back"]),
+            ).subquery()
+        )
+        active_count = (await db.execute(active_count_stmt)).scalar() or 0
+        if active_count >= _MAX_ACTIVE_JOBS_PER_TENANT:
+            raise HTTPException(
+                429,
+                f"Too many active jobs for this tenant ({active_count}). "
+                f"Wait for running jobs to complete before starting more.",
+            )
+
     # ── Standard state transitions ─────────────────────────
     transition = VALID_TRANSITIONS[action]
 
@@ -518,6 +535,7 @@ async def list_scan_results(
 
 _SSE_STOP_STATUSES = SSE_STOP_STATUSES
 _SSE_POLL_INTERVAL = 2.0  # seconds between DB polls
+_SSE_MAX_DURATION = 300.0  # 5 minutes — client must reconnect after this
 
 
 @router.get("/{job_id}/progress")
@@ -550,8 +568,9 @@ async def job_progress_stream(
 
     async def event_generator():
         last_progress = None
+        elapsed = 0.0
 
-        while True:
+        while elapsed < _SSE_MAX_DURATION:
             if await request.is_disconnected():
                 break
 
@@ -589,6 +608,11 @@ async def job_progress_stream(
                 break
 
             await asyncio.sleep(_SSE_POLL_INTERVAL)
+            elapsed += _SSE_POLL_INTERVAL
+
+        # If we exited due to max duration, send a reconnect hint
+        if elapsed >= _SSE_MAX_DURATION:
+            yield _sse_event({"reason": "max_duration_reached"}, event="reconnect")
 
     return StreamingResponse(
         event_generator(),

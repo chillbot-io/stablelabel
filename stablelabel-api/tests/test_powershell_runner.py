@@ -46,49 +46,31 @@ class TestPowerShellRunnerAvailability:
             await runner.invoke("Invoke-Expression", {"Command": "whoami"})
 
 
-class TestPowerShellEscaping:
-    def test_escape_double_quotes(self) -> None:
-        result = PowerShellRunner._escape_ps_string('hello "world"')
-        assert '`"' in result
-        assert '"world"' not in result
+class TestPowerShellEnvVarParams:
+    """Parameters and secrets are passed via env vars to prevent injection."""
 
-    def test_escape_dollar_signs(self) -> None:
-        result = PowerShellRunner._escape_ps_string("price is $100")
-        assert "`$100" in result
+    def test_build_script_returns_env_vars(self) -> None:
+        runner = PowerShellRunner(client_id="cid", client_secret="csec")
+        script, env_vars = runner._build_script("New-Label", {"Name": "Test"}, "tid-123")
+        assert env_vars["SL_PS_CLIENT_ID"] == "cid"
+        assert env_vars["SL_PS_CLIENT_SECRET"] == "csec"
+        assert env_vars["SL_PS_TENANT_ID"] == "tid-123"
+        assert '"Name": "Test"' in env_vars["SL_PS_PARAMS_JSON"]
 
-    def test_escape_backslashes(self) -> None:
-        result = PowerShellRunner._escape_ps_string("path\\to\\file")
-        assert "\\\\" in result
+    def test_build_script_reads_from_env(self) -> None:
+        runner = PowerShellRunner(client_id="cid", client_secret="csec")
+        script, _ = runner._build_script("New-Label", {"Name": "Test"}, "tid-123")
+        assert "$env:SL_PS_CLIENT_ID" in script
+        assert "$env:SL_PS_CLIENT_SECRET" in script
+        assert "$env:SL_PS_TENANT_ID" in script
+        assert "$env:SL_PS_PARAMS_JSON" in script
 
-    def test_escape_single_quotes(self) -> None:
-        result = PowerShellRunner._escape_ps_string("it's")
-        assert "''" in result
-
-
-class TestPowerShellValueConversion:
-    def test_bool_true(self) -> None:
-        assert PowerShellRunner._to_ps_value(True) == "$true"
-
-    def test_bool_false(self) -> None:
-        assert PowerShellRunner._to_ps_value(False) == "$false"
-
-    def test_integer(self) -> None:
-        assert PowerShellRunner._to_ps_value(42) == "42"
-
-    def test_string(self) -> None:
-        result = PowerShellRunner._to_ps_value("hello")
-        assert result == '"hello"'
-
-    def test_list(self) -> None:
-        result = PowerShellRunner._to_ps_value(["a", "b"])
-        assert result.startswith("@(")
-        assert '"a"' in result
-        assert '"b"' in result
-
-    def test_dict(self) -> None:
-        result = PowerShellRunner._to_ps_value({"key": "val"})
-        assert result.startswith("@{")
-        assert '"key"' in result
+    def test_secrets_not_interpolated_in_script(self) -> None:
+        runner = PowerShellRunner(client_id="id", client_secret="se'cr$et`test")
+        script, env_vars = runner._build_script("Get-Label", {}, "tid")
+        # Secret should be in env vars, NOT in the script text
+        assert env_vars["SL_PS_CLIENT_SECRET"] == "se'cr$et`test"
+        assert "se'cr$et`test" not in script
 
 
 class TestCmdletResult:
@@ -318,35 +300,33 @@ class TestPowerShellRunnerInvoke:
 class TestBuildScript:
     def test_build_script_with_params(self) -> None:
         runner = PowerShellRunner(client_id="myid", client_secret="mysecret")
-        script = runner._build_script("New-Label", {"Name": "Confidential", "DisplayName": "My Label"}, "tenant123")
+        script, env_vars = runner._build_script("New-Label", {"Name": "Confidential", "DisplayName": "My Label"}, "tenant123")
 
         assert "New-Label" in script
-        assert '$params["Name"] = "Confidential"' in script
-        assert '$params["DisplayName"] = "My Label"' in script
         assert "Connect-IPPSSession" in script
-        assert "tenant123" in script
+        # Params are in env var, not in script
+        assert '"Name": "Confidential"' in env_vars["SL_PS_PARAMS_JSON"]
+        assert env_vars["SL_PS_TENANT_ID"] == "tenant123"
 
     def test_build_script_empty_params(self) -> None:
         runner = PowerShellRunner(client_id="myid", client_secret="mysecret")
-        script = runner._build_script("Get-Label", {}, "tenant123")
+        script, _ = runner._build_script("Get-Label", {}, "tenant123")
 
         assert "Get-Label @params" in script
         assert "$params = @{}" in script
-        # No param assignments should appear
-        assert '$params["' not in script.replace("$params = @{}", "")
 
-    def test_build_script_escapes_credentials(self) -> None:
+    def test_build_script_passes_credentials_via_env(self) -> None:
         runner = PowerShellRunner(client_id="app's-id", client_secret='sec"ret$val')
-        script = runner._build_script("Get-Label", {}, "t1")
+        script, env_vars = runner._build_script("Get-Label", {}, "t1")
 
-        # Client secret with special chars should be escaped
-        assert "sec`\"ret`$val" in script
-        # Client id with single quote should be escaped
-        assert "app''s-id" in script
+        # Credentials are in env vars, not in the script
+        assert env_vars["SL_PS_CLIENT_ID"] == "app's-id"
+        assert env_vars["SL_PS_CLIENT_SECRET"] == 'sec"ret$val'
+        assert "$env:SL_PS_CLIENT_SECRET" in script
 
     def test_build_script_contains_error_handling(self) -> None:
         runner = PowerShellRunner(client_id="id", client_secret="secret")
-        script = runner._build_script("Get-Label", {}, "t1")
+        script, _ = runner._build_script("Get-Label", {}, "t1")
 
         assert "$ErrorActionPreference = 'Stop'" in script
         assert "try {" in script
@@ -356,6 +336,6 @@ class TestBuildScript:
 
     def test_build_script_converts_to_json(self) -> None:
         runner = PowerShellRunner(client_id="id", client_secret="secret")
-        script = runner._build_script("Get-Label", {}, "t1")
+        script, _ = runner._build_script("Get-Label", {}, "t1")
 
         assert "ConvertTo-Json -Depth 10" in script

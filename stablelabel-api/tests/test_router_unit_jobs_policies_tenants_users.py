@@ -294,8 +294,13 @@ class TestUpdateJob:
 class TestJobActions:
     def test_start_pending_job(self, mock_db, mock_arq_pool):
         job = _mock_job(status="pending")
+        # The start action now does: 1) get_job, 2) count active jobs, then proceeds
         mock_db.execute = AsyncMock(
-            return_value=make_mock_db_result(scalar=job)
+            side_effect=[
+                make_mock_db_result(scalar=job),    # _get_job
+                make_mock_db_result(scalar=0),       # active job count
+                make_mock_db_result(scalar=job),     # any additional lookups
+            ]
         )
         mock_db.refresh = AsyncMock()
         app = _build_app(mock_db, arq_pool=mock_arq_pool)

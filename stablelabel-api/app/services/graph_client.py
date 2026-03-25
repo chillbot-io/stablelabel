@@ -83,11 +83,19 @@ class GraphClient:
         self, tenant_id: str, path: str, **params: Any
     ) -> list[dict[str, Any]]:
         """Follow @odata.nextLink to collect all pages."""
+        from urllib.parse import urlparse
+
         items: list[dict[str, Any]] = []
         result = await self.get(tenant_id, path, **params)
         items.extend(result.get("value", []))
 
         while next_link := result.get("@odata.nextLink"):
+            # Validate nextLink points to Graph API to prevent SSRF
+            parsed = urlparse(next_link)
+            if parsed.hostname != "graph.microsoft.com":
+                raise StableLabelError(
+                    f"Refusing to follow @odata.nextLink to non-Graph host: {parsed.hostname}"
+                )
             # nextLink is a full URL — strip the base to get the path+query
             relative = next_link.removeprefix(GRAPH_BASE)
             result = await self.get(tenant_id, relative)
@@ -154,7 +162,18 @@ class GraphClient:
 
         token = self._tokens.acquire_token(tenant_id)
         headers = {"Authorization": f"Bearer {token}"}
-        url = f"{GRAPH_BASE}{path}" if not path.startswith("http") else path
+
+        # Construct URL — only allow Graph API hosts to prevent SSRF
+        if path.startswith("http"):
+            from urllib.parse import urlparse
+            parsed = urlparse(path)
+            if parsed.hostname != "graph.microsoft.com":
+                raise StableLabelError(
+                    f"Refusing to send authenticated request to non-Graph host: {parsed.hostname}"
+                )
+            url = path
+        else:
+            url = f"{GRAPH_BASE}{path}"
 
         last_error: Exception | None = None
         auth_retried = False  # Track if we already refreshed the token

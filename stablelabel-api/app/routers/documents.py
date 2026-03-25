@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import csv
 import io
+import re
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile
@@ -39,6 +40,19 @@ from app.services.graph_client import GraphClient
 
 router = APIRouter(prefix="/tenants/{tenant_id}/documents", tags=["documents"])
 
+# Graph API IDs are alphanumeric with hyphens, dots, and exclamation marks.
+# Reject anything that could be a path traversal (/, .., \).
+_SAFE_GRAPH_ID = re.compile(r"^[a-zA-Z0-9!._-]+$")
+
+
+def _validate_graph_id(value: str, name: str) -> str:
+    """Validate a Graph API ID (drive_id, item_id) against path injection."""
+    if not value or not _SAFE_GRAPH_ID.match(value):
+        raise HTTPException(400, f"Invalid {name}: must be alphanumeric")
+    if ".." in value:
+        raise HTTPException(400, f"Invalid {name}: path traversal not allowed")
+    return value
+
 
 @router.post("/extract-label", response_model=DocumentLabel | None)
 async def extract_label(
@@ -51,6 +65,8 @@ async def extract_label(
 ) -> DocumentLabel | None:
     """Read the current sensitivity label on a file."""
     await check_tenant_access(user, tenant_id, db)
+    _validate_graph_id(drive_id, "drive_id")
+    _validate_graph_id(item_id, "item_id")
     return await svc.extract_label(tenant_id, drive_id, item_id)
 
 
@@ -65,6 +81,8 @@ async def apply_label(
 ) -> LabelJobResult:
     """Apply a sensitivity label to a single file."""
     await check_tenant_access(user, tenant_id, db)
+    _validate_graph_id(assignment.drive_id, "drive_id")
+    _validate_graph_id(assignment.item_id, "item_id")
     try:
         return await svc.apply_label(
             tenant_id,
@@ -91,6 +109,8 @@ async def remove_label(
 ) -> None:
     """Remove the sensitivity label from a single file."""
     await check_tenant_access(user, tenant_id, db)
+    _validate_graph_id(request.drive_id, "drive_id")
+    _validate_graph_id(request.item_id, "item_id")
     try:
         await graph.post(
             tenant_id,
@@ -110,6 +130,9 @@ async def apply_label_bulk(
 ) -> BulkLabelResponse:
     """Apply a label to multiple files with full guard chain."""
     await check_tenant_access(user, tenant_id, db)
+    for item in request.items:
+        _validate_graph_id(item.drive_id, "drive_id")
+        _validate_graph_id(item.item_id, "item_id")
     if request.tenant_id != tenant_id:
         raise HTTPException(
             status_code=400,

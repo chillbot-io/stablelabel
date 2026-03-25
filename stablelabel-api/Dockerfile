@@ -41,11 +41,19 @@ RUN apt-get update && \
 #     apt-get install -y --no-install-recommends powershell && \
 #     rm -rf /var/lib/apt/lists/*
 
+# Create non-root user for runtime
+RUN adduser --disabled-password --no-create-home --gecos "" appuser
+
 # Copy installed Python packages from builder
 COPY --from=builder /install /usr/local
 
-# Copy application source
-COPY . .
+# Copy only application source (not tests, pyproject.toml, etc.)
+COPY app/ app/
+COPY alembic/ alembic/
+COPY alembic.ini .
+
+# Switch to non-root user
+USER appuser
 
 EXPOSE 8000
 

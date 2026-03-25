@@ -9,7 +9,7 @@ class Settings(BaseSettings):
     """All config comes from env vars — no secrets in code."""
 
     # ── Database ──────────────────────────────────────────────
-    database_url: str = "postgresql+asyncpg://stablelabel:stablelabel@localhost:5432/stablelabel"
+    database_url: str  # required — no default; set via SL_DATABASE_URL
     db_pool_size: int = 5
     db_max_overflow: int = 10
 
