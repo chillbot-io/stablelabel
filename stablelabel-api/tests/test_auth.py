@@ -44,7 +44,7 @@ def test_acquire_token_failure_unknown_error(
     mock_app = mock_cca_cls.return_value
     mock_app.acquire_token_for_client.return_value = {"error": "unknown"}
 
-    with pytest.raises(GraphAuthError):
+    with pytest.raises(GraphAuthError, match="unknown"):
         token_manager.acquire_token("tenant-1")
 
 

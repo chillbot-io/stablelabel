@@ -400,6 +400,15 @@ class TestRetryLogic:
                 assert mock_rand.call_args_list[0].args == (0, 0.5)   # base=1, 1*0.5
                 assert mock_rand.call_args_list[1].args == (0, 2.0)   # base=4, 4*0.5
 
+    @pytest.mark.asyncio
+    async def test_backoff_with_nonzero_jitter(self) -> None:
+        """Verify sleep duration = base + jitter when jitter > 0."""
+        with patch("app.services.graph_client.random.uniform", return_value=0.75) as mock_rand:
+            with patch("app.services.graph_client.asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
+                await GraphClient._backoff(1)
+                # base = 2^1 = 2, jitter = 0.75, total = 2.75
+                mock_sleep.assert_awaited_with(2.75)
+
 
 # ── 7. Error extraction ─────────────────────────────────────────────
 
@@ -470,7 +479,7 @@ class TestLockedError:
         resp = _resp(423, {"error": {"code": "itemLocked", "message": "locked"}})
         client, mock_http, _ = _client_with_mocks(resp)
 
-        with pytest.raises(GraphLockedError):
+        with pytest.raises(GraphLockedError, match="locked.*423"):
             await client.get("t1", "/items/x")
 
         assert mock_http.request.call_count == 1

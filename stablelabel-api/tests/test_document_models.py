@@ -33,7 +33,8 @@ class TestRemoveLabelRequest:
         assert req.item_id == "item-1"
 
     def test_requires_fields(self) -> None:
-        with pytest.raises(Exception):
+        from pydantic import ValidationError
+        with pytest.raises(ValidationError):
             RemoveLabelRequest()  # type: ignore[call-arg]
 
 

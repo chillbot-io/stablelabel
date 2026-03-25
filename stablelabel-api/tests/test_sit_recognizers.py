@@ -565,6 +565,11 @@ class TestBuildRegexRecognizer:
         assert isinstance(rec, PatternRecognizer)
         # Only the valid pattern should be present
         assert len(rec.patterns) == 1
+        assert rec.patterns[0].score == 0.7
+        # Verify the recognizer actually detects text matching the valid pattern
+        results = rec.analyze("found OK123 here", ["SIT_TEST"])
+        assert len(results) >= 1
+        assert results[0].entity_type == "SIT_TEST"
 
     def test_no_context_words_sets_none(self) -> None:
         from app.services.sit_recognizers import _build_regex_recognizer
@@ -579,6 +584,9 @@ class TestBuildRegexRecognizer:
         )
         assert rec is not None
         assert rec.context is None
+        assert rec.supported_entities == ["SIT_TEST"]
+        assert len(rec.patterns) == 1
+        assert rec.patterns[0].score == 0.5
 
     def test_multiple_valid_patterns(self) -> None:
         from app.services.sit_recognizers import _build_regex_recognizer
@@ -593,6 +601,14 @@ class TestBuildRegexRecognizer:
         )
         assert rec is not None
         assert len(rec.patterns) == 3
+        assert rec.context == ["kw1", "kw2"]
+        # Each pattern should detect its respective text
+        for text, expected in [("A99", True), ("B42", True), ("C7", True), ("D1", False)]:
+            results = rec.analyze(text, ["SIT_TEST"])
+            if expected:
+                assert len(results) >= 1, f"Expected match for '{text}'"
+            else:
+                assert len(results) == 0, f"Unexpected match for '{text}'"
 
 
 # ── _build_composite_recognizer direct tests ──────────────────
@@ -621,6 +637,16 @@ class TestBuildCompositeRecognizer:
         assert rec is not None
         assert isinstance(rec, CompositeSitRecognizer)
         assert rec.supported_entities == ["SIT_TEST"]
+        assert rec._base_score == 0.85
+        assert rec._proximity == 300
+        assert "patient" in rec._context_words
+        # Should detect SSN with nearby keyword evidence
+        results = rec.analyze(
+            "patient SSN is 219-09-9999", ["SIT_TEST"]
+        )
+        assert len(results) >= 1
+        assert results[0].entity_type == "SIT_TEST"
+        assert results[0].score == 0.85
 
     def test_unknown_entity_type_returns_none(self) -> None:
         from app.services.sit_recognizers import _build_composite_recognizer
@@ -660,6 +686,11 @@ class TestBuildCompositeRecognizer:
         # Should have patterns from both entity types
         expected_count = len(ENTITY_PATTERNS["US_SSN"]) + len(ENTITY_PATTERNS["EMAIL_ADDRESS"])
         assert len(rec._primary_compiled) == expected_count
+        # Should detect both SSNs and emails (no evidence required)
+        ssn_results = rec.analyze("SSN 219-09-9999", ["SIT_MULTI"])
+        assert len(ssn_results) >= 1
+        email_results = rec.analyze("contact user@example.com", ["SIT_MULTI"])
+        assert len(email_results) >= 1
 
     def test_empty_entity_types_returns_none(self) -> None:
         from app.services.sit_recognizers import _build_composite_recognizer

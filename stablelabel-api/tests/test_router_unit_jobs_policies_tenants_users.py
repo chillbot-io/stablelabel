@@ -207,7 +207,14 @@ class TestListJobs:
         data = resp.json()
         assert data["total"] == 1
         assert len(data["items"]) == 1
-        assert data["items"][0]["name"] == "Test Job"
+        item = data["items"][0]
+        assert item["name"] == "Test Job"
+        # Verify the response includes expected fields from the serializer
+        assert "id" in item
+        assert "status" in item
+        assert "created_at" in item
+        # Verify execute was called twice (count + list queries)
+        assert mock_db.execute.call_count == 2
 
 
 class TestCreateJob:
@@ -454,14 +461,22 @@ class TestListPolicies:
 
 class TestCreatePolicy:
     def test_create_policy(self, mock_db):
-        p = _mock_policy()
         mock_db.execute = AsyncMock()  # not called for create
+        added_objects = []
+        original_add = mock_db.add
+
+        def capture_add(obj):
+            added_objects.append(obj)
+            return original_add(obj)
+
+        mock_db.add = capture_add
 
         def do_refresh(obj):
-            for attr in ("id", "name", "is_builtin", "is_enabled", "rules",
-                         "target_label_id", "priority", "customer_tenant_id",
-                         "created_at", "updated_at"):
-                setattr(obj, attr, getattr(p, attr))
+            # Simulate DB populating server-side defaults
+            from datetime import datetime, timezone
+            obj.id = POLICY_ID
+            obj.created_at = datetime(2025, 1, 1, tzinfo=timezone.utc)
+            obj.updated_at = datetime(2025, 1, 1, tzinfo=timezone.utc)
 
         mock_db.refresh = AsyncMock(side_effect=do_refresh)
         app = _build_app(mock_db)
@@ -475,7 +490,14 @@ class TestCreatePolicy:
             },
         )
         assert resp.status_code == 201
-        assert resp.json()["name"] == "Test Policy"
+        data = resp.json()
+        # Verify the router used the submitted values, not mock values
+        assert data["name"] == "New Policy"
+        assert data["target_label_id"] == "label-1"
+        assert data["is_enabled"] is True
+        assert data["is_builtin"] is False
+        # Verify the object was actually added to the session
+        assert len(added_objects) >= 1
 
 
 class TestGetPolicy:
@@ -521,6 +543,7 @@ class TestUpdatePolicy:
             json={"is_enabled": False},
         )
         assert resp.status_code == 200
+        assert p.is_enabled is False
 
     def test_update_builtin_name_rejected(self, mock_db):
         p = _mock_policy(is_builtin=True)

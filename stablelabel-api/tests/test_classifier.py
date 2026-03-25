@@ -588,9 +588,8 @@ class TestGetAnalyzer:
             clf._analyzer_loaded = False
             clf._analyzer = None
             result = clf._get_analyzer()
-            # Either returns None (no presidio) or a real analyzer
-            # The exact behavior depends on whether presidio is installed
-            assert result is None or result is not None  # just verify no crash
+            # With presidio mocked out, _get_analyzer should return None
+            assert result is None
 
 
 # ══════════════════════════════════════════════════════════════

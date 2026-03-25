@@ -414,7 +414,7 @@ class TestBulkApply:
         labels = _mock_labels(_label(has_protection=True))
         labels.check_encryption_guard.side_effect = EncryptionLabelGuardError("confirm required")
         svc = _make_service(labels=labels)
-        with pytest.raises(EncryptionLabelGuardError):
+        with pytest.raises(EncryptionLabelGuardError, match="confirm required"):
             await svc.apply_label_bulk("t1", "lbl-enc", [])
 
     @pytest.mark.asyncio

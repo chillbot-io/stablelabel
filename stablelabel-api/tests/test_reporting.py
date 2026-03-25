@@ -4,6 +4,8 @@ import asyncio
 import uuid
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from app.services.reporting import ReportingService
 
 
@@ -76,11 +78,8 @@ class TestGetConn:
     def test_raises_when_duckdb_not_installed(self) -> None:
         svc = _make_service()
         with patch("app.services.reporting.duckdb", None):
-            try:
+            with pytest.raises(RuntimeError, match="DuckDB is not installed"):
                 svc._get_conn()
-                assert False, "Expected RuntimeError"
-            except RuntimeError as exc:
-                assert "DuckDB is not installed" in str(exc)
 
 
 # ── _query tests ───────────────────────────────────────
@@ -152,6 +151,12 @@ class TestJobSummary:
             assert "jobs" in sql
             assert params == [str(_TENANT), str(_MSP), 14]
 
+    def test_returns_empty_list_when_no_data(self) -> None:
+        svc = _make_service()
+        with patch.object(svc, "_async_query", return_value=[]):
+            result = _run(svc.job_summary(_TENANT, _MSP, days=7))
+            assert result == []
+
 
 class TestEntityDetections:
     def test_calls_async_query_with_correct_params(self) -> None:
@@ -164,6 +169,12 @@ class TestEntityDetections:
             sql, params = mock_aq.call_args[0]
             assert "classification_events" in sql
             assert params == [str(_TENANT), str(_MSP), 7]
+
+    def test_returns_empty_list_when_no_data(self) -> None:
+        svc = _make_service()
+        with patch.object(svc, "_async_query", return_value=[]):
+            result = _run(svc.entity_detections(_TENANT, _MSP, days=30))
+            assert result == []
 
 
 class TestLabelDistribution:
