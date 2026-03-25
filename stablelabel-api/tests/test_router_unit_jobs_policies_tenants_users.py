@@ -454,14 +454,22 @@ class TestListPolicies:
 
 class TestCreatePolicy:
     def test_create_policy(self, mock_db):
-        p = _mock_policy()
         mock_db.execute = AsyncMock()  # not called for create
+        added_objects = []
+        original_add = mock_db.add
+
+        def capture_add(obj):
+            added_objects.append(obj)
+            return original_add(obj)
+
+        mock_db.add = capture_add
 
         def do_refresh(obj):
-            for attr in ("id", "name", "is_builtin", "is_enabled", "rules",
-                         "target_label_id", "priority", "customer_tenant_id",
-                         "created_at", "updated_at"):
-                setattr(obj, attr, getattr(p, attr))
+            # Simulate DB populating server-side defaults
+            from datetime import datetime, timezone
+            obj.id = POLICY_ID
+            obj.created_at = datetime(2025, 1, 1, tzinfo=timezone.utc)
+            obj.updated_at = datetime(2025, 1, 1, tzinfo=timezone.utc)
 
         mock_db.refresh = AsyncMock(side_effect=do_refresh)
         app = _build_app(mock_db)
@@ -475,7 +483,14 @@ class TestCreatePolicy:
             },
         )
         assert resp.status_code == 201
-        assert resp.json()["name"] == "Test Policy"
+        data = resp.json()
+        # Verify the router used the submitted values, not mock values
+        assert data["name"] == "New Policy"
+        assert data["target_label_id"] == "label-1"
+        assert data["is_enabled"] is True
+        assert data["is_builtin"] is False
+        # Verify the object was actually added to the session
+        assert len(added_objects) >= 1
 
 
 class TestGetPolicy:
