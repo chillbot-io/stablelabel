@@ -24,7 +24,6 @@ from app.db.models import (
     AuditEvent,
     ClassificationEvent,
     Job,
-    Policy,
     ScanResult,
 )
 from app.dependencies import get_document_service, get_graph_client
@@ -33,7 +32,6 @@ from app.services.classifier import classify_content_chunked
 from app.services.policy_engine import (
     ClassificationResult,
     evaluate_policies,
-    policies_from_db,
 )
 
 logger = logging.getLogger(__name__)
@@ -244,26 +242,7 @@ async def classify_and_label_file(
 # ── Helpers ────────────────────────────────────────────────────
 
 
-def _top_classification(
-    classification: ClassificationResult,
-) -> tuple[str | None, float | None]:
-    if not classification.entities:
-        return None, None
-    best = max(classification.entities, key=lambda e: e.confidence)
-    return best.entity_type, best.confidence
-
-
-async def _load_tenant_policies(db: AsyncSession, customer_tenant_id: uuid.UUID):
-    stmt = (
-        select(Policy)
-        .where(
-            Policy.customer_tenant_id == customer_tenant_id,
-            Policy.is_enabled.is_(True),
-        )
-        .order_by(Policy.priority.desc())
-    )
-    result = await db.execute(stmt)
-    return policies_from_db(result.scalars().all())
+from app.worker.shared import top_classification as _top_classification, load_tenant_policies as _load_tenant_policies
 
 
 async def _update_scan_result(

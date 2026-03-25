@@ -103,13 +103,11 @@ class TestCsvUploadResult:
             valid_rows=95,
             invalid_rows=5,
             errors=["Row 3: missing drive_id", "Row 7: bad item_id"],
-            job_id="job-csv-1",
         )
         assert result.total_rows == 100
         assert result.valid_rows == 95
         assert result.invalid_rows == 5
         assert len(result.errors) == 2
-        assert result.job_id == "job-csv-1"
 
     def test_construction_defaults(self) -> None:
         result = CsvUploadResult()
@@ -117,4 +115,3 @@ class TestCsvUploadResult:
         assert result.valid_rows == 0
         assert result.invalid_rows == 0
         assert result.errors == []
-        assert result.job_id == ""

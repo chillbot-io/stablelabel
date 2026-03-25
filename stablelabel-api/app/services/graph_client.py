@@ -128,8 +128,9 @@ class GraphClient:
         if parsed.scheme != "https" or not parsed.hostname or not parsed.hostname.endswith(".microsoft.com"):
             raise StableLabelError(f"Refusing to poll non-Graph URL: {location_url}")
 
-        elapsed = 0.0
-        while elapsed < timeout:
+        import time
+        start = time.monotonic()
+        while (time.monotonic() - start) < timeout:
             resp = await self._http.get(location_url)
             if resp.status_code == 200:
                 body = resp.json()
@@ -138,9 +139,8 @@ class GraphClient:
                     return body
                 # still running — wait and retry
             await asyncio.sleep(poll_interval)
-            elapsed += poll_interval
 
-        return {"status": "timeout", "elapsed": elapsed}
+        return {"status": "timeout", "elapsed": time.monotonic() - start}
 
     # ── Internal machinery ────────────────────────────────────────
 

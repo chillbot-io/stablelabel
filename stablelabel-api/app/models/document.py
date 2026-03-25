@@ -132,4 +132,3 @@ class CsvUploadResult(BaseModel):
     valid_rows: int = 0
     invalid_rows: int = 0
     errors: list[str] = Field(default_factory=list)
-    job_id: str = ""

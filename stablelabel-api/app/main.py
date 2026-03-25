@@ -7,8 +7,9 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 from arq import create_pool
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from app.core.redis import parse_redis_settings
 from app.db.base import dispose_engine, init_engine
@@ -37,6 +38,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     graph = get_graph_client()
     await graph.close()
     get_reporting_service().close()
+
+    from app.services.classifier import shutdown_classifier
+    shutdown_classifier()
+
     await dispose_engine()
 
 
@@ -46,6 +51,15 @@ app = FastAPI(
     description="Autolabelling backend — Graph API-driven sensitivity label management for MSPs",
     lifespan=lifespan,
 )
+
+# Return 400 (not 500) for malformed UUIDs in path parameters
+@app.exception_handler(ValueError)
+async def value_error_handler(request: Request, exc: ValueError) -> JSONResponse:
+    msg = str(exc)
+    if "UUID" in msg or "badly formed" in msg or "invalid literal" in msg:
+        return JSONResponse(status_code=400, content={"detail": "Invalid identifier format"})
+    return JSONResponse(status_code=500, content={"detail": "Internal server error"})
+
 
 # CORS — configured via SL_CORS_ORIGINS (comma-separated)
 _settings = get_settings()

@@ -784,7 +784,7 @@ class TestLoadTenantPolicies:
         mock_result = MagicMock()
         mock_result.scalars.return_value.all.return_value = []
         ex._db.execute = AsyncMock(return_value=mock_result)
-        with patch("app.worker.executor.policies_from_db", return_value=[]) as mock_convert:
+        with patch("app.worker.shared.policies_from_db", return_value=[]) as mock_convert:
             result = await ex._load_tenant_policies(uuid.uuid4())
         mock_convert.assert_called_once()
         assert result == []

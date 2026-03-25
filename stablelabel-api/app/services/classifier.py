@@ -507,3 +507,8 @@ def clear_sit_recognizers() -> None:
         _sit_entity_types_by_tenant.clear()
     # Note: Presidio doesn't support removing individual recognizers from the registry.
     # In production, the analyzer is recreated per-tenant or SITs are registered once.
+
+
+def shutdown_classifier() -> None:
+    """Shut down the classifier thread pool. Call at application shutdown."""
+    _classifier_pool.shutdown(wait=False)

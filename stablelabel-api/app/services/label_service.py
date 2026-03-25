@@ -24,9 +24,12 @@ logger = logging.getLogger(__name__)
 class LabelService:
     """Manages label inventory per tenant with caching."""
 
+    _MAX_CACHED_TENANTS = 500
+
     def __init__(self, graph: GraphClient, settings: Settings) -> None:
         self._graph = graph
-        self._caches: dict[str, LabelCache] = {}
+        from collections import OrderedDict
+        self._caches: OrderedDict[str, LabelCache] = OrderedDict()
         self._label_cache_ttl = settings.label_cache_ttl
 
     async def get_labels(self, tenant_id: str, *, force: bool = False) -> list[SensitivityLabel]:
@@ -44,6 +47,10 @@ class LabelService:
 
         labels = [self._parse_label(raw) for raw in raw_labels]
         self._mark_parents(labels)
+
+        # Evict oldest entry if at capacity
+        while len(self._caches) >= self._MAX_CACHED_TENANTS:
+            self._caches.popitem(last=False)
 
         self._caches[tenant_id] = LabelCache(
             tenant_id=tenant_id,

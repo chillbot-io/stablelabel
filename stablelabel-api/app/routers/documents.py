@@ -256,8 +256,7 @@ async def upload_csv_labels(
         )
 
     parse_error_count = len(errors)
-    valid_rows = len(rows) - parse_error_count
-    job_id = str(uuid.uuid4())
+    apply_failed_count = 0
 
     for label_id, items in items_by_label.items():
         try:
@@ -269,18 +268,20 @@ async def upload_csv_labels(
             # Track failures from bulk apply
             for r in result.results:
                 if r.status == "failed":
+                    apply_failed_count += 1
                     errors.append(f"{r.filename}: {r.error}")
         except Exception as exc:
+            apply_failed_count += len(items)
             errors.append(f"Label {label_id}: {exc}")
 
     # Truncate errors after all collection is complete
     if len(errors) > 50:
         errors = errors[:50] + [f"... and {len(errors) - 50} more errors"]
 
+    total_invalid = parse_error_count + apply_failed_count
     return CsvUploadResult(
         total_rows=len(rows),
-        valid_rows=valid_rows,
-        invalid_rows=len(rows) - valid_rows,
+        valid_rows=len(rows) - parse_error_count,
+        invalid_rows=total_invalid,
         errors=errors,
-        job_id=job_id,
     )

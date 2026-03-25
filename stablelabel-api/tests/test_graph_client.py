@@ -247,7 +247,7 @@ class TestPollOperation:
             )
 
         assert result["status"] == "timeout"
-        assert result["elapsed"] == 3.0
+        assert result["elapsed"] >= 3.0
 
     @pytest.mark.asyncio
     async def test_poll_failed_status(self) -> None:
