@@ -207,7 +207,14 @@ class TestListJobs:
         data = resp.json()
         assert data["total"] == 1
         assert len(data["items"]) == 1
-        assert data["items"][0]["name"] == "Test Job"
+        item = data["items"][0]
+        assert item["name"] == "Test Job"
+        # Verify the response includes expected fields from the serializer
+        assert "id" in item
+        assert "status" in item
+        assert "created_at" in item
+        # Verify execute was called twice (count + list queries)
+        assert mock_db.execute.call_count == 2
 
 
 class TestCreateJob:
@@ -536,6 +543,7 @@ class TestUpdatePolicy:
             json={"is_enabled": False},
         )
         assert resp.status_code == 200
+        assert p.is_enabled is False
 
     def test_update_builtin_name_rejected(self, mock_db):
         p = _mock_policy(is_builtin=True)

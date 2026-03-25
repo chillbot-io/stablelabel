@@ -541,3 +541,67 @@ class TestRegexMatchCondition:
         classification = ClassificationResult(text_content="")
         result = evaluate_policies([policy], classification)
         assert result is None
+
+    def test_all_invalid_regex_returns_none(self) -> None:
+        """When every regex pattern is invalid, the condition should not match."""
+        policy = _rule(conditions=[{
+            "type": "regex_match",
+            "patterns": ["[invalid(", "(unclosed"],
+            "min_count": 1,
+        }])
+        classification = ClassificationResult(
+            text_content="This text has some content.",
+        )
+        result = evaluate_policies([policy], classification)
+        assert result is None
+
+
+# ── Edge case tests ──────────────────────────────────────────
+
+
+class TestEdgeCases:
+    """Edge cases for policy evaluation."""
+
+    def test_overlapping_entity_detections(self) -> None:
+        """Multiple entities at the same position should each count independently."""
+        policy = _rule(conditions=[{
+            "type": "entity_detected",
+            "entity_types": ["US_SSN", "PHONE_NUMBER"],
+            "min_confidence": 0.5,
+            "min_count": 2,
+        }])
+        classification = ClassificationResult(
+            entities=[
+                _entity("US_SSN", 0.9),
+                _entity("PHONE_NUMBER", 0.8),
+            ],
+        )
+        result = evaluate_policies([policy], classification)
+        assert result is not None
+        assert result.target_label_id == "label-1"
+
+    def test_none_text_content_rejected_by_model(self) -> None:
+        """ClassificationResult should reject None text_content at construction."""
+        from pydantic import ValidationError
+        with pytest.raises(ValidationError, match="text_content"):
+            ClassificationResult(text_content=None)
+
+    def test_empty_conditions_no_match(self) -> None:
+        """Policy with empty conditions list should not match anything."""
+        policy = _rule(conditions=[])
+        classification = ClassificationResult(
+            entities=[_entity("US_SSN", 0.9)],
+            text_content="some text",
+        )
+        result = evaluate_policies([policy], classification)
+        assert result is None
+
+    def test_unknown_condition_type_ignored(self) -> None:
+        """Unknown condition types should be skipped gracefully."""
+        policy = _rule(conditions=[{
+            "type": "nonexistent_type",
+            "foo": "bar",
+        }])
+        classification = ClassificationResult(text_content="some text")
+        result = evaluate_policies([policy], classification)
+        assert result is None
