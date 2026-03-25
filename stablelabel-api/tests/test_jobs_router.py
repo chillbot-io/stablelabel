@@ -301,8 +301,8 @@ async def test_cancel_enumerating_job_sends_signal(op_client: httpx.AsyncClient,
     resp = await op_client.post(f"/tenants/{CT}/jobs/{job['id']}/cancel")
     assert resp.status_code == 200
     assert resp.json()["status"] == "failed"
-    # send_job_signal uses arq_pool.publish
-    arq_pool.publish.assert_called_once()
+    # send_job_signal uses redis.set() to store the cancel signal
+    arq_pool.set.assert_called_once()
 
 
 @pytest.mark.asyncio
@@ -842,27 +842,22 @@ async def test_get_nonexistent_job(op_client: httpx.AsyncClient):
 async def test_create_job_tenant_not_found(db_session, arq_pool):
     """Creating a job on a tenant that doesn't exist in CustomerTenant should 404.
 
-    We seed a UserTenantAccess row for a fake tenant so the RBAC check passes,
-    but the tenant lookup in create_job should fail with 404.
+    We mock check_tenant_access to bypass RBAC (since we can't create a
+    UserTenantAccess row for a non-existent tenant due to FK constraints),
+    then let the job creation code discover the tenant doesn't exist.
     """
-    from app.db.models import UserTenantAccess
+    from unittest.mock import AsyncMock, patch
 
     fake_tenant_id = uuid.uuid4()
 
-    db_session.add(UserTenantAccess(
-        user_id=OPERATOR_USER_ID,
-        customer_tenant_id=fake_tenant_id,
-        created_by="test",
-    ))
-    await db_session.flush()
-
     app = _make_operator_client(db_session, arq_pool)
     transport = httpx.ASGITransport(app=app)
-    async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
-        resp = await c.post(
-            f"/tenants/{fake_tenant_id}/jobs",
-            json={"name": "Ghost tenant job", "config": {}},
-        )
+    with patch("app.routers.jobs.check_tenant_access", new_callable=AsyncMock):
+        async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
+            resp = await c.post(
+                f"/tenants/{fake_tenant_id}/jobs",
+                json={"name": "Ghost tenant job", "config": {}},
+            )
     assert resp.status_code == 404
     assert "Tenant not found" in resp.json()["detail"]
 

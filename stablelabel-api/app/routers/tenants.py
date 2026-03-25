@@ -153,6 +153,7 @@ async def connect_tenant(
         consent_requested_at=now,
     )
     db.add(tenant)
+    await db.flush()  # materialise tenant.id for FK references below
 
     # Audit log
     db.add(AuditEvent(

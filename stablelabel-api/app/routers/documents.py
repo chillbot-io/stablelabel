@@ -218,10 +218,8 @@ async def upload_csv_labels(
             BulkItem(drive_id=drive_id, item_id=item_id, filename=filename)
         )
 
-    if len(errors) > 50:
-        errors = errors[:50] + [f"... and {len(errors) - 50} more errors"]
-
-    valid_rows = len(rows) - len(errors)
+    parse_error_count = len(errors)
+    valid_rows = len(rows) - parse_error_count
     job_id = str(uuid.uuid4())
 
     for label_id, items in items_by_label.items():
@@ -238,10 +236,14 @@ async def upload_csv_labels(
         except Exception as exc:
             errors.append(f"Label {label_id}: {exc}")
 
+    # Truncate errors after all collection is complete
+    if len(errors) > 50:
+        errors = errors[:50] + [f"... and {len(errors) - 50} more errors"]
+
     return CsvUploadResult(
         total_rows=len(rows),
         valid_rows=valid_rows,
         invalid_rows=len(rows) - valid_rows,
-        errors=errors[:100],
+        errors=errors,
         job_id=job_id,
     )

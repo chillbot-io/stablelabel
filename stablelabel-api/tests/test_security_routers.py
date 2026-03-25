@@ -58,8 +58,13 @@ async def test_resolve_domain_success(db_session: AsyncSession):
         },
     )
 
-    with patch("httpx.AsyncClient.get", new_callable=AsyncMock, return_value=oidc_response):
-        async with _client(ADMIN_USER, db_session) as c:
+    mock_client = AsyncMock()
+    mock_client.get.return_value = oidc_response
+    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+    mock_client.__aexit__ = AsyncMock(return_value=False)
+
+    async with _client(ADMIN_USER, db_session) as c:
+        with patch("httpx.AsyncClient", return_value=mock_client):
             resp = await c.get("/security/tenants/resolve/contoso.com")
 
     assert resp.status_code == 200
@@ -98,8 +103,13 @@ async def test_resolve_domain_no_tenant_id_in_issuer(db_session: AsyncSession):
         json={"issuer": "https://sts.windows.net/no-uuid-here/"},
     )
 
-    with patch("httpx.AsyncClient.get", new_callable=AsyncMock, return_value=oidc_response):
-        async with _client(ADMIN_USER, db_session) as c:
+    mock_client = AsyncMock()
+    mock_client.get.return_value = oidc_response
+    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+    mock_client.__aexit__ = AsyncMock(return_value=False)
+
+    async with _client(ADMIN_USER, db_session) as c:
+        with patch("httpx.AsyncClient", return_value=mock_client):
             resp = await c.get("/security/tenants/resolve/example.com")
 
     assert resp.status_code == 404
@@ -108,12 +118,13 @@ async def test_resolve_domain_no_tenant_id_in_issuer(db_session: AsyncSession):
 @pytest.mark.asyncio
 async def test_resolve_domain_http_error(db_session: AsyncSession):
     """Network error reaching Microsoft returns 502."""
-    with patch(
-        "httpx.AsyncClient.get",
-        new_callable=AsyncMock,
-        side_effect=httpx.ConnectError("connection failed"),
-    ):
-        async with _client(ADMIN_USER, db_session) as c:
+    mock_client = AsyncMock()
+    mock_client.get.side_effect = httpx.ConnectError("connection failed")
+    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+    mock_client.__aexit__ = AsyncMock(return_value=False)
+
+    async with _client(ADMIN_USER, db_session) as c:
+        with patch("httpx.AsyncClient", return_value=mock_client):
             resp = await c.get("/security/tenants/resolve/contoso.com")
 
     assert resp.status_code == 502

@@ -17,7 +17,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy import func, select
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.core.entra_auth import CurrentUser
 from app.core.job_states import COPY_ALLOWED_FROM, SPECIAL_ACTIONS, SSE_STOP_STATUSES, VALID_TRANSITIONS
@@ -523,11 +523,13 @@ async def job_progress_stream(
     await check_tenant_access(user, customer_tenant_id, db)
     await _get_job(job_id, customer_tenant_id, db)  # 404 if not found
 
-    # Capture IDs for the generator — the dependency-injected session is
-    # NOT used inside the loop.  Instead each poll opens a fresh session
-    # so the DB connection returns to the pool between sleeps.
+    # Capture IDs and engine for the generator — the dependency-injected
+    # session is NOT used inside the loop.  Instead each poll opens a
+    # fresh session so the DB connection returns to the pool between sleeps.
     _job_id = uuid.UUID(job_id)
     _tenant_id = uuid.UUID(customer_tenant_id)
+    _bind = db.get_bind()
+    _make_session = async_sessionmaker(_bind, expire_on_commit=False)
 
     async def event_generator():
         last_progress = None
@@ -538,7 +540,7 @@ async def job_progress_stream(
 
             # Open a short-lived session per poll so the connection is
             # released back to the pool between iterations.
-            async for poll_db in get_session():
+            async with _make_session() as poll_db:
                 stmt = select(Job).where(
                     Job.id == _job_id,
                     Job.customer_tenant_id == _tenant_id,
