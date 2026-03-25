@@ -413,6 +413,8 @@ if _PRESIDIO_AVAILABLE:
         def load(self) -> None:
             pass
 
+        _MAX_RECOGNIZER_TEXT = 500_000
+
         def analyze(
             self,
             text: str,
@@ -425,6 +427,8 @@ if _PRESIDIO_AVAILABLE:
             Phase 2: For each primary match, check if corroborative evidence
                      exists within the proximity window.
             """
+            text = text[:self._MAX_RECOGNIZER_TEXT] if len(text) > self._MAX_RECOGNIZER_TEXT else text
+
             if self.supported_entities[0] not in entities:
                 return []
 

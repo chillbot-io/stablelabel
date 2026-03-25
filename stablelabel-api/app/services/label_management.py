@@ -134,7 +134,7 @@ class LabelManagementService:
                 "/security/informationProtection/sensitivityLabels",
                 json=config.to_graph_body(),
             )
-            if status in (200, 201):
+            if status in (200, 201, 204):
                 return body
             raise GraphApiNotSupportedError(
                 f"Graph returned {status} for label creation"
@@ -214,7 +214,7 @@ class LabelManagementService:
                 "/security/informationProtection/labelPolicies",
                 json=config.to_graph_body(),
             )
-            if status in (200, 201):
+            if status in (200, 201, 204):
                 return body
             raise GraphApiNotSupportedError(
                 f"Graph returned {status} for policy creation"

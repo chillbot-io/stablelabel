@@ -29,6 +29,26 @@ from app.services.label_service import LabelService
 router = APIRouter(prefix="/tenants/{tenant_id}/labels", tags=["labels"])
 
 
+async def _audit_label_event(
+    db: AsyncSession,
+    tenant_id: str,
+    user_id: str,
+    event_type: str,
+    extra: dict[str, Any],
+) -> None:
+    """Record an audit event for a label operation and commit."""
+    ct = await db.get(CustomerTenant, uuid.UUID(tenant_id))
+    if ct:
+        db.add(AuditEvent(
+            msp_tenant_id=ct.msp_tenant_id,
+            customer_tenant_id=ct.id,
+            actor_id=uuid.UUID(user_id),
+            event_type=event_type,
+            extra=extra,
+        ))
+        await db.commit()
+
+
 @router.get("", response_model=list[SensitivityLabel])
 async def list_labels(
     tenant_id: str,
@@ -124,16 +144,7 @@ async def create_label(
         color=body.color,
     )
     result = await mgmt.create_label(tenant_id, config)
-    ct = await db.get(CustomerTenant, uuid.UUID(tenant_id))
-    if ct:
-        db.add(AuditEvent(
-            msp_tenant_id=ct.msp_tenant_id,
-            customer_tenant_id=ct.id,
-            actor_id=uuid.UUID(user.id),
-            event_type="label.created",
-            extra={"label_name": body.name},
-        ))
-        await db.commit()
+    await _audit_label_event(db, tenant_id, user.id, "label.created", {"label_name": body.name})
     return result
 
 
@@ -174,20 +185,11 @@ async def create_sublabel(
         parent_id=parent_label_id,
     )
     result = await mgmt.create_label(tenant_id, config)
-    ct = await db.get(CustomerTenant, uuid.UUID(tenant_id))
-    if ct:
-        db.add(AuditEvent(
-            msp_tenant_id=ct.msp_tenant_id,
-            customer_tenant_id=ct.id,
-            actor_id=uuid.UUID(user.id),
-            event_type="label.created",
-            extra={
-                "label_name": body.name,
-                "parent_label_id": parent_label_id,
-                "is_sublabel": True,
-            },
-        ))
-        await db.commit()
+    await _audit_label_event(db, tenant_id, user.id, "label.created", {
+        "label_name": body.name,
+        "parent_label_id": parent_label_id,
+        "is_sublabel": True,
+    })
     return result
 
 
@@ -209,16 +211,7 @@ async def update_label_definition(
         k: v for k, v in updates.items() if k != "name"
     })
     result = await mgmt.update_label(tenant_id, label_id, config)
-    ct = await db.get(CustomerTenant, uuid.UUID(tenant_id))
-    if ct:
-        db.add(AuditEvent(
-            msp_tenant_id=ct.msp_tenant_id,
-            customer_tenant_id=ct.id,
-            actor_id=uuid.UUID(user.id),
-            event_type="label.updated",
-            extra={"label_id": label_id, "updates": updates},
-        ))
-        await db.commit()
+    await _audit_label_event(db, tenant_id, user.id, "label.updated", {"label_id": label_id, "updates": updates})
     return result
 
 
@@ -233,13 +226,4 @@ async def delete_label_definition(
     """Delete a sensitivity label (Graph API, with PowerShell fallback)."""
     await check_tenant_access(user, tenant_id, db)
     await mgmt.delete_label(tenant_id, label_id)
-    ct = await db.get(CustomerTenant, uuid.UUID(tenant_id))
-    if ct:
-        db.add(AuditEvent(
-            msp_tenant_id=ct.msp_tenant_id,
-            customer_tenant_id=ct.id,
-            actor_id=uuid.UUID(user.id),
-            event_type="label.deleted",
-            extra={"label_id": label_id},
-        ))
-        await db.commit()
+    await _audit_label_event(db, tenant_id, user.id, "label.deleted", {"label_id": label_id})

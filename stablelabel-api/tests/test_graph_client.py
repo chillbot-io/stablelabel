@@ -358,7 +358,7 @@ class TestRetryLogic:
         client, mock_http, _ = _client_with_mocks([err502, err502, err502, err502])
 
         with patch("app.services.graph_client.asyncio.sleep", new_callable=AsyncMock):
-            with pytest.raises(StableLabelError, match="502"):
+            with pytest.raises(GraphThrottledError, match="bad gateway"):
                 await client.get("t1", "/items")
 
         assert mock_http.request.call_count == 4

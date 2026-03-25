@@ -11,6 +11,9 @@ import pytest
 from app.core.redis import JobSignal
 from app.worker.executor import (
     JobExecutor,
+    _LABELLING_BATCH_SIZE,
+)
+from app.worker.text_extraction import (
     _extract_text_from_bytes,
     _extract_docx,
     _extract_xlsx,
@@ -18,8 +21,6 @@ from app.worker.executor import (
     _extract_pdf,
     _validate_zip_safety,
     _ZipBombError,
-    _top_classification,
-    _LABELLING_BATCH_SIZE,
     _MAX_FILE_SIZE,
     _STREAM_THRESHOLD,
     _ZIP_MAX_ENTRIES,
@@ -27,6 +28,7 @@ from app.worker.executor import (
     _ZIP_MAX_RATIO,
     _ZIP_MAX_SINGLE_FILE,
 )
+from app.worker.shared import top_classification as _top_classification
 from app.services.policy_engine import ClassificationResult, EntityMatch
 
 

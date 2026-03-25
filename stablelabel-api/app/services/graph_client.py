@@ -226,7 +226,10 @@ class GraphClient:
 
             # Retryable errors
             if resp.status_code in _RETRYABLE:
-                retry_after = float(resp.headers.get("Retry-After", "0"))
+                try:
+                    retry_after = float(resp.headers.get("Retry-After", "0"))
+                except ValueError:
+                    retry_after = 30.0  # safe default for unparseable Retry-After
                 last_error = GraphThrottledError(
                     retry_after=retry_after,
                     message=self._extract_error(resp),
@@ -243,6 +246,7 @@ class GraphClient:
                     else:
                         await self._backoff(attempt)
                     continue
+                break  # retries exhausted — fall through to raise last_error
 
             # Non-retryable error
             raise StableLabelError(
