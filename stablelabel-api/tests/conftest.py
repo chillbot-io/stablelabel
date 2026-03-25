@@ -30,6 +30,7 @@ os.environ.setdefault("SL_SESSION_SECRET", "test-secret-not-for-production")
 
 import httpx
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.pool import NullPool
 from testcontainers.postgres import PostgresContainer
 from testcontainers.redis import RedisContainer
 
@@ -130,7 +131,7 @@ def redis_url(redis_container) -> str:
 @pytest.fixture(scope="session")
 async def engine(pg_url):
     """Create async engine and apply all Alembic migrations."""
-    eng = create_async_engine(pg_url, echo=False)
+    eng = create_async_engine(pg_url, echo=False, poolclass=NullPool)
 
     # Run Alembic migrations synchronously using a sync engine
     # (avoids conflict with env.py's async_engine_from_config)
