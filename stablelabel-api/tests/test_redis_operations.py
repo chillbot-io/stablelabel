@@ -103,7 +103,7 @@ class TestCheckJobSignal:
     async def test_invalid_value_raises(self, mock_redis: AsyncMock) -> None:
         mock_redis.get.return_value = b"garbage"
 
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match="garbage"):
             await check_job_signal(mock_redis, JOB_ID)
 
     @pytest.mark.asyncio
@@ -117,7 +117,7 @@ class TestCheckJobSignal:
     async def test_corrupted_str_raises(self, mock_redis: AsyncMock) -> None:
         mock_redis.get.return_value = "not_a_signal"
 
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match="not_a_signal"):
             await check_job_signal(mock_redis, JOB_ID)
 
 

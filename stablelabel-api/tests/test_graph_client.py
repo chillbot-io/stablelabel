@@ -479,7 +479,7 @@ class TestLockedError:
         resp = _resp(423, {"error": {"code": "itemLocked", "message": "locked"}})
         client, mock_http, _ = _client_with_mocks(resp)
 
-        with pytest.raises(GraphLockedError):
+        with pytest.raises(GraphLockedError, match="locked.*423"):
             await client.get("t1", "/items/x")
 
         assert mock_http.request.call_count == 1

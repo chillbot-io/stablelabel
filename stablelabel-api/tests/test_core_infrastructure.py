@@ -260,70 +260,32 @@ class TestRequireRole:
     """require_role() returns a dependency callable that checks role level."""
 
     @pytest.mark.asyncio
-    async def test_viewer_allows_viewer(self) -> None:
-        check = require_role("Viewer")
-        user = _make_user("Viewer")
+    @pytest.mark.parametrize("min_role,user_role", [
+        ("Viewer", "Viewer"),
+        ("Viewer", "Operator"),
+        ("Viewer", "Admin"),
+        ("Operator", "Operator"),
+        ("Operator", "Admin"),
+        ("Admin", "Admin"),
+    ])
+    async def test_allows_sufficient_role(self, min_role, user_role) -> None:
+        check = require_role(min_role)
+        user = _make_user(user_role)
         result = await check(user=user)
         assert result is user
 
     @pytest.mark.asyncio
-    async def test_viewer_allows_operator(self) -> None:
-        check = require_role("Viewer")
-        user = _make_user("Operator")
-        result = await check(user=user)
-        assert result is user
-
-    @pytest.mark.asyncio
-    async def test_viewer_allows_admin(self) -> None:
-        check = require_role("Viewer")
-        user = _make_user("Admin")
-        result = await check(user=user)
-        assert result is user
-
-    @pytest.mark.asyncio
-    async def test_operator_blocks_viewer(self) -> None:
-        check = require_role("Operator")
-        user = _make_user("Viewer")
+    @pytest.mark.parametrize("min_role,user_role", [
+        ("Operator", "Viewer"),
+        ("Admin", "Viewer"),
+        ("Admin", "Operator"),
+    ])
+    async def test_blocks_insufficient_role(self, min_role, user_role) -> None:
+        check = require_role(min_role)
+        user = _make_user(user_role)
         with pytest.raises(HTTPException) as exc_info:
             await check(user=user)
         assert exc_info.value.status_code == 403
-
-    @pytest.mark.asyncio
-    async def test_operator_allows_operator(self) -> None:
-        check = require_role("Operator")
-        user = _make_user("Operator")
-        result = await check(user=user)
-        assert result is user
-
-    @pytest.mark.asyncio
-    async def test_operator_allows_admin(self) -> None:
-        check = require_role("Operator")
-        user = _make_user("Admin")
-        result = await check(user=user)
-        assert result is user
-
-    @pytest.mark.asyncio
-    async def test_admin_blocks_viewer(self) -> None:
-        check = require_role("Admin")
-        user = _make_user("Viewer")
-        with pytest.raises(HTTPException) as exc_info:
-            await check(user=user)
-        assert exc_info.value.status_code == 403
-
-    @pytest.mark.asyncio
-    async def test_admin_blocks_operator(self) -> None:
-        check = require_role("Admin")
-        user = _make_user("Operator")
-        with pytest.raises(HTTPException) as exc_info:
-            await check(user=user)
-        assert exc_info.value.status_code == 403
-
-    @pytest.mark.asyncio
-    async def test_admin_allows_admin(self) -> None:
-        check = require_role("Admin")
-        user = _make_user("Admin")
-        result = await check(user=user)
-        assert result is user
 
     @pytest.mark.asyncio
     async def test_unknown_role_treated_as_lowest(self) -> None:
