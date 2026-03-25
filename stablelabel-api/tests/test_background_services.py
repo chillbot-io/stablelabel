@@ -232,7 +232,7 @@ class TestUpsertLabelDefinitions:
         assert added.graph_label_id == "new-1"
         assert added.name == "Confidential"
         assert added.customer_tenant_id == ct_id
-        db.commit.assert_awaited_once()
+        db.flush.assert_awaited_once()
 
     @pytest.mark.asyncio
     async def test_updates_existing_label(self) -> None:
@@ -258,7 +258,7 @@ class TestUpsertLabelDefinitions:
         assert existing_ld.priority == 5
         # Should NOT call db.add for updates
         db.add.assert_not_called()
-        db.commit.assert_awaited_once()
+        db.flush.assert_awaited_once()
 
     @pytest.mark.asyncio
     async def test_marks_removed_labels_inactive(self) -> None:
@@ -286,19 +286,16 @@ class TestUpsertLabelDefinitions:
         await _upsert_label_definitions(db, uuid.uuid4(), [])
 
         db.add.assert_not_called()
-        db.commit.assert_awaited_once()
+        db.flush.assert_awaited_once()
 
     @pytest.mark.asyncio
-    async def test_commit_failure_rolls_back(self) -> None:
+    async def test_flush_failure_raises(self) -> None:
         db = _mock_db()
         db.execute.return_value = _mock_scalars([])
-        db.commit = AsyncMock(side_effect=Exception("DB down"))
-        db.rollback = AsyncMock()
+        db.flush = AsyncMock(side_effect=Exception("DB down"))
 
         with pytest.raises(Exception, match="DB down"):
             await _upsert_label_definitions(db, uuid.uuid4(), [_make_label()])
-
-        db.rollback.assert_awaited_once()
 
 
 # =========================================================================

@@ -305,7 +305,9 @@ async def update_job(
         job.name = body.name
     if body.config is not None:
         job.config = body.config.model_dump(exclude_none=True)
-    if body.schedule_cron is not None:
+    # Use model_fields_set to distinguish "not provided" from "explicitly null".
+    # Sending {"schedule_cron": null} clears the schedule.
+    if "schedule_cron" in body.model_fields_set:
         job.schedule_cron = body.schedule_cron
 
     await db.commit()

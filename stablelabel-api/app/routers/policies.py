@@ -201,8 +201,7 @@ async def create_policy(
         is_builtin=False,
     )
     db.add(policy)
-    await db.commit()
-    await db.refresh(policy)
+    await db.flush()  # materialise policy.id for the audit event
 
     ct = await db.get(CustomerTenant, uuid.UUID(customer_tenant_id))
     if ct:
@@ -213,8 +212,9 @@ async def create_policy(
             event_type="policy.created",
             extra={"policy_name": body.name, "policy_id": str(policy.id)},
         ))
-        await db.commit()
 
+    await db.commit()
+    await db.refresh(policy)
     return _policy_to_response(policy)
 
 
@@ -279,9 +279,6 @@ async def update_policy(
         if body.is_enabled is not None:
             policy.is_enabled = body.is_enabled
 
-    await db.commit()
-    await db.refresh(policy)
-
     ct = await db.get(CustomerTenant, uuid.UUID(customer_tenant_id))
     if ct:
         db.add(AuditEvent(
@@ -291,8 +288,9 @@ async def update_policy(
             event_type="policy.updated",
             extra={"policy_name": policy.name, "policy_id": str(policy.id)},
         ))
-        await db.commit()
 
+    await db.commit()
+    await db.refresh(policy)
     return _policy_to_response(policy)
 
 

@@ -145,10 +145,6 @@ async def consent_callback(
         )
         return HTMLResponse(_NOT_FOUND_HTML, status_code=400)
 
-    if not ct:
-        logger.warning("Consent callback: no pending tenant found for %s", tenant)
-        return HTMLResponse(_NOT_FOUND_HTML, status_code=404)
-
     ct.consent_status = "active"
     ct.consented_at = datetime.now(UTC)
 

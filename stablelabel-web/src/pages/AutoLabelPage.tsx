@@ -606,10 +606,18 @@ function StatCard({ label, value, total }: { label: string; value: number; total
 function countEntityTypes(policies: Policy[]): number {
   const types = new Set<string>();
   for (const p of policies) {
+    // Legacy format: conditions[].entity_types
     const conditions = (p.rules.conditions ?? []) as Array<{ type: string; entity_types?: string[] }>;
     for (const c of conditions) {
       if (c.type === 'entity_detected' && c.entity_types) {
         c.entity_types.forEach((t) => types.add(t));
+      }
+    }
+    // SIT-aligned format: patterns[].primary_match.entity_types
+    const patterns = (p.rules.patterns ?? []) as Array<{ primary_match?: { type?: string; entity_types?: string[] } }>;
+    for (const pat of patterns) {
+      if (pat.primary_match?.type === 'entity' && pat.primary_match.entity_types) {
+        pat.primary_match.entity_types.forEach((t) => types.add(t));
       }
     }
   }
@@ -646,6 +654,20 @@ function parseCsvLine(line: string): string[] {
 }
 
 function conditionSummary(rules: Record<string, unknown>): string {
+  // SIT-aligned format: summarize patterns
+  const patterns = (rules.patterns ?? []) as Array<{ primary_match?: { type?: string; entity_types?: string[] }; confidence_level?: number }>;
+  if (patterns.length > 0) {
+    const parts = patterns.map((pat) => {
+      const pm = pat.primary_match;
+      if (!pm) return 'unknown';
+      if (pm.type === 'entity') return `${(pm.entity_types ?? []).length} entity type(s)`;
+      if (pm.type === 'regex') return 'regex match';
+      return pm.type ?? 'unknown';
+    });
+    return `${patterns.length} pattern(s): ${parts.join(', ')}`;
+  }
+
+  // Legacy format: summarize conditions
   const conditions = (rules.conditions ?? []) as Array<{ type: string; entity_types?: string[]; patterns?: string[]; keywords?: string[] }>;
   if (conditions.length === 0) return 'No conditions';
   const parts = conditions.map((c) => {

@@ -417,6 +417,16 @@ class JobExecutor:
                 if not drive_id:
                     continue
 
+                # Check for pause/cancel signal between drives within a site
+                signal = await check_job_signal(self._redis, str(job.id))
+                if signal:
+                    await self._handle_signal(job, signal, "enumeration", {
+                        "phase": "enumeration",
+                        "sites_completed": sites_completed,
+                        "total_files_found": total_files_found,
+                    }, batch_number)
+                    return
+
                 # Get all items in the drive recursively
                 try:
                     items = await self._graph.get_all_pages(

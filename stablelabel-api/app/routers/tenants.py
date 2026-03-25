@@ -231,6 +231,12 @@ async def confirm_consent(
     await db.commit()
     await db.refresh(tenant)
 
+    # Get user count for response
+    count_stmt = select(func.count(UserTenantAccess.id)).where(
+        UserTenantAccess.customer_tenant_id == tenant.id
+    )
+    user_count = (await db.execute(count_stmt)).scalar() or 0
+
     return TenantResponse(
         id=str(tenant.id),
         entra_tenant_id=tenant.entra_tenant_id,
@@ -239,6 +245,7 @@ async def confirm_consent(
         consent_requested_at=tenant.consent_requested_at,
         consented_at=tenant.consented_at,
         created_at=tenant.created_at,
+        user_count=user_count,
     )
 
 

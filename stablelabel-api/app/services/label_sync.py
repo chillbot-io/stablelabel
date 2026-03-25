@@ -60,9 +60,14 @@ async def sync_labels_for_all_tenants(
                 tenant.display_name,
                 tid,
             )
-        except (StableLabelError, httpx.HTTPError) as exc:
+        except Exception as exc:
+            # Roll back the failed tenant's changes so the session stays usable
+            await db.rollback()
             summary["failed"] += 1
             logger.warning("Failed to sync labels for tenant %s: %s", tid, exc)
+
+    # Commit all successful tenant syncs in one transaction
+    await db.commit()
 
     logger.info(
         "Label sync complete: %d synced, %d failed, %d skipped",
@@ -132,9 +137,5 @@ async def _upsert_label_definitions(
             ld.is_active = False
             ld.fetched_at = now
 
-    try:
-        await db.commit()
-    except Exception as exc:
-        logger.error("Failed to commit label sync for tenant %s: %s", customer_tenant_id, exc)
-        await db.rollback()
-        raise
+    # Flush changes — the caller's savepoint or commit handles persistence.
+    await db.flush()
