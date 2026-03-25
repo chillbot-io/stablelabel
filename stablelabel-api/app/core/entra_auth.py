@@ -162,7 +162,7 @@ async def _jit_provision(
             role="Viewer",
         )
         db.add(user)
-        logger.info("JIT provisioned user %s as Viewer", email)
+        logger.info("JIT provisioned new user as Viewer (tenant=%s)", entra_tid)
     else:
         # DB role is authoritative — do NOT overwrite from token claims.
         user.last_seen = datetime.datetime.now(datetime.UTC)

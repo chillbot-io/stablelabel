@@ -66,3 +66,44 @@ jobs:
         with:
           name: pester-results
           path: pester-results.xml
+
+  # ── Security scanning ──────────────────────────────────────
+  security-scan:
+    name: Security Scanning
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      # Python dependency audit
+      - name: Audit Python dependencies
+        working-directory: stablelabel-api
+        run: |
+          pip install pip-audit
+          pip-audit -r <(pip install -e ".[dev]" --dry-run --report - 2>/dev/null || true) || true
+          pip install -e "."
+          pip-audit
+
+      # Node dependency audit
+      - name: Audit Node dependencies (GUI)
+        working-directory: stablelabel-gui
+        run: npm audit --omit=dev || true
+
+      - name: Audit Node dependencies (Web)
+        working-directory: stablelabel-web
+        run: npm audit --omit=dev || true
+
+      # Python SAST with bandit
+      - name: Run bandit (Python SAST)
+        working-directory: stablelabel-api
+        run: |
+          pip install bandit
+          bandit -r app/ -ll -ii --skip B101

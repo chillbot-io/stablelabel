@@ -108,6 +108,14 @@ async def consent_callback(
         logger.error("Consent callback missing tenant parameter")
         return HTMLResponse(_NOT_FOUND_HTML, status_code=400)
 
+    # Validate that admin_consent is actually "True"
+    if admin_consent != "True":
+        logger.warning(
+            "Consent callback received admin_consent=%s (expected 'True') for tenant %s",
+            admin_consent, tenant,
+        )
+        return HTMLResponse(_DENIED_HTML, status_code=400)
+
     # Verify the HMAC-signed state token to prevent cross-MSP tenant claim.
     # The state encodes "customer_tenant_id:signature" so we can look up the
     # exact row instead of guessing which MSP's pending row to activate.

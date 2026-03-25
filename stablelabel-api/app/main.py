@@ -70,15 +70,19 @@ app.add_middleware(
 if _settings.cors_origins and "localhost" not in _settings.cors_origins:
     app.openapi_url = None
 
+# Health endpoint at root (no version prefix — used by load balancers)
 app.include_router(health.router)
-app.include_router(labels.router)
-app.include_router(documents.router)
-app.include_router(tenants.router)
-app.include_router(onboard.router)
-app.include_router(users.router)
-app.include_router(audit.router)
-app.include_router(jobs.router)
-app.include_router(policies.router)
-app.include_router(policies.sit_router)
-app.include_router(reports.router)
-app.include_router(sites.router)
+
+# All API routes under /v1 prefix for versioning
+_V1 = "/v1"
+app.include_router(labels.router, prefix=_V1)
+app.include_router(documents.router, prefix=_V1)
+app.include_router(tenants.router, prefix=_V1)
+app.include_router(onboard.router, prefix=_V1)
+app.include_router(users.router, prefix=_V1)
+app.include_router(audit.router, prefix=_V1)
+app.include_router(jobs.router, prefix=_V1)
+app.include_router(policies.router, prefix=_V1)
+app.include_router(policies.sit_router, prefix=_V1)
+app.include_router(reports.router, prefix=_V1)
+app.include_router(sites.router, prefix=_V1)

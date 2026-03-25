@@ -257,10 +257,14 @@ app.whenReady().then(() => {
       error: (msg: unknown) => logger.error('UPDATER', String(msg)),
       debug: (msg: unknown) => logger.debug('UPDATER', String(msg)),
     };
-    autoUpdater.autoDownload = true;
+    // Don't auto-download — notify the user first so they can choose when.
+    // This prevents a compromised update feed from silently replacing the app.
+    autoUpdater.autoDownload = false;
     autoUpdater.autoInstallOnAppQuit = true;
     autoUpdater.on('update-available', (info) => {
       logger.info('UPDATER', `Update available: ${info.version}`);
+      // Notify renderer so the UI can show an "Update available" prompt
+      mainWindow?.webContents.send('update:available', info.version);
     });
     autoUpdater.on('update-downloaded', (info) => {
       logger.info('UPDATER', `Update downloaded: ${info.version} — will install on quit`);

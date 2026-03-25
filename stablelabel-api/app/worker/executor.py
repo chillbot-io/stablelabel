@@ -138,7 +138,7 @@ def _extract_docx(content: bytes) -> str:
     """Extract text from .docx by parsing word/document.xml inside the ZIP."""
     import zipfile
     import io
-    import xml.etree.ElementTree as ET
+    import defusedxml.ElementTree as ET
 
     try:
         with zipfile.ZipFile(io.BytesIO(content)) as zf:
@@ -169,7 +169,7 @@ def _extract_xlsx(content: bytes) -> str:
     """
     import zipfile
     import io
-    import xml.etree.ElementTree as ET
+    import defusedxml.ElementTree as ET
 
     ns = {"s": "http://schemas.openxmlformats.org/spreadsheetml/2006/main"}
 
@@ -217,7 +217,7 @@ def _extract_pptx(content: bytes) -> str:
     """Extract text from .pptx slide XML inside the ZIP."""
     import zipfile
     import io
-    import xml.etree.ElementTree as ET
+    import defusedxml.ElementTree as ET
 
     try:
         with zipfile.ZipFile(io.BytesIO(content)) as zf:
