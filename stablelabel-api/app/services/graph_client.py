@@ -82,7 +82,12 @@ class GraphClient:
     async def get_all_pages(
         self, tenant_id: str, path: str, **params: Any
     ) -> list[dict[str, Any]]:
-        """Follow @odata.nextLink to collect all pages."""
+        """Follow @odata.nextLink to collect all pages.
+
+        Note: nextLink URLs from Microsoft already include all original query
+        params ($filter, $select, etc.), so we do NOT re-append the caller's
+        params on subsequent pages — that would double them up.
+        """
         from urllib.parse import urlparse
 
         items: list[dict[str, Any]] = []
@@ -96,9 +101,10 @@ class GraphClient:
                 raise StableLabelError(
                     f"Refusing to follow @odata.nextLink to non-Graph host: {parsed.hostname}"
                 )
-            # nextLink is a full URL — strip the base to get the path+query
-            relative = next_link.removeprefix(GRAPH_BASE)
-            result = await self.get(tenant_id, relative)
+            # nextLink is a full URL with all original query params baked in.
+            # Pass it as-is (don't strip to relative — use the full URL so the
+            # query string from Microsoft is preserved exactly).
+            result = await self._request("GET", tenant_id, next_link)
             items.extend(result.get("value", []))
 
         return items

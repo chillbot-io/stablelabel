@@ -72,7 +72,7 @@ def _validate_regex_patterns_in_rules(rules: dict) -> None:
                 if err:
                     errors.append(err)
 
-        evidence = pattern_block.get("corroborative_evidence", {})
+        evidence = pattern_block.get("corroborative_evidence") or {}
         for match in evidence.get("matches", []):
             if match.get("type") in ("regex", "inline_regex"):
                 for p in match.get("patterns", []):

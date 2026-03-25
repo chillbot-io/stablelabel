@@ -23,22 +23,16 @@ from __future__ import annotations
 import fnmatch
 import logging
 import re
-import signal
 from dataclasses import dataclass, field
 
 from pydantic import BaseModel
-
-from app.models.policy_rules import migrate_legacy_rules
 
 logger = logging.getLogger(__name__)
 
 # ── Regex safety ─────────────────────────────────────────────────
 #
 # User-supplied regex patterns can cause catastrophic backtracking (ReDoS).
-# We validate patterns at creation time and enforce a timeout at execution time.
-
-# Maximum time (seconds) for a single regex finditer/findall call
-_REGEX_TIMEOUT_SECONDS = 5
+# We validate patterns at creation time and cap text length at execution time.
 
 # Patterns known to cause catastrophic backtracking: nested quantifiers
 _DANGEROUS_REGEX_PATTERNS = re.compile(

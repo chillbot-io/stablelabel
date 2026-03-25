@@ -349,7 +349,8 @@ class TestCreateSublabel:
         assert resp.json()["id"] == "sub-1"
 
     def test_parent_not_found_404(self, label_client, label_svc, label_mgmt):
-        label_svc.get_label.return_value = None
+        from app.core.exceptions import LabelNotFoundError
+        label_svc.get_label.side_effect = LabelNotFoundError("not found")
         resp = label_client.post(
             f"/tenants/{TID}/labels/missing/sublabels", json={"name": "PCI"}
         )

@@ -13,6 +13,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.exceptions import LabelNotFoundError
+
 import uuid
 
 from app.core.entra_auth import CurrentUser
@@ -59,7 +61,10 @@ async def get_label(
 ) -> SensitivityLabel:
     """Get a single label by ID.  Raises 404 if disabled or deleted."""
     await check_tenant_access(user, tenant_id, db)
-    return await svc.get_label(tenant_id, label_id)
+    try:
+        return await svc.get_label(tenant_id, label_id)
+    except LabelNotFoundError:
+        raise HTTPException(404, "Label not found") from None
 
 
 # ── Label management (write operations) ────────────────────────
@@ -155,9 +160,10 @@ async def create_sublabel(
     await check_tenant_access(user, tenant_id, db)
 
     # Verify parent label exists
-    parent = await svc.get_label(tenant_id, parent_label_id)
-    if not parent:
-        raise HTTPException(404, f"Parent label {parent_label_id} not found")
+    try:
+        await svc.get_label(tenant_id, parent_label_id)
+    except LabelNotFoundError:
+        raise HTTPException(404, "Parent label not found") from None
 
     config = LabelConfig(
         name=body.name,

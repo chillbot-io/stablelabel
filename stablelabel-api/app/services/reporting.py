@@ -17,8 +17,6 @@ import asyncio
 import logging
 import threading
 import uuid
-from dataclasses import dataclass
-from datetime import datetime
 from typing import Any
 
 try:
@@ -27,12 +25,6 @@ except ImportError:
     duckdb = None  # type: ignore[assignment]
 
 logger = logging.getLogger(__name__)
-
-
-@dataclass
-class ReportRow:
-    """A single row from a reporting query."""
-    data: dict[str, Any]
 
 
 class ReportingService:

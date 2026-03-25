@@ -34,8 +34,9 @@ _analyzer: Any = None
 _analyzer_loaded = False
 _analyzer_lock = threading.Lock()
 
-# Registered SIT entity types (populated by register_tenant_sits)
-_sit_entity_types: list[str] = []
+# Registered SIT entity types per tenant (populated by register_tenant_sits)
+# Keyed by tenant_id to prevent cross-tenant contamination.
+_sit_entity_types_by_tenant: dict[str, list[str]] = {}
 _sit_lock = threading.Lock()
 
 # Thread pool for CPU-bound presidio work so we never block the event loop.
@@ -468,8 +469,6 @@ def register_tenant_sits(sit_definitions: list[dict]) -> list[str]:
             },
         ])
     """
-    global _sit_entity_types
-
     analyzer = _get_analyzer()
     if analyzer is None:
         return []
@@ -478,27 +477,33 @@ def register_tenant_sits(sit_definitions: list[dict]) -> list[str]:
 
     with _sit_lock:
         registered = register_sit_recognizers(analyzer, sit_definitions)
-        # Track registered types so they're included in scans
-        for et in registered:
-            if et not in _sit_entity_types:
-                _sit_entity_types.append(et)
+        # Track registered types per tenant to prevent cross-tenant contamination
+        tenant_id = sit_definitions[0].get("tenant_id", "") if sit_definitions else ""
+        if tenant_id:
+            tenant_types = _sit_entity_types_by_tenant.setdefault(tenant_id, [])
+            for et in registered:
+                if et not in tenant_types:
+                    tenant_types.append(et)
         return registered
 
 
-def get_all_entity_types() -> list[str]:
-    """Return all scannable entity types (default + registered SITs)."""
-    return DEFAULT_ENTITIES + list(_sit_entity_types)
+def get_all_entity_types(tenant_id: str = "") -> list[str]:
+    """Return scannable entity types (default + tenant-specific SITs)."""
+    with _sit_lock:
+        tenant_types = _sit_entity_types_by_tenant.get(tenant_id, [])
+    return DEFAULT_ENTITIES + list(tenant_types)
 
 
-def get_sit_entity_types() -> list[str]:
-    """Return only the registered SIT entity types."""
-    return list(_sit_entity_types)
+def get_sit_entity_types(tenant_id: str = "") -> list[str]:
+    """Return only the registered SIT entity types for a tenant."""
+    with _sit_lock:
+        return list(_sit_entity_types_by_tenant.get(tenant_id, []))
 
 
 def clear_sit_recognizers() -> None:
     """Remove all registered SIT recognizers. Used for testing and tenant switches."""
-    global _sit_entity_types
+    global _sit_entity_types_by_tenant
     with _sit_lock:
-        _sit_entity_types = []
+        _sit_entity_types_by_tenant.clear()
     # Note: Presidio doesn't support removing individual recognizers from the registry.
     # In production, the analyzer is recreated per-tenant or SITs are registered once.

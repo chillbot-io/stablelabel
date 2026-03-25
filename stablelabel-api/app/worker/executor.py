@@ -312,18 +312,19 @@ class JobExecutor:
             if job.status == "running":
                 job.status = "completed"
                 job.completed_at = datetime.now(UTC)
-                self._db.add(AuditEvent(
-                    msp_tenant_id=msp_tenant_id,
-                    customer_tenant_id=job.customer_tenant_id,
-                    job_id=job.id,
-                    event_type="job.completed",
-                    extra={
-                        "total_files": job.total_files,
-                        "processed_files": job.processed_files,
-                        "failed_files": job.failed_files,
-                        "skipped_files": job.skipped_files,
-                    },
-                ))
+                if msp_tenant_id:
+                    self._db.add(AuditEvent(
+                        msp_tenant_id=msp_tenant_id,
+                        customer_tenant_id=job.customer_tenant_id,
+                        job_id=job.id,
+                        event_type="job.completed",
+                        extra={
+                            "total_files": job.total_files,
+                            "processed_files": job.processed_files,
+                            "failed_files": job.failed_files,
+                            "skipped_files": job.skipped_files,
+                        },
+                    ))
                 await self._db.commit()
                 logger.info("Job %s completed", job_id)
 
@@ -536,13 +537,16 @@ class JobExecutor:
             # Check for pause/cancel signal between batches
             signal = await check_job_signal(self._redis, str(job.id))
             if signal:
+                # Store empty applied_labels in signal checkpoint — per-batch
+                # labels are already recorded in normal batch checkpoints.
+                # Using cumulative list here would cause double-rollback.
                 await self._handle_signal(job, signal, "labelling", {
                     "phase": "labelling",
                     "files_processed_index": start_index + i,
                     "files_labelled": files_labelled,
                     "files_skipped": files_skipped,
                     "files_failed": files_failed,
-                    "applied_labels": applied_labels,
+                    "applied_labels": [],
                 }, batch_number)
                 return
 
@@ -806,7 +810,10 @@ class JobExecutor:
             )
             self._db.add(cp)
 
-            # Update job counters
+            # Update job counters — use local tracking for in-process accuracy
+            # and let the DB commit persist the values. Deferred tasks use their
+            # own SQL increments that don't conflict because they only touch
+            # processed_files for rows the executor already committed.
             job.processed_files = files_labelled + files_skipped + files_failed
             job.failed_files = files_failed
             job.skipped_files = files_skipped
@@ -877,6 +884,11 @@ class JobExecutor:
             batch_rollback_failed = 0
 
             for entry in batch:
+                # Skip dry-run entries — labels were never actually applied
+                if entry.get("dry_run"):
+                    rolled_back += 1
+                    continue
+
                 drive_id = entry.get("drive_id", "")
                 item_id = entry.get("item_id", "")
                 previous_label_id = entry.get("previous_label_id", "")
@@ -1154,7 +1166,9 @@ class JobExecutor:
             )
             return False
 
-        # Create placeholder ScanResult with outcome="deferred"
+        # Create placeholder ScanResult with outcome="deferred".
+        # Must be committed (not just flushed) so the deferred task running
+        # in its own session can see and UPDATE it.
         scan_result = ScanResult(
             customer_tenant_id=job.customer_tenant_id,
             job_id=job.id,
@@ -1164,7 +1178,8 @@ class JobExecutor:
             outcome="deferred",
         )
         self._db.add(scan_result)
-        await self._db.flush()  # get the generated id
+        await self._db.flush()
+        await self._db.commit()
 
         # Cap text size to prevent Redis memory exhaustion.
         # 1MB is enough for classification — larger documents are truncated.

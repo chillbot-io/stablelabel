@@ -589,13 +589,16 @@ async def job_progress_stream(
     await check_tenant_access(user, customer_tenant_id, db)
     await _get_job(job_id, customer_tenant_id, db)  # 404 if not found
 
-    # Capture IDs and engine for the generator — the dependency-injected
-    # session is NOT used inside the loop.  Instead each poll opens a
-    # fresh session so the DB connection returns to the pool between sleeps.
+    # Capture IDs for the generator — the dependency-injected session is NOT
+    # used inside the loop.  Instead each poll opens a fresh session from the
+    # module-level factory so the DB connection returns to the pool between sleeps.
+    from app.db.base import _session_factory
+
     _job_id = uuid.UUID(job_id)
     _tenant_id = uuid.UUID(customer_tenant_id)
-    _bind = db.get_bind()
-    _make_session = async_sessionmaker(_bind, expire_on_commit=False)
+    if _session_factory is None:
+        raise HTTPException(500, "Database not initialised")
+    _make_session = _session_factory
 
     async def event_generator():
         last_progress = None

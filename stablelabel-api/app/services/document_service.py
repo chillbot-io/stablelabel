@@ -272,7 +272,7 @@ class DocumentService:
         mode: str = "label_only",
         dry_run: bool = False,
         graph: "GraphClient | None" = None,
-    ) -> "BulkLabelResponse":
+    ) -> "BulkRemoveResponse":
         """Remove labels from multiple files.
 
         Modes:
