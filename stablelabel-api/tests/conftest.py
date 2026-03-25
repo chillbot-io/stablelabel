@@ -63,7 +63,7 @@ def _make_current_user(
 ) -> CurrentUser:
     return CurrentUser(
         id=str(user_id),
-        entra_oid=f"oid-{user_id}",
+        entra_oid=str(user_id),
         msp_tenant_id=str(msp_tenant_id),
         entra_tenant_id=ENTRA_TENANT_ID,
         email=f"{role.lower()}@test.example",
@@ -210,7 +210,7 @@ async def _seed(session: AsyncSession) -> None:
             User(
                 id=uid,
                 msp_tenant_id=MSP_TENANT_ID,
-                entra_oid=f"oid-{uid}",
+                entra_oid=str(uid),
                 email=email,
                 display_name=f"Test {role}",
                 role=role,
