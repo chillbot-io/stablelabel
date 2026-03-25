@@ -43,24 +43,44 @@ _classifier_pool = ThreadPoolExecutor(max_workers=2, thread_name_prefix="presidi
 
 # Default entity types to scan for (raw PII/PCI)
 DEFAULT_ENTITIES = [
+    # ── Global / Universal ────────────────────────────────────
     "CREDIT_CARD",
     "CRYPTO",
+    "DATE_TIME",
     "EMAIL_ADDRESS",
     "IBAN_CODE",
     "IP_ADDRESS",
+    "LOCATION",
     "MEDICAL_LICENSE",
+    "NRP",
+    "ORGANIZATION",
     "PERSON",
     "PHONE_NUMBER",
+    "URL",
+    # ── United States ─────────────────────────────────────────
     "US_BANK_NUMBER",
     "US_DRIVER_LICENSE",
     "US_ITIN",
     "US_PASSPORT",
     "US_SSN",
+    # ── United Kingdom ────────────────────────────────────────
     "UK_NHS",
+    "UK_NINO",
+    # ── European Union ────────────────────────────────────────
+    "ES_NIF",
+    "IT_FISCAL_CODE",
+    "PL_PESEL",
+    "DE_TAX_ID",
+    # ── Australia ─────────────────────────────────────────────
     "AU_ABN",
     "AU_ACN",
     "AU_TFN",
     "AU_MEDICARE",
+    # ── India ─────────────────────────────────────────────────
+    "IN_PAN",
+    "IN_AADHAAR",
+    # ── Singapore ─────────────────────────────────────────────
+    "SG_NRIC_FIN",
 ]
 
 # Chunking thresholds (in characters)
@@ -71,7 +91,12 @@ CHUNK_TIMEOUT_SECONDS = 30  # max seconds per chunk before we give up and move o
 
 
 def _get_analyzer() -> Any:
-    """Lazy-load the presidio analyzer engine (thread-safe)."""
+    """Lazy-load the presidio analyzer engine (thread-safe).
+
+    After creating the engine, registers custom PatternRecognizers for
+    entities that Presidio doesn't natively support in English (e.g.
+    EU national IDs, IN_AADHAAR, SG_NRIC_FIN, UK_NINO).
+    """
     global _analyzer, _analyzer_loaded
 
     if _analyzer_loaded:
@@ -86,6 +111,7 @@ def _get_analyzer() -> Any:
             from presidio_analyzer import AnalyzerEngine
 
             _analyzer = AnalyzerEngine()
+            _register_missing_recognizers(_analyzer)
             logger.info("Presidio analyzer loaded successfully")
         except ImportError:
             logger.warning(
@@ -97,6 +123,46 @@ def _get_analyzer() -> Any:
         _analyzer_loaded = True
 
     return _analyzer
+
+
+def _register_missing_recognizers(analyzer: Any) -> None:
+    """Register PatternRecognizers for DEFAULT_ENTITIES that lack an 'en' recognizer.
+
+    Many Presidio built-ins (ES_NIF, IT_FISCAL_CODE, PL_PESEL, etc.) only
+    register for their native language. We create English-language pattern
+    recognizers from ENTITY_PATTERNS so they work in our English-only pipeline.
+    """
+    try:
+        from presidio_analyzer import Pattern, PatternRecognizer
+    except ImportError:
+        return
+
+    from app.services.sit_recognizers import ENTITY_PATTERNS
+
+    # Entities that already have a recognizer for "en"
+    supported = set(analyzer.get_supported_entities(language="en"))
+
+    for entity in DEFAULT_ENTITIES:
+        if entity in supported:
+            continue
+
+        patterns = ENTITY_PATTERNS.get(entity)
+        if not patterns:
+            logger.debug("No fallback patterns for %s — skipping", entity)
+            continue
+
+        presidio_patterns = [
+            Pattern(name=f"{entity}_pat{i}", regex=pat, score=0.5)
+            for i, pat in enumerate(patterns)
+        ]
+        recognizer = PatternRecognizer(
+            supported_entity=entity,
+            name=f"StableLabel_{entity}_Recognizer",
+            patterns=presidio_patterns,
+            supported_language="en",
+        )
+        analyzer.registry.add_recognizer(recognizer)
+        logger.info("Registered fallback recognizer for %s (en)", entity)
 
 
 # ── Sync classification (runs in thread pool) ─────────────────
@@ -126,6 +192,19 @@ def classify_content(
         )
 
     scan_entities = entities or get_all_entity_types()
+
+    # Filter to entities that actually have a recognizer in this language,
+    # so Presidio doesn't silently return empty results.
+    try:
+        raw_supported = analyzer.get_supported_entities(language=language)
+        if isinstance(raw_supported, list):
+            supported = set(raw_supported)
+            scan_entities = [e for e in scan_entities if e in supported]
+    except (TypeError, AttributeError):
+        pass  # gracefully skip filtering (e.g. mocked analyzer)
+
+    if not scan_entities:
+        return ClassificationResult(filename=filename, text_content=text)
 
     try:
         results = analyzer.analyze(

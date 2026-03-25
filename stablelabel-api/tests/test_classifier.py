@@ -921,7 +921,8 @@ class TestClassifyContentWithPresidio:
     def test_detects_ssn(self) -> None:
         from app.services.classifier import classify_content
 
-        result = classify_content("My SSN is 123-45-6789", filename="ssn.txt")
+        # Use a valid-format SSN (Presidio rejects known fakes like 123-45-6789)
+        result = classify_content("My social security number is 219-09-9999", filename="ssn.txt")
         assert result.error == ""
         entity_types = {e.entity_type for e in result.entities}
         assert "US_SSN" in entity_types
@@ -962,7 +963,7 @@ class TestClassifyContentWithPresidio:
         from app.services.classifier import classify_content_async
 
         result = await classify_content_async(
-            "SSN: 123-45-6789",
+            "social security number: 219-09-9999",
             filename="async_ssn.txt",
         )
         assert result.error == ""

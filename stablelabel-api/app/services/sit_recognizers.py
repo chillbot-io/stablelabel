@@ -42,13 +42,31 @@ except ImportError:
 # anchor position ourselves without depending on other recognizer results.
 
 ENTITY_PATTERNS: dict[str, list[str]] = {
-    "US_SSN": [
-        r"\b\d{3}-\d{2}-\d{4}\b",
-        r"\b\d{9}\b",
-    ],
+    # ── Global / Universal ────────────────────────────────────
     "CREDIT_CARD": [
         r"\b(?:4\d{3}|5[1-5]\d{2}|6(?:011|5\d{2})|3[47]\d{2}|3(?:0[0-5]|[68]\d)\d)[\s-]?\d{4}[\s-]?\d{4}[\s-]?\d{4}\b",
         r"\b(?:4\d{3}|5[1-5]\d{2}|6(?:011|5\d{2})|3[47]\d{2})[\s-]?\d{4}[\s-]?\d{4}[\s-]?\d{4}\b",
+    ],
+    "IBAN_CODE": [
+        r"\b[A-Z]{2}\d{2}[A-Z0-9]{4}\d{7}[A-Z0-9]{0,16}\b",
+    ],
+    "EMAIL_ADDRESS": [
+        r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b",
+    ],
+    "PHONE_NUMBER": [
+        r"\b(?:\+?1[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}\b",
+        r"\b\+?\d{1,4}[-.\s]?\(?\d{1,4}\)?[-.\s]?\d{2,4}[-.\s]?\d{2,4}\b",
+    ],
+    "IP_ADDRESS": [
+        r"\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b",
+    ],
+    "MEDICAL_LICENSE": [
+        r"\b[A-Z]{1,2}\d{5,10}\b",
+    ],
+    # ── United States ─────────────────────────────────────────
+    "US_SSN": [
+        r"\b\d{3}-\d{2}-\d{4}\b",
+        r"\b\d{9}\b",
     ],
     "US_ITIN": [
         r"\b9\d{2}-[7-9]\d-\d{4}\b",
@@ -62,24 +80,28 @@ ENTITY_PATTERNS: dict[str, list[str]] = {
     "US_PASSPORT": [
         r"\b[A-Z]?\d{8,9}\b",
     ],
-    "IBAN_CODE": [
-        r"\b[A-Z]{2}\d{2}[A-Z0-9]{4}\d{7}[A-Z0-9]{0,16}\b",
-    ],
-    "EMAIL_ADDRESS": [
-        r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b",
-    ],
-    "PHONE_NUMBER": [
-        r"\b(?:\+?1[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}\b",
-    ],
-    "IP_ADDRESS": [
-        r"\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b",
-    ],
-    "MEDICAL_LICENSE": [
-        r"\b[A-Z]{1,2}\d{5,10}\b",
-    ],
+    # ── United Kingdom ────────────────────────────────────────
     "UK_NHS": [
         r"\b\d{3}[\s-]?\d{3}[\s-]?\d{4}\b",
     ],
+    "UK_NINO": [
+        r"\b[A-CEGHJ-PR-TW-Z]{2}\d{6}[A-D]\b",
+    ],
+    # ── European Union ────────────────────────────────────────
+    "ES_NIF": [
+        r"\b\d{8}[A-Z]\b",
+        r"\b[XYZ]\d{7}[A-Z]\b",
+    ],
+    "IT_FISCAL_CODE": [
+        r"\b[A-Z]{6}\d{2}[A-Z]\d{2}[A-Z]\d{3}[A-Z]\b",
+    ],
+    "PL_PESEL": [
+        r"\b\d{11}\b",
+    ],
+    "DE_TAX_ID": [
+        r"\b\d{11}\b",
+    ],
+    # ── Australia ─────────────────────────────────────────────
     "AU_TFN": [
         r"\b\d{3}[\s]?\d{3}[\s]?\d{3}\b",
     ],
@@ -88,6 +110,28 @@ ENTITY_PATTERNS: dict[str, list[str]] = {
     ],
     "AU_MEDICARE": [
         r"\b\d{4}[\s]?\d{5}[\s]?\d{1}\b",
+    ],
+    # ── Canada ────────────────────────────────────────────────
+    "CA_SIN": [
+        r"\b\d{3}[\s-]?\d{3}[\s-]?\d{3}\b",
+    ],
+    # ── India ─────────────────────────────────────────────────
+    "IN_PAN": [
+        r"\b[A-Z]{5}\d{4}[A-Z]\b",
+    ],
+    "IN_AADHAAR": [
+        r"\b\d{4}[\s-]?\d{4}[\s-]?\d{4}\b",
+    ],
+    # ── Singapore ─────────────────────────────────────────────
+    "SG_NRIC_FIN": [
+        r"\b[STFGM]\d{7}[A-Z]\b",
+    ],
+    # ── New Zealand ───────────────────────────────────────────
+    "NZ_IRD": [
+        r"\b\d{2,3}[\s-]?\d{3}[\s-]?\d{3}\b",
+    ],
+    "NZ_NHI": [
+        r"\b[A-Z]{3}\d{4}\b",
     ],
 }
 
