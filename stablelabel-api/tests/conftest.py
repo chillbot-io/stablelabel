@@ -15,16 +15,6 @@ from unittest.mock import MagicMock
 
 import pytest
 
-# ---------------------------------------------------------------------------
-# Patch jose before any app module can import it (cffi is broken in CI)
-# ---------------------------------------------------------------------------
-_jose_mock = MagicMock()
-sys.modules.setdefault("jose", _jose_mock)
-sys.modules.setdefault("jose.jwt", _jose_mock)
-sys.modules.setdefault("jose.jwk", _jose_mock)
-sys.modules.setdefault("jose.jws", _jose_mock)
-sys.modules.setdefault("jose.backends", _jose_mock)
-
 # Set required env vars before any app imports
 os.environ.setdefault("SL_SESSION_SECRET", "test-secret-not-for-production")
 

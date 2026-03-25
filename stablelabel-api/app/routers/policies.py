@@ -26,6 +26,7 @@ from app.core.rbac import check_tenant_access, require_role
 from app.db.base import get_session
 from app.db.models import Policy
 from app.models.policy_rules import PolicyRules
+from app.services.policy_engine import validate_regex_pattern
 from app.services.sit_catalog import get_sit_by_id, get_sit_catalog
 
 router = APIRouter(prefix="/tenants/{customer_tenant_id}/policies", tags=["policies"])
@@ -38,6 +39,7 @@ def _validate_rules(rules: dict) -> dict:
     """Validate rules dict against SIT-aligned schema.
 
     Accepts both new format (patterns) and legacy format (conditions).
+    Validates all regex patterns for safety (ReDoS prevention).
     Returns the rules dict unchanged if valid.
     """
     if "patterns" in rules:
@@ -48,8 +50,56 @@ def _validate_rules(rules: dict) -> dict:
                 status_code=422,
                 detail=f"Invalid policy rules: {e.errors()}",
             )
-    # Legacy format is accepted as-is (backward compat)
+
+    # Validate all regex patterns in the rules (both new and legacy formats)
+    _validate_regex_patterns_in_rules(rules)
+
     return rules
+
+
+def _validate_regex_patterns_in_rules(rules: dict) -> None:
+    """Extract and validate all regex patterns from rules to prevent ReDoS."""
+    errors: list[str] = []
+
+    # New SIT-aligned format: patterns[].primary_match.patterns,
+    # patterns[].corroborative_evidence.matches[].patterns,
+    # definitions.*.patterns
+    for pattern_block in rules.get("patterns", []):
+        primary = pattern_block.get("primary_match", {})
+        if primary.get("type") == "regex":
+            for p in primary.get("patterns", []):
+                err = validate_regex_pattern(p)
+                if err:
+                    errors.append(err)
+
+        evidence = pattern_block.get("corroborative_evidence", {})
+        for match in evidence.get("matches", []):
+            if match.get("type") in ("regex", "inline_regex"):
+                for p in match.get("patterns", []):
+                    err = validate_regex_pattern(p)
+                    if err:
+                        errors.append(err)
+
+    for defn in rules.get("definitions", {}).values():
+        if isinstance(defn, dict):
+            for p in defn.get("patterns", []):
+                err = validate_regex_pattern(p)
+                if err:
+                    errors.append(err)
+
+    # Legacy format: conditions[].patterns (for regex_match type)
+    for cond in rules.get("conditions", []):
+        if cond.get("type") == "regex_match":
+            for p in cond.get("patterns", []):
+                err = validate_regex_pattern(p)
+                if err:
+                    errors.append(err)
+
+    if errors:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Unsafe regex patterns: {errors}",
+        )
 
 
 class CreatePolicyRequest(BaseModel):

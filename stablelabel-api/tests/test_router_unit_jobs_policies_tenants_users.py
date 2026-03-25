@@ -240,7 +240,7 @@ class TestCreateJob:
         client = TestClient(app)
         resp = client.post(
             f"/tenants/{TENANT_ID}/jobs",
-            json={"name": "New Job", "config": {"scope": "all"}},
+            json={"name": "New Job", "config": {"target_label_id": "test-label"}},
         )
         assert resp.status_code == 201
         data = resp.json()

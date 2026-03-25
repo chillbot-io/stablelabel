@@ -66,7 +66,7 @@ def _make_viewer_client(db_session, arq_pool=None):
 async def _create_job(client: httpx.AsyncClient, name: str = "Test job") -> dict:
     resp = await client.post(
         f"/tenants/{CT}/jobs",
-        json={"name": name, "config": {"scope": "all"}},
+        json={"name": name, "config": {"target_label_id": "test-label"}},
     )
     assert resp.status_code == 201
     return resp.json()
@@ -410,7 +410,7 @@ async def test_copy_completed_job(
     assert data["name"] == "Original job (copy)"
     assert data["status"] == "pending"
     assert data["source_job_id"] == job["id"]
-    assert data["config"] == {"scope": "all"}
+    assert data["config"]["target_label_id"] == "test-label"
     # New job should have a different ID
     assert data["id"] != job["id"]
 
@@ -427,7 +427,7 @@ async def test_copy_failed_job(
 
     await db_session.execute(
         update(Job).where(Job.id == job_id).values(
-            status="failed", config={"scope": "all", "error": "something broke"}
+            status="failed", config={"target_label_id": "test-label", "error": "something broke"}
         )
     )
     await db_session.flush()

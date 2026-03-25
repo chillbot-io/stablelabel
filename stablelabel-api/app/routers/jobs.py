@@ -35,15 +35,32 @@ router = APIRouter(prefix="/tenants/{customer_tenant_id}/jobs", tags=["jobs"])
 # ── Schemas ─────────────────────────────────────────────────
 
 
+class JobConfig(BaseModel):
+    """Validated job configuration — only permitted fields are accepted.
+
+    Security-sensitive fields (assignment_method, confirm_encryption) are
+    intentionally excluded. These require separate Admin-level authorization
+    and cannot be set via the job creation API.
+    """
+
+    target_label_id: str = ""
+    use_policies: bool = False
+    dry_run: bool = False
+    site_ids: list[str] | None = None
+    justification_text: str = ""
+
+    model_config = {"extra": "forbid"}
+
+
 class CreateJobRequest(BaseModel):
     name: str
-    config: dict = {}
+    config: JobConfig = JobConfig()
     schedule_cron: str | None = None
 
 
 class UpdateJobRequest(BaseModel):
     name: str | None = None
-    config: dict | None = None
+    config: JobConfig | None = None
     schedule_cron: str | None = None
 
 
@@ -207,7 +224,7 @@ async def create_job(
         customer_tenant_id=uuid.UUID(customer_tenant_id),
         created_by=uuid.UUID(user.id),
         name=body.name,
-        config=body.config,
+        config=body.config.model_dump(exclude_none=True),
         schedule_cron=body.schedule_cron,
     )
     db.add(job)
@@ -257,7 +274,7 @@ async def update_job(
     if body.name is not None:
         job.name = body.name
     if body.config is not None:
-        job.config = body.config
+        job.config = body.config.model_dump(exclude_none=True)
     if body.schedule_cron is not None:
         job.schedule_cron = body.schedule_cron
 

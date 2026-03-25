@@ -31,13 +31,13 @@ async def test_health(admin_client: httpx.AsyncClient):
 
 @pytest.mark.asyncio
 async def test_create_job(operator_client: httpx.AsyncClient):
-    payload = {"name": "Test labelling job", "config": {"scope": "all"}}
+    payload = {"name": "Test labelling job", "config": {"target_label_id": "test-label"}}
     resp = await operator_client.post(f"/tenants/{CT}/jobs", json=payload)
     assert resp.status_code == 201
     data = resp.json()
     assert data["name"] == "Test labelling job"
     assert data["status"] == "pending"
-    assert data["config"] == {"scope": "all"}
+    assert data["config"]["target_label_id"] == "test-label"
     # UUID should be parseable
     uuid.UUID(data["id"])
 

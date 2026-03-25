@@ -300,13 +300,33 @@ class TestCheckTenantAccess:
     """check_tenant_access() enforces tenant-scoped authorization."""
 
     @pytest.mark.asyncio
-    async def test_admin_has_implicit_access(self) -> None:
+    async def test_admin_has_implicit_access_within_msp(self) -> None:
         user = _make_user("Admin")
         db = AsyncMock()
 
-        # Should not raise, and should NOT query the database
+        # First query checks MSP ownership (returns a tenant), Admin skips second query
+        msp_check_result = MagicMock()
+        msp_check_result.scalar_one_or_none.return_value = MagicMock()  # tenant belongs to MSP
+        db.execute.return_value = msp_check_result
+
         await check_tenant_access(user, str(uuid.uuid4()), db)
-        db.execute.assert_not_awaited()
+
+        # Should have queried once (MSP ownership check only)
+        assert db.execute.await_count == 1
+
+    @pytest.mark.asyncio
+    async def test_admin_blocked_from_other_msp_tenant(self) -> None:
+        user = _make_user("Admin")
+        db = AsyncMock()
+
+        # MSP ownership check returns None — tenant belongs to a different MSP
+        msp_check_result = MagicMock()
+        msp_check_result.scalar_one_or_none.return_value = None
+        db.execute.return_value = msp_check_result
+
+        with pytest.raises(HTTPException) as exc_info:
+            await check_tenant_access(user, str(uuid.uuid4()), db)
+        assert exc_info.value.status_code == 403
 
     @pytest.mark.asyncio
     async def test_non_admin_with_access_row_allowed(self) -> None:
@@ -315,13 +335,17 @@ class TestCheckTenantAccess:
         customer_tid = str(uuid.uuid4())
 
         db = AsyncMock()
-        mock_result = MagicMock()
-        mock_result.scalar_one_or_none.return_value = MagicMock()  # access row exists
-        db.execute.return_value = mock_result
+        # First call: MSP ownership check (passes)
+        msp_result = MagicMock()
+        msp_result.scalar_one_or_none.return_value = MagicMock()
+        # Second call: user_tenant_access check (passes)
+        access_result = MagicMock()
+        access_result.scalar_one_or_none.return_value = MagicMock()
+        db.execute.side_effect = [msp_result, access_result]
 
         await check_tenant_access(user, customer_tid, db)
 
-        db.execute.assert_awaited_once()
+        assert db.execute.await_count == 2
 
     @pytest.mark.asyncio
     async def test_non_admin_without_access_row_403(self) -> None:
@@ -329,9 +353,13 @@ class TestCheckTenantAccess:
         customer_tid = str(uuid.uuid4())
 
         db = AsyncMock()
-        mock_result = MagicMock()
-        mock_result.scalar_one_or_none.return_value = None  # no access row
-        db.execute.return_value = mock_result
+        # MSP ownership passes
+        msp_result = MagicMock()
+        msp_result.scalar_one_or_none.return_value = MagicMock()
+        # No access row
+        access_result = MagicMock()
+        access_result.scalar_one_or_none.return_value = None
+        db.execute.side_effect = [msp_result, access_result]
 
         with pytest.raises(HTTPException) as exc_info:
             await check_tenant_access(user, customer_tid, db)
@@ -344,9 +372,13 @@ class TestCheckTenantAccess:
         customer_tid = str(uuid.uuid4())
 
         db = AsyncMock()
-        mock_result = MagicMock()
-        mock_result.scalar_one_or_none.return_value = None
-        db.execute.return_value = mock_result
+        # MSP ownership passes
+        msp_result = MagicMock()
+        msp_result.scalar_one_or_none.return_value = MagicMock()
+        # No access row
+        access_result = MagicMock()
+        access_result.scalar_one_or_none.return_value = None
+        db.execute.side_effect = [msp_result, access_result]
 
         with pytest.raises(HTTPException) as exc_info:
             await check_tenant_access(user, customer_tid, db)
@@ -396,8 +428,9 @@ class TestValidateToken:
         settings = MagicMock()
         settings.entra_auth_client_id = "test-client-id"
 
-        with patch("app.core.entra_auth.jwt.decode", return_value=claims):
-            result = _validate_token("fake.jwt.token", {"kid": "k1"}, settings)
+        mock_key = MagicMock()
+        with patch("app.core.entra_auth.pyjwt.decode", return_value=claims):
+            result = _validate_token("fake.jwt.token", mock_key, settings)
 
         assert result["oid"] == "oid-aaa"
         assert result["tid"] == "tid-bbb"
@@ -410,9 +443,10 @@ class TestValidateToken:
         settings = MagicMock()
         settings.entra_auth_client_id = "test-client-id"
 
-        with patch("app.core.entra_auth.jwt.decode", return_value=claims):
+        mock_key = MagicMock()
+        with patch("app.core.entra_auth.pyjwt.decode", return_value=claims):
             with pytest.raises(HTTPException) as exc_info:
-                _validate_token("fake.jwt.token", {}, settings)
+                _validate_token("fake.jwt.token", mock_key, settings)
             assert exc_info.value.status_code == 401
 
     def test_missing_tid_raises_401(self) -> None:
@@ -421,9 +455,10 @@ class TestValidateToken:
         settings = MagicMock()
         settings.entra_auth_client_id = "test-client-id"
 
-        with patch("app.core.entra_auth.jwt.decode", return_value=claims):
+        mock_key = MagicMock()
+        with patch("app.core.entra_auth.pyjwt.decode", return_value=claims):
             with pytest.raises(HTTPException) as exc_info:
-                _validate_token("fake.jwt.token", {}, settings)
+                _validate_token("fake.jwt.token", mock_key, settings)
             assert exc_info.value.status_code == 401
 
     def test_invalid_issuer_raises_401(self) -> None:
@@ -432,37 +467,24 @@ class TestValidateToken:
         settings = MagicMock()
         settings.entra_auth_client_id = "test-client-id"
 
-        with patch("app.core.entra_auth.jwt.decode", return_value=claims):
+        mock_key = MagicMock()
+        with patch("app.core.entra_auth.pyjwt.decode", return_value=claims):
             with pytest.raises(HTTPException) as exc_info:
-                _validate_token("fake.jwt.token", {}, settings)
+                _validate_token("fake.jwt.token", mock_key, settings)
             assert exc_info.value.status_code == 401
 
     def test_jwt_error_raises_401(self) -> None:
         settings = MagicMock()
         settings.entra_auth_client_id = "test-client-id"
 
-        import app.core.entra_auth as auth_mod
+        from jwt.exceptions import InvalidTokenError as _InvalidTokenError
 
-        # jose is mocked in conftest (cffi broken in CI). We need JWTError to
-        # be a real exception class so the except clause works.
-        class _JWTError(Exception):
-            pass
-
-        class _FakeJwt:
-            @staticmethod
-            def decode(*args, **kwargs):
-                raise _JWTError("bad token")
-
-        saved_jwt_error = auth_mod.JWTError
-        auth_mod.JWTError = _JWTError
-        try:
-            with patch.object(auth_mod, "jwt", _FakeJwt):
-                with pytest.raises(HTTPException) as exc_info:
-                    _validate_token("bad.jwt.token", {"kid": "k1"}, settings)
-                assert exc_info.value.status_code == 401
-                assert "Invalid or expired" in str(exc_info.value.detail)
-        finally:
-            auth_mod.JWTError = saved_jwt_error
+        mock_key = MagicMock()
+        with patch("app.core.entra_auth.pyjwt.decode", side_effect=_InvalidTokenError("bad token")):
+            with pytest.raises(HTTPException) as exc_info:
+                _validate_token("bad.jwt.token", mock_key, settings)
+            assert exc_info.value.status_code == 401
+            assert "Invalid or expired" in str(exc_info.value.detail)
 
     def test_v1_issuer_format_accepted(self) -> None:
         tid = "tid-ccc"
@@ -471,8 +493,9 @@ class TestValidateToken:
         settings = MagicMock()
         settings.entra_auth_client_id = "test-client-id"
 
-        with patch("app.core.entra_auth.jwt.decode", return_value=claims):
-            result = _validate_token("fake.jwt.token", {}, settings)
+        mock_key = MagicMock()
+        with patch("app.core.entra_auth.pyjwt.decode", return_value=claims):
+            result = _validate_token("fake.jwt.token", mock_key, settings)
             assert result["tid"] == tid
 
 
@@ -541,7 +564,8 @@ class TestJitProvisioning:
         assert msp_tenant is existing_tenant
 
     @pytest.mark.asyncio
-    async def test_role_extracted_from_token_claims(self) -> None:
+    async def test_new_user_always_provisioned_as_viewer(self) -> None:
+        """Token role claims are ignored for new users — always Viewer."""
         claims = _make_claims(roles=["Admin"])
 
         db = MagicMock()
@@ -565,9 +589,9 @@ class TestJitProvisioning:
 
         await _jit_provision(claims, db)
 
-        # The user object should have role="Admin"
+        # Even though token says "Admin", new user should be "Viewer"
         user_obj = [o for o in added_objects if hasattr(o, "entra_oid")][0]
-        assert user_obj.role == "Admin"
+        assert user_obj.role == "Viewer"
 
     @pytest.mark.asyncio
     async def test_defaults_to_viewer_when_no_roles_in_token(self) -> None:
@@ -658,12 +682,10 @@ class TestJitProvisioning:
 class TestGetCurrentUserMissingToken:
     """get_current_user rejects missing/malformed bearer tokens."""
 
-    @pytest.mark.asyncio
-    async def test_missing_kid_header_raises_401(self) -> None:
+    def test_missing_kid_header_raises_401(self) -> None:
         from app.core.entra_auth import _get_signing_key
 
-        with patch("app.core.entra_auth.jwt.get_unverified_header", return_value={}):
+        with patch("app.core.entra_auth._jwk_client.get_signing_key_from_jwt", side_effect=Exception("no kid")):
             with pytest.raises(HTTPException) as exc_info:
-                await _get_signing_key("token.without.kid")
+                _get_signing_key("token.without.kid")
             assert exc_info.value.status_code == 401
-            assert "kid" in exc_info.value.detail.lower()

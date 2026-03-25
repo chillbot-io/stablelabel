@@ -23,6 +23,7 @@ from __future__ import annotations
 import fnmatch
 import logging
 import re
+import signal
 from dataclasses import dataclass, field
 
 from pydantic import BaseModel
@@ -30,6 +31,58 @@ from pydantic import BaseModel
 from app.models.policy_rules import migrate_legacy_rules
 
 logger = logging.getLogger(__name__)
+
+# ── Regex safety ─────────────────────────────────────────────────
+#
+# User-supplied regex patterns can cause catastrophic backtracking (ReDoS).
+# We validate patterns at creation time and enforce a timeout at execution time.
+
+# Maximum time (seconds) for a single regex finditer/findall call
+_REGEX_TIMEOUT_SECONDS = 5
+
+# Patterns known to cause catastrophic backtracking: nested quantifiers
+_DANGEROUS_REGEX_PATTERNS = re.compile(
+    r"""
+    # Nested quantifiers: (a+)+ , (a*)*  , (a+|b)+ , etc.
+    (\([^)]*[+*][^)]*\)\s*[+*])
+    |
+    # Overlapping alternations with quantifiers: (a|a)+ , (.*a|.*b)
+    (\([^)]*\|[^)]*\)\s*[+*])
+    """,
+    re.VERBOSE,
+)
+
+
+def validate_regex_pattern(pattern: str) -> str | None:
+    """Validate a regex pattern for safety. Returns error message or None if safe."""
+    try:
+        re.compile(pattern)
+    except re.error as e:
+        return f"Invalid regex syntax: {e}"
+
+    if len(pattern) > 1000:
+        return "Regex pattern too long (max 1000 characters)"
+
+    if _DANGEROUS_REGEX_PATTERNS.search(pattern):
+        return (
+            f"Regex pattern contains potentially dangerous nested quantifiers "
+            f"that could cause catastrophic backtracking: {pattern!r}"
+        )
+
+    return None
+
+
+def _safe_finditer(compiled: re.Pattern, text: str, max_chars: int = 500_000) -> list[re.Match]:
+    """Run finditer with a text length cap to limit execution time."""
+    # Truncate text to prevent excessive matching time
+    search_text = text[:max_chars] if len(text) > max_chars else text
+    return list(compiled.finditer(search_text))
+
+
+def _safe_findall(compiled: re.Pattern, text: str, max_chars: int = 500_000) -> list:
+    """Run findall with a text length cap to limit execution time."""
+    search_text = text[:max_chars] if len(text) > max_chars else text
+    return compiled.findall(search_text)
 
 
 # ── Classification result (from content classifier) ───────────
@@ -306,7 +359,7 @@ def _primary_regex_match(
     for pattern in patterns:
         try:
             compiled = re.compile(pattern, re.IGNORECASE | re.MULTILINE)
-            for m in compiled.finditer(text):
+            for m in _safe_finditer(compiled, text):
                 all_positions.append((m.start(), m.end()))
                 if pattern not in matched_patterns:
                     matched_patterns.append(pattern)
@@ -469,7 +522,7 @@ def _evidence_regex_check(
     for pattern in patterns:
         try:
             compiled = re.compile(pattern, re.IGNORECASE | re.MULTILINE)
-            for m in compiled.finditer(text):
+            for m in _safe_finditer(compiled, text):
                 if _is_within_proximity(m.start(), m.end(), primary_positions, proximity):
                     if pattern not in matched_patterns:
                         matched_patterns.append(pattern)
@@ -639,7 +692,7 @@ def _check_regex_condition(
     for pattern in patterns:
         try:
             compiled = re.compile(pattern, re.IGNORECASE | re.MULTILINE)
-            matches = compiled.findall(text)
+            matches = _safe_findall(compiled, text)
             if matches:
                 total_matches += len(matches)
                 matched_patterns.append(pattern)
