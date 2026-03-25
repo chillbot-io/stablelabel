@@ -68,18 +68,34 @@ class TokenBucket:
 
 
 class TenantRateLimiters:
-    """Registry of per-tenant rate limiters."""
+    """Registry of per-tenant rate limiters with bounded size.
 
-    def __init__(self, default_rate: float = 5.0, default_capacity: float = 10.0) -> None:
-        self._limiters: dict[str, TokenBucket] = {}
+    Uses an OrderedDict as a simple LRU cache. When max_tenants is reached,
+    the least-recently-used tenant's limiter is evicted.
+    """
+
+    def __init__(
+        self,
+        default_rate: float = 5.0,
+        default_capacity: float = 10.0,
+        max_tenants: int = 500,
+    ) -> None:
+        from collections import OrderedDict
+        self._limiters: OrderedDict[str, TokenBucket] = OrderedDict()
         self._default_rate = default_rate
         self._default_capacity = default_capacity
+        self._max_tenants = max_tenants
 
     def get(self, tenant_id: str) -> TokenBucket:
-        # setdefault is atomic at the dict level — avoids TOCTOU where two
-        # concurrent callers each create a separate TokenBucket and one
-        # overwrites the other, losing its token state.
-        return self._limiters.setdefault(
-            tenant_id,
-            TokenBucket(rate=self._default_rate, capacity=self._default_capacity),
-        )
+        if tenant_id in self._limiters:
+            # Move to end (most recently used)
+            self._limiters.move_to_end(tenant_id)
+            return self._limiters[tenant_id]
+
+        # Evict oldest if at capacity
+        while len(self._limiters) >= self._max_tenants:
+            self._limiters.popitem(last=False)
+
+        bucket = TokenBucket(rate=self._default_rate, capacity=self._default_capacity)
+        self._limiters[tenant_id] = bucket
+        return bucket

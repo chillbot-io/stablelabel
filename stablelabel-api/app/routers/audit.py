@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.entra_auth import CurrentUser
 from app.core.rbac import require_role
 from app.db.base import get_session
-from app.db.models import AuditEvent, User
+from app.db.models import AuditEvent, User, UserTenantAccess
 
 router = APIRouter(prefix="/security/audit", tags=["security"])
 
@@ -60,6 +60,15 @@ async def list_audit_events(
     if customer_tenant_id:
         base = base.where(
             AuditEvent.customer_tenant_id == uuid.UUID(customer_tenant_id)
+        )
+
+    # Non-Admin users can only see audit events for tenants they have access to
+    if user.role != "Admin":
+        accessible_tenants = select(UserTenantAccess.customer_tenant_id).where(
+            UserTenantAccess.user_id == uuid.UUID(user.id)
+        )
+        base = base.where(
+            AuditEvent.customer_tenant_id.in_(accessible_tenants)
         )
 
     # Count

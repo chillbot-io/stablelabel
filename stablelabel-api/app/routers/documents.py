@@ -8,8 +8,11 @@ from __future__ import annotations
 
 import csv
 import io
+import logging
 import re
 import uuid
+
+logger = logging.getLogger(__name__)
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile
 
@@ -90,13 +93,17 @@ async def apply_label(
             confirm_encryption=confirm_encryption,
         )
     except EncryptionLabelGuardError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from None
+        logger.warning("EncryptionLabelGuardError for tenant %s: %s", tenant_id, exc)
+        raise HTTPException(status_code=422, detail="Label has encryption protection. Set confirm_encryption=True to proceed.") from None
     except LabelDowngradeError as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from None
+        logger.warning("LabelDowngradeError for tenant %s: %s", tenant_id, exc)
+        raise HTTPException(status_code=409, detail="Label downgrade requires justification") from None
     except LabelNotFoundError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from None
+        logger.warning("LabelNotFoundError for tenant %s: %s", tenant_id, exc)
+        raise HTTPException(status_code=404, detail="Label not found") from None
     except StableLabelError as exc:
-        raise HTTPException(status_code=502, detail=str(exc)) from None
+        logger.warning("StableLabelError for tenant %s: %s", tenant_id, exc)
+        raise HTTPException(status_code=502, detail="Label operation failed") from None
 
 
 @router.post("/remove-label", status_code=204)
@@ -117,7 +124,8 @@ async def remove_label(
             f"/drives/{request.drive_id}/items/{request.item_id}/deleteSensitivityLabel",
         )
     except StableLabelError as exc:
-        raise HTTPException(status_code=502, detail=str(exc)) from None
+        logger.warning("StableLabelError during remove_label for tenant %s: %s", tenant_id, exc)
+        raise HTTPException(status_code=502, detail="Label operation failed") from None
 
 
 @router.post("/apply-label-bulk", response_model=BulkLabelResponse)
@@ -150,13 +158,17 @@ async def apply_label_bulk(
             dry_run=request.dry_run,
         )
     except EncryptionLabelGuardError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from None
+        logger.warning("EncryptionLabelGuardError for tenant %s: %s", tenant_id, exc)
+        raise HTTPException(status_code=422, detail="Label has encryption protection. Set confirm_encryption=True to proceed.") from None
     except LabelDowngradeError as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from None
+        logger.warning("LabelDowngradeError for tenant %s: %s", tenant_id, exc)
+        raise HTTPException(status_code=409, detail="Label downgrade requires justification") from None
     except LabelNotFoundError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from None
+        logger.warning("LabelNotFoundError for tenant %s: %s", tenant_id, exc)
+        raise HTTPException(status_code=404, detail="Label not found") from None
     except StableLabelError as exc:
-        raise HTTPException(status_code=502, detail=str(exc)) from None
+        logger.warning("StableLabelError for tenant %s: %s", tenant_id, exc)
+        raise HTTPException(status_code=502, detail="Label operation failed") from None
 
 
 @router.post("/remove-label-bulk", response_model=BulkRemoveResponse)
@@ -205,8 +217,10 @@ async def upload_csv_labels(
     if not file.filename or not file.filename.endswith(".csv"):
         raise HTTPException(400, "File must be a .csv")
 
-    content = await file.read()
-    if len(content) > 10 * 1024 * 1024:
+    # Read with size limit to prevent memory exhaustion — stop early
+    _MAX_CSV_SIZE = 10 * 1024 * 1024
+    content = await file.read(_MAX_CSV_SIZE + 1)
+    if len(content) > _MAX_CSV_SIZE:
         raise HTTPException(400, "CSV file too large (max 10MB)")
 
     try:

@@ -83,12 +83,15 @@ async def list_sites(
         logger.warning("Site search failed for tenant %s: %s", customer_tenant_id, exc)
         return []
 
+    # Cap results to prevent excessive response sizes
+    _MAX_SITES = 500
+    filtered = [s for s in sites if s.get("id")][:_MAX_SITES]
+
     return [
         SiteResponse(
             id=s.get("id", ""),
             displayName=s.get("displayName", s.get("name", "")),
             webUrl=s.get("webUrl", ""),
         )
-        for s in sites
-        if s.get("id")
+        for s in filtered
     ]

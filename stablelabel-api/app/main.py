@@ -49,13 +49,26 @@ app = FastAPI(
 
 # CORS — configured via SL_CORS_ORIGINS (comma-separated)
 _settings = get_settings()
+_cors_origins = [o.strip() for o in _settings.cors_origins.split(",") if o.strip()]
+
+# Reject wildcard origin with credentials — this is a security misconfiguration
+if "*" in _cors_origins:
+    raise ValueError(
+        "SL_CORS_ORIGINS contains '*' which is incompatible with allow_credentials=True. "
+        "Specify explicit origins instead."
+    )
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[o.strip() for o in _settings.cors_origins.split(",") if o.strip()],
+    allow_origins=_cors_origins,
     allow_credentials=True,
     allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["Content-Type", "Authorization"],
 )
+
+# Disable OpenAPI docs in production (they expose the full API schema)
+if _settings.cors_origins and "localhost" not in _settings.cors_origins:
+    app.openapi_url = None
 
 app.include_router(health.router)
 app.include_router(labels.router)

@@ -133,6 +133,15 @@ async def connect_tenant(
     settings: Settings = Depends(get_settings),
 ) -> ConsentUrlResponse:
     """Register a new customer tenant and return the admin consent URL."""
+    import hashlib
+    import hmac
+    import re
+    from urllib.parse import quote, urlencode
+
+    # Validate entra_tenant_id format before any DB operations
+    if not re.match(r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$", body.entra_tenant_id):
+        raise HTTPException(400, "entra_tenant_id must be a valid UUID")
+
     msp_id = uuid.UUID(user.msp_tenant_id)
 
     # Check for duplicates
@@ -171,19 +180,20 @@ async def connect_tenant(
     await db.refresh(tenant)
 
     # Build admin consent URL with HMAC-signed state to prevent cross-MSP claim
-    import hashlib
-    import hmac
     state_payload = str(tenant.id)
     state_sig = hmac.new(
         settings.session_secret.encode(), state_payload.encode(), hashlib.sha256
     ).hexdigest()
     state = f"{state_payload}:{state_sig}"
 
+    query = urlencode({
+        "client_id": settings.azure_client_id,
+        "redirect_uri": settings.consent_redirect_uri,
+        "state": state,
+    })
     consent_url = (
-        f"https://login.microsoftonline.com/{body.entra_tenant_id}/adminconsent"
-        f"?client_id={settings.azure_client_id}"
-        f"&redirect_uri={settings.consent_redirect_uri}"
-        f"&state={state}"
+        f"https://login.microsoftonline.com/{quote(body.entra_tenant_id, safe='')}/adminconsent"
+        f"?{query}"
     )
 
     return ConsentUrlResponse(

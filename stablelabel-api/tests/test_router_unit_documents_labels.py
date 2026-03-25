@@ -186,7 +186,7 @@ class TestApplyLabel:
             f"/tenants/{TID}/documents/apply-label", json=self._body
         )
         assert resp.status_code == 422
-        assert "encrypted" in resp.json()["detail"].lower()
+        assert "encryption" in resp.json()["detail"].lower()
 
     def test_downgrade_409(self, doc_client, doc_svc):
         doc_svc.apply_label.side_effect = LabelDowngradeError("downgrade")
@@ -194,7 +194,7 @@ class TestApplyLabel:
             f"/tenants/{TID}/documents/apply-label", json=self._body
         )
         assert resp.status_code == 409
-        assert "downgrade" in resp.json()["detail"].lower()
+        assert "justification" in resp.json()["detail"].lower()
 
     def test_label_not_found_404(self, doc_client, doc_svc):
         doc_svc.apply_label.side_effect = LabelNotFoundError("missing")
@@ -202,7 +202,7 @@ class TestApplyLabel:
             f"/tenants/{TID}/documents/apply-label", json=self._body
         )
         assert resp.status_code == 404
-        assert "missing" in resp.json()["detail"].lower()
+        assert "not found" in resp.json()["detail"].lower()
 
     def test_stable_label_error_502(self, doc_client, doc_svc):
         doc_svc.apply_label.side_effect = StableLabelError("boom")
@@ -210,7 +210,8 @@ class TestApplyLabel:
             f"/tenants/{TID}/documents/apply-label", json=self._body
         )
         assert resp.status_code == 502
-        assert "boom" in resp.json()["detail"].lower()
+        # Generic message — original exception is only logged server-side
+        assert "operation failed" in resp.json()["detail"].lower()
 
 
 class TestRemoveLabel:
@@ -230,7 +231,7 @@ class TestRemoveLabel:
             f"/tenants/{TID}/documents/remove-label", json=self._body
         )
         assert resp.status_code == 502
-        assert "graph fail" in resp.json()["detail"].lower()
+        assert "operation failed" in resp.json()["detail"].lower()
 
 
 class TestApplyLabelBulk:

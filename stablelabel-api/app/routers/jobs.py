@@ -15,7 +15,7 @@ from datetime import UTC, datetime
 from arq import ArqRedis
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -52,16 +52,43 @@ class JobConfig(BaseModel):
     model_config = {"extra": "forbid"}
 
 
+def _validate_cron(value: str | None) -> str | None:
+    """Validate cron expression format and reject overly aggressive schedules."""
+    if value is None:
+        return None
+    value = value.strip()
+    if len(value) > 100:
+        raise ValueError("Cron expression too long (max 100 chars)")
+    parts = value.split()
+    if len(parts) != 5:
+        raise ValueError("Cron must have exactly 5 fields: minute hour day month weekday")
+    # Reject schedules more frequent than every 15 minutes
+    minute_field = parts[0]
+    if minute_field == "*" or minute_field == "*/1" or minute_field == "*/2" or minute_field == "*/5" or minute_field == "*/10":
+        raise ValueError("Cron schedule too frequent — minimum interval is 15 minutes (use */15 or higher)")
+    return value
+
+
 class CreateJobRequest(BaseModel):
     name: str
     config: JobConfig = JobConfig()
     schedule_cron: str | None = None
+
+    @field_validator("schedule_cron")
+    @classmethod
+    def validate_schedule_cron(cls, v: str | None) -> str | None:
+        return _validate_cron(v)
 
 
 class UpdateJobRequest(BaseModel):
     name: str | None = None
     config: JobConfig | None = None
     schedule_cron: str | None = None
+
+    @field_validator("schedule_cron")
+    @classmethod
+    def validate_schedule_cron(cls, v: str | None) -> str | None:
+        return _validate_cron(v)
 
 
 class JobResponse(BaseModel):
@@ -146,12 +173,15 @@ def _job_to_response(job: Job) -> JobResponse:
 
 
 async def _get_job(
-    job_id: str, customer_tenant_id: str, db: AsyncSession
+    job_id: str, customer_tenant_id: str, db: AsyncSession,
+    *, for_update: bool = False,
 ) -> Job:
     stmt = select(Job).where(
         Job.id == uuid.UUID(job_id),
         Job.customer_tenant_id == uuid.UUID(customer_tenant_id),
     )
+    if for_update:
+        stmt = stmt.with_for_update()
     result = await db.execute(stmt)
     job = result.scalar_one_or_none()
     if not job:
@@ -328,7 +358,8 @@ async def job_action(
     if action not in VALID_TRANSITIONS and action not in SPECIAL_ACTIONS:
         raise HTTPException(400, f"Unknown action: {action}")
 
-    job = await _get_job(job_id, customer_tenant_id, db)
+    # Use SELECT FOR UPDATE to prevent race conditions on state transitions
+    job = await _get_job(job_id, customer_tenant_id, db, for_update=True)
 
     # ── Special action: copy (retry-as-new-job) ────────────
     if action == "copy":

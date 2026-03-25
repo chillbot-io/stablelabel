@@ -91,7 +91,7 @@ def _mock_policy(is_builtin=False, **overrides):
 def _mock_tenant(**overrides):
     t = MagicMock()
     t.id = uuid.UUID(TENANT_ID)
-    t.entra_tenant_id = "entra-tid-123"
+    t.entra_tenant_id = "00000000-0000-0000-0000-000000000099"
     t.display_name = "Contoso"
     t.consent_status = "active"
     t.consent_requested_at = NOW
@@ -680,7 +680,7 @@ class TestConnectTenant:
         client = TestClient(app)
         resp = client.post(
             "/security/tenants",
-            json={"entra_tenant_id": "entra-tid-123", "display_name": "Contoso"},
+            json={"entra_tenant_id": "00000000-0000-0000-0000-000000000099", "display_name": "Contoso"},
         )
         assert resp.status_code == 201
         data = resp.json()
@@ -704,7 +704,7 @@ class TestConnectTenant:
         client = TestClient(app)
         resp = client.post(
             "/security/tenants",
-            json={"entra_tenant_id": "entra-tid-123"},
+            json={"entra_tenant_id": "00000000-0000-0000-0000-000000000099"},
         )
         assert resp.status_code == 409
 

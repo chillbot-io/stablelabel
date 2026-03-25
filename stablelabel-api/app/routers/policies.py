@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, ValidationError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -24,7 +24,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.entra_auth import CurrentUser
 from app.core.rbac import check_tenant_access, require_role
 from app.db.base import get_session
-from app.db.models import Policy
+from app.db.models import AuditEvent, CustomerTenant, Policy
 from app.models.policy_rules import PolicyRules
 from app.services.policy_engine import validate_regex_pattern
 from app.services.sit_catalog import get_sit_by_id, get_sit_catalog
@@ -156,6 +156,8 @@ def _policy_to_response(p: Policy) -> PolicyResponse:
 @router.get("", response_model=list[PolicyResponse])
 async def list_policies(
     customer_tenant_id: str,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(100, ge=1, le=500),
     user: CurrentUser = Depends(require_role("Viewer")),
     db: AsyncSession = Depends(get_session),
 ) -> list[PolicyResponse]:
@@ -166,6 +168,8 @@ async def list_policies(
         select(Policy)
         .where(Policy.customer_tenant_id == uuid.UUID(customer_tenant_id))
         .order_by(Policy.priority.desc(), Policy.name)
+        .offset((page - 1) * page_size)
+        .limit(page_size)
     )
     result = await db.execute(stmt)
     return [_policy_to_response(p) for p in result.scalars().all()]
@@ -199,6 +203,17 @@ async def create_policy(
     db.add(policy)
     await db.commit()
     await db.refresh(policy)
+
+    ct = await db.get(CustomerTenant, uuid.UUID(customer_tenant_id))
+    if ct:
+        db.add(AuditEvent(
+            msp_tenant_id=ct.msp_tenant_id,
+            customer_tenant_id=ct.id,
+            actor_id=uuid.UUID(user.id),
+            event_type="policy.created",
+            extra={"policy_name": body.name, "policy_id": str(policy.id)},
+        ))
+        await db.commit()
 
     return _policy_to_response(policy)
 
@@ -267,6 +282,17 @@ async def update_policy(
     await db.commit()
     await db.refresh(policy)
 
+    ct = await db.get(CustomerTenant, uuid.UUID(customer_tenant_id))
+    if ct:
+        db.add(AuditEvent(
+            msp_tenant_id=ct.msp_tenant_id,
+            customer_tenant_id=ct.id,
+            actor_id=uuid.UUID(user.id),
+            event_type="policy.updated",
+            extra={"policy_name": policy.name, "policy_id": str(policy.id)},
+        ))
+        await db.commit()
+
     return _policy_to_response(policy)
 
 
@@ -291,6 +317,16 @@ async def delete_policy(
 
     if policy.is_builtin:
         raise HTTPException(400, "Built-in policies cannot be deleted — disable instead")
+
+    ct = await db.get(CustomerTenant, uuid.UUID(customer_tenant_id))
+    if ct:
+        db.add(AuditEvent(
+            msp_tenant_id=ct.msp_tenant_id,
+            customer_tenant_id=ct.id,
+            actor_id=uuid.UUID(user.id),
+            event_type="policy.deleted",
+            extra={"policy_name": policy.name, "policy_id": str(policy.id)},
+        ))
 
     await db.delete(policy)
     await db.commit()

@@ -642,6 +642,15 @@ class JobExecutor:
                     ))
                     continue
 
+                # Capture current label before applying (needed for rollback)
+                previous_label_id = ""
+                try:
+                    current = await self._docs.extract_label(tenant_id, drive_id, item_id)
+                    if current:
+                        previous_label_id = current.sensitivity_label_id
+                except Exception:
+                    pass  # best-effort — don't fail the labeling op
+
                 assignment = LabelAssignment(
                     drive_id=drive_id,
                     item_id=item_id,
@@ -663,7 +672,7 @@ class JobExecutor:
                         "item_id": item_id,
                         "drive_id": drive_id,
                         "label_id": label_id,
-                        "previous_label_id": "",
+                        "previous_label_id": previous_label_id,
                     })
                     self._db.add(ScanResult(
                         customer_tenant_id=job.customer_tenant_id,
@@ -1157,6 +1166,16 @@ class JobExecutor:
         self._db.add(scan_result)
         await self._db.flush()  # get the generated id
 
+        # Cap text size to prevent Redis memory exhaustion.
+        # 1MB is enough for classification — larger documents are truncated.
+        _MAX_DEFERRED_TEXT = 1_000_000
+        capped_text = text[:_MAX_DEFERRED_TEXT] if len(text) > _MAX_DEFERRED_TEXT else text
+        if len(text) > _MAX_DEFERRED_TEXT:
+            logger.warning(
+                "Truncating deferred text for %s from %d to %d chars",
+                filename, len(text), _MAX_DEFERRED_TEXT,
+            )
+
         await self._arq_pool.enqueue_job(
             "classify_and_label_file",
             _job_id=f"deferred-{scan_result.id}",
@@ -1167,7 +1186,7 @@ class JobExecutor:
             drive_id=drive_id,
             item_id=item_id,
             filename=filename,
-            text=text,
+            text=capped_text,
             scan_result_id=str(scan_result.id),
             use_policies=use_policies,
             static_label_id=static_label_id,
