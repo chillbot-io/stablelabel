@@ -10,6 +10,7 @@ const LabelsPage = lazy(() => import('./components/Labels/LabelsPage'));
 const DocumentsPage = lazy(() => import('./components/Documents/DocumentsPage'));
 const ManualLabelPage = lazy(() => import('./components/ManualLabel/ManualLabelPage'));
 const BulkOpsPage = lazy(() => import('./components/BulkOps/BulkOpsPage'));
+const AutoLabelScanPage = lazy(() => import('./components/AutoScan/AutoLabelScanPage'));
 const ExplorerPage = lazy(() => import('./components/Explorer/ExplorerPage'));
 const SnapshotsPage = lazy(() => import('./components/Snapshots/SnapshotsPage'));
 const AnalysisPage = lazy(() => import('./components/Analysis/AnalysisPage'));
@@ -36,6 +37,8 @@ export default function App() {
         return <ManualLabelPage />;
       case 'bulk-ops':
         return <BulkOpsPage />;
+      case 'auto-scan':
+        return <AutoLabelScanPage />;
       case 'explorer':
         return <ExplorerPage />;
       case 'snapshots':

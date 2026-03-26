@@ -65,6 +65,14 @@ const icons: Record<string, React.ReactNode> = {
       <path d="M11 9v5" />
     </Icon>
   ),
+  /* Auto Scan — radar/search sweep */
+  'auto-scan': (
+    <Icon>
+      <circle cx="10" cy="10" r="7" />
+      <path d="M10 10l4-4" />
+      <circle cx="10" cy="10" r="2" fill="currentColor" stroke="none" />
+    </Icon>
+  ),
   /* Explorer — folder tree */
   explorer: (
     <Icon>
@@ -136,6 +144,7 @@ const navItems: NavItem[] = [
   { id: 'documents', label: 'Documents', group: 'Operations' },
   { id: 'manual-label', label: 'CSV Upload', group: 'Operations' },
   { id: 'bulk-ops', label: 'Bulk Removal', group: 'Operations' },
+  { id: 'auto-scan', label: 'Auto-Label Scan', group: 'Operations' },
   { id: 'explorer', label: 'Explorer', group: 'Browse' },
   { id: 'snapshots', label: 'Snapshots', group: 'Safety' },
   { id: 'analysis', label: 'Analysis', group: 'Intelligence' },
