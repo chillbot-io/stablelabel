@@ -82,6 +82,7 @@ function Remove-SLDocumentLabelBulk {
             }
 
             Write-Progress -Activity "Removing ($Mode)" -Status "$index of $total" -PercentComplete ([int]($index / $total * 100))
+            Write-Output "SL_PROGRESS:{`"phase`":`"removing`",`"total`":$total,`"processed`":$($index - 1),`"success`":$successCount,`"failed`":$failedCount}"
 
             if ($isDryRun) {
                 $results.Add([PSCustomObject]@{

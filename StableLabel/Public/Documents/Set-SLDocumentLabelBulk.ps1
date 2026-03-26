@@ -80,6 +80,7 @@ function Set-SLDocumentLabelBulk {
             Write-Progress -Activity 'Assigning sensitivity labels' `
                 -Status "Processing item $($i + 1) of $totalItems" `
                 -PercentComplete $percentComplete
+            Write-Output "SL_PROGRESS:{`"phase`":`"labelling`",`"total`":$totalItems,`"processed`":$i,`"success`":$successCount,`"failed`":$failedCount}"
 
             try {
                 $splat = @{

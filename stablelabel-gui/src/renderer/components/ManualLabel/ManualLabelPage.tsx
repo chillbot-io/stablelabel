@@ -4,6 +4,7 @@ import { useElapsedTime } from '../../hooks/useElapsedTime';
 import { TextField, ToggleField } from '../common/FormFields';
 import type { BulkLabelResult } from '../../lib/types';
 import BulkResultSummary from '../common/BulkResultSummary';
+import ScanProgressBar from '../common/ScanProgressBar';
 
 interface CsvRow {
   Row: number;
@@ -224,6 +225,7 @@ export default function ManualLabelPage() {
               </span>
             )}
           </div>
+          <ScanProgressBar active={applying} />
         </div>
       )}
 

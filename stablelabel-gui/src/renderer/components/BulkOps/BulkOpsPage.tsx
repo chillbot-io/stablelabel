@@ -4,6 +4,7 @@ import { useElapsedTime } from '../../hooks/useElapsedTime';
 import { TextArea, TextField, ToggleField } from '../common/FormFields';
 import BulkResultSummary from '../common/BulkResultSummary';
 import ConfirmDialog from '../common/ConfirmDialog';
+import ScanProgressBar from '../common/ScanProgressBar';
 import ShowPowerShell from '../common/ShowPowerShell';
 import type { BulkRemoveResult } from '../../lib/types';
 
@@ -159,6 +160,8 @@ export default function BulkOpsPage() {
           </span>
         )}
       </div>
+
+      <ScanProgressBar active={loading} />
 
       {result && <BulkResultSummary result={result} subtitle={result.Mode} />}
 

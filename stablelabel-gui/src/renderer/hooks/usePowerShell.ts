@@ -34,6 +34,27 @@ declare global {
       classifierInvoke: (action: string, params?: Record<string, unknown>) => Promise<PsResult>;
       checkClassifier: () => Promise<{ available: boolean; mode?: string; error?: string }>;
       getClassifierStatus: () => Promise<{ initialized: boolean }>;
+      /** Progress events from long-running PS commands */
+      onPsProgress: (callback: (progress: {
+        phase: string;
+        total: number;
+        processed: number;
+        success?: number;
+        failed?: number;
+        matched?: number;
+        skipped?: number;
+        file?: string;
+        folders_scanned?: number;
+        folders_remaining?: number;
+      }) => void) => () => void;
+      /** Job runner channels */
+      jobStart: (config: Record<string, unknown>) => Promise<{ success: boolean; error?: string }>;
+      jobPause: () => Promise<{ success: boolean; error?: string }>;
+      jobResume: () => Promise<{ success: boolean; error?: string }>;
+      jobCancel: () => Promise<{ success: boolean; error?: string }>;
+      jobGetResults: () => Promise<{ success: boolean; data: unknown[] }>;
+      onJobProgress: (callback: (progress: Record<string, unknown>) => void) => () => void;
+      onJobCompleted: (callback: (results: unknown[]) => void) => () => void;
     };
   }
 }

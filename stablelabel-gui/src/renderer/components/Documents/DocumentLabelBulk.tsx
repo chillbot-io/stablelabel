@@ -5,6 +5,7 @@ import { TextField, TextArea, ToggleField } from '../common/FormFields';
 import type { BulkLabelResult } from '../../lib/types';
 import BulkResultSummary from '../common/BulkResultSummary';
 import ConfirmDialog from '../common/ConfirmDialog';
+import ScanProgressBar from '../common/ScanProgressBar';
 import ShowPowerShell from '../common/ShowPowerShell';
 
 export default function DocumentLabelBulk() {
@@ -105,6 +106,8 @@ export default function DocumentLabelBulk() {
           </span>
         )}
       </div>
+
+      <ScanProgressBar active={loading} />
 
       {result && <BulkResultSummary result={result} />}
 
