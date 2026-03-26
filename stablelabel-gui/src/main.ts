@@ -3,6 +3,7 @@ import path from 'node:path';
 import { autoUpdater } from 'electron-updater';
 import { PowerShellBridge } from './powershell-bridge';
 import { ClassifierBridge } from './classifier-bridge';
+import { LocalJobRunner, JobConfig, JobProgress } from './local-job-runner';
 import { CredentialStore } from './credential-store';
 import { logger, initFileLogging } from './logger';
 import { CMDLET_REGISTRY } from './cmdlet-registry';
@@ -22,6 +23,7 @@ declare const MAIN_WINDOW_VITE_NAME: string;
 let mainWindow: BrowserWindow | null = null;
 let psBridge: PowerShellBridge | null = null;
 let classifierBridge: ClassifierBridge | null = null;
+let activeJobRunner: LocalJobRunner | null = null;
 
 function getModulePath(): string {
   if (app.isPackaged) {
@@ -245,6 +247,63 @@ app.whenReady().then(() => {
     } catch {
       return { initialized: false };
     }
+  });
+
+  // ── Local Job Runner (bulk labeling without server) ────────────────
+  ipcMain.handle('job:start', async (_event, config: JobConfig) => {
+    try {
+      ensureBridges();
+      if (!psBridge || !classifierBridge) {
+        return { success: false, error: 'Bridges not initialized' };
+      }
+      if (activeJobRunner) {
+        return { success: false, error: 'A job is already running' };
+      }
+
+      activeJobRunner = new LocalJobRunner(psBridge, classifierBridge);
+
+      // Run in background — progress sent via IPC events
+      const onProgress = (progress: JobProgress) => {
+        mainWindow?.webContents.send('job:progress', progress);
+      };
+
+      // Don't await — let it run in the background
+      activeJobRunner.run(config, onProgress).then((results) => {
+        mainWindow?.webContents.send('job:completed', results);
+        activeJobRunner = null;
+      }).catch((err) => {
+        mainWindow?.webContents.send('job:completed', []);
+        activeJobRunner = null;
+        logger.error('JOB', `Job failed: ${err}`);
+      });
+
+      return { success: true };
+    } catch (err) {
+      return { success: false, error: err instanceof Error ? err.message : String(err) };
+    }
+  });
+
+  ipcMain.handle('job:pause', async () => {
+    if (!activeJobRunner) return { success: false, error: 'No job running' };
+    activeJobRunner.pause();
+    return { success: true };
+  });
+
+  ipcMain.handle('job:resume', async () => {
+    if (!activeJobRunner) return { success: false, error: 'No job running' };
+    activeJobRunner.resume();
+    return { success: true };
+  });
+
+  ipcMain.handle('job:cancel', async () => {
+    if (!activeJobRunner) return { success: false, error: 'No job running' };
+    activeJobRunner.cancel();
+    return { success: true };
+  });
+
+  ipcMain.handle('job:get-results', async () => {
+    if (!activeJobRunner) return { success: true, data: [] };
+    return { success: true, data: activeJobRunner.getResults() };
   });
 
   createWindow();

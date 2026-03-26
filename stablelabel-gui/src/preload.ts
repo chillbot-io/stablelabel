@@ -81,4 +81,63 @@ contextBridge.exposeInMainWorld('stablelabel', {
   /** Get classifier bridge status */
   getClassifierStatus: (): Promise<{ initialized: boolean }> =>
     ipcRenderer.invoke('classifier:get-status'),
+
+  /* ── Local Job Runner (bulk labeling) ──────────────────────────── */
+
+  /** Start a bulk labeling job — runs in background, progress via events */
+  jobStart: (config: {
+    target_label_id?: string;
+    use_policies?: boolean;
+    dry_run?: boolean;
+    site_ids?: string[];
+    policies?: Array<{
+      policy_id: string;
+      policy_name: string;
+      target_label_id: string;
+      priority: number;
+      rules: Record<string, unknown>;
+    }>;
+  }): Promise<{ success: boolean; error?: string }> =>
+    ipcRenderer.invoke('job:start', config),
+
+  /** Pause the running job */
+  jobPause: (): Promise<{ success: boolean; error?: string }> =>
+    ipcRenderer.invoke('job:pause'),
+
+  /** Resume a paused job */
+  jobResume: (): Promise<{ success: boolean; error?: string }> =>
+    ipcRenderer.invoke('job:resume'),
+
+  /** Cancel the running job */
+  jobCancel: (): Promise<{ success: boolean; error?: string }> =>
+    ipcRenderer.invoke('job:cancel'),
+
+  /** Get results collected so far */
+  jobGetResults: (): Promise<{ success: boolean; data: unknown[] }> =>
+    ipcRenderer.invoke('job:get-results'),
+
+  /** Listen for job progress updates */
+  onJobProgress: (callback: (progress: {
+    status: string;
+    phase: string;
+    total_files: number;
+    processed_files: number;
+    labelled_files: number;
+    skipped_files: number;
+    failed_files: number;
+    current_file?: string;
+    current_site?: string;
+    error?: string;
+  }) => void): (() => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, progress: Parameters<typeof callback>[0]) => callback(progress);
+    ipcRenderer.on('job:progress', handler);
+    return () => ipcRenderer.removeListener('job:progress', handler);
+  },
+
+  /** Listen for job completion */
+  onJobCompleted: (callback: (results: unknown[]) => void): (() => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, results: unknown[]) => callback(results);
+    ipcRenderer.on('job:completed', handler);
+    return () => ipcRenderer.removeListener('job:completed', handler);
+  },
 });
