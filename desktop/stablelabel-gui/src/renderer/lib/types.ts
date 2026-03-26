@@ -205,6 +205,7 @@ export type Page =
   | 'manual-label'
   | 'bulk-ops'
   | 'auto-scan'
+  | 'classify-label'
   | 'explorer'
   | 'snapshots'
   | 'analysis'

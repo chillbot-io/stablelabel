@@ -73,6 +73,13 @@ const icons: Record<string, React.ReactNode> = {
       <circle cx="10" cy="10" r="2" fill="currentColor" stroke="none" />
     </Icon>
   ),
+  /* Classify & Label — shield with checkmark */
+  'classify-label': (
+    <Icon>
+      <path d="M10 2l7 3v5c0 4.5-3 8-7 10-4-2-7-5.5-7-10V5l7-3z" />
+      <path d="M7.5 10l2 2 3.5-4" />
+    </Icon>
+  ),
   /* Explorer — folder tree */
   explorer: (
     <Icon>
@@ -145,6 +152,7 @@ const navItems: NavItem[] = [
   { id: 'manual-label', label: 'CSV Upload', group: 'Operations' },
   { id: 'bulk-ops', label: 'Bulk Removal', group: 'Operations' },
   { id: 'auto-scan', label: 'Auto-Label Scan', group: 'Operations' },
+  { id: 'classify-label', label: 'Classify & Label', group: 'Automation' },
   { id: 'explorer', label: 'Explorer', group: 'Browse' },
   { id: 'snapshots', label: 'Snapshots', group: 'Safety' },
   { id: 'analysis', label: 'Analysis', group: 'Intelligence' },
