@@ -50,6 +50,9 @@ export class PowerShellBridge {
   /** Callback invoked when a device-code authentication message is detected in stdout. */
   onDeviceCode: ((info: { userCode: string; verificationUrl: string; message: string }) => void) | null = null;
 
+  /** Callback invoked when SL_PROGRESS lines are detected in stdout. */
+  onProgress: ((progress: Record<string, unknown>) => void) | null = null;
+
   /** Tracks the last device code that was fired so we skip stale matches.
    *  Connect-SLAll triggers TWO device-code prompts (Graph then Compliance).
    *  Without this, the accumulated outputBuffer causes the regex to re-match
@@ -135,6 +138,28 @@ export class PowerShellBridge {
           message: clean.trim(),
         });
         return; // Fire only the newest unhandled code
+      }
+    }
+  }
+
+  /**
+   * Parse SL_PROGRESS lines from stdout and emit progress events.
+   * Format: SL_PROGRESS:{"phase":"labelling","total":100,"processed":45,...}
+   */
+  private checkForProgress(chunk: string): void {
+    if (!this.onProgress) return;
+
+    const lines = chunk.split('\n');
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (trimmed.startsWith('SL_PROGRESS:')) {
+        try {
+          const json = trimmed.substring('SL_PROGRESS:'.length);
+          const progress = JSON.parse(json);
+          this.onProgress(progress);
+        } catch {
+          // Malformed progress line — skip silently
+        }
       }
     }
   }
@@ -250,6 +275,9 @@ export class PowerShellBridge {
 
       // Only check new chunks for device codes — avoids O(n^2) regex on growing buffer
       this.checkForDeviceCode(chunk);
+
+      // Check for SL_PROGRESS lines (emitted by Invoke-SLAutoLabelScan and similar)
+      this.checkForProgress(chunk);
 
       // Check if the current command's marker has arrived
       if (this.currentMarker && this.outputBuffer.includes(this.currentMarker)) {
@@ -470,8 +498,12 @@ export class PowerShellBridge {
       const psCommand = command.includes('-AsJson') ? command : `${command} -AsJson`;
       const output = await this.sendRaw(psCommand);
 
-      // Strip ANSI escape codes from output (PowerShell may emit colored warnings)
-      const cleanOutput = stripAnsi(output);
+      // Strip ANSI escape codes and SL_PROGRESS lines from output
+      const cleanOutput = stripAnsi(output)
+        .split('\n')
+        .filter((line) => !line.trim().startsWith('SL_PROGRESS:'))
+        .join('\n')
+        .trim();
 
       // Capture stderr immediately — it's cleared when the next command starts
       const capturedStderr = this.stderrBuffer.trim();

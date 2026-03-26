@@ -42,6 +42,10 @@ function ensureBridges(): void {
     psBridge.onDeviceCode = (info) => {
       mainWindow?.webContents.send('ps:device-code', info);
     };
+    // Wire progress events so long-running PS commands stream updates to renderer
+    psBridge.onProgress = (progress) => {
+      mainWindow?.webContents.send('ps:progress', progress);
+    };
   }
   if (!classifierBridge) {
     classifierBridge = new ClassifierBridge();

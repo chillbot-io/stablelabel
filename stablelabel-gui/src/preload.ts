@@ -31,6 +31,22 @@ contextBridge.exposeInMainWorld('stablelabel', {
     return () => ipcRenderer.removeListener('ps:device-code', handler);
   },
 
+  /** Listen for progress events from long-running PS commands (auto-label scan, etc.) */
+  onPsProgress: (callback: (progress: {
+    phase: string;
+    total: number;
+    processed: number;
+    success?: number;
+    failed?: number;
+    matched?: number;
+    skipped?: number;
+    file?: string;
+  }) => void): (() => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, progress: Parameters<typeof callback>[0]) => callback(progress);
+    ipcRenderer.on('ps:progress', handler);
+    return () => ipcRenderer.removeListener('ps:progress', handler);
+  },
+
   /** Open a native file-open dialog */
   openFileDialog: (options?: {
     title?: string;

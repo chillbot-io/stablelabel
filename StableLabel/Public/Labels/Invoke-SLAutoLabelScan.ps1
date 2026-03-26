@@ -155,9 +155,12 @@ function Invoke-SLAutoLabelScan {
             $foldersToScan += 'root'
         }
 
+        $foldersScanned = 0
         while ($foldersToScan.Count -gt 0) {
             $currentFolder = $foldersToScan[0]
             $foldersToScan = @($foldersToScan | Select-Object -Skip 1)
+            $foldersScanned++
+            Write-Output "SL_PROGRESS:{`"phase`":`"enumerating`",`"total`":$($allFiles.Count),`"processed`":0,`"folders_scanned`":$foldersScanned,`"folders_remaining`":$($foldersToScan.Count)}"
 
             $uri = if ($currentFolder -eq 'root') {
                 "/drives/$DriveId/root/children"
@@ -208,6 +211,9 @@ function Invoke-SLAutoLabelScan {
         }
 
         Write-Verbose "Found $($allFiles.Count) files to evaluate."
+
+        # Emit machine-readable progress for GUI consumption
+        Write-Output "SL_PROGRESS:{`"phase`":`"enumerating`",`"total`":$($allFiles.Count),`"processed`":0}"
 
         # Evaluate conditions
         $matchingFiles = @()
@@ -341,13 +347,17 @@ function Invoke-SLAutoLabelScan {
         }
 
         Write-Verbose "Final: $($matchingFiles.Count) files to label."
+        Write-Output "SL_PROGRESS:{`"phase`":`"labelling`",`"total`":$($matchingFiles.Count),`"processed`":0,`"matched`":$($matchingFiles.Count),`"skipped`":$($skippedFiles.Count)}"
 
         # Apply labels (or dry-run)
         $results = @()
         $successCount = 0
         $failedCount = 0
+        $processedCount = 0
 
         foreach ($file in $matchingFiles) {
+            $processedCount++
+
             if ($isDryRun) {
                 $results += [PSCustomObject]@{
                     Name   = $file.name
@@ -358,6 +368,7 @@ function Invoke-SLAutoLabelScan {
                     Error  = $null
                 }
                 $successCount++
+                Write-Output "SL_PROGRESS:{`"phase`":`"labelling`",`"total`":$($matchingFiles.Count),`"processed`":$processedCount,`"success`":$successCount,`"failed`":$failedCount,`"file`":`"$($file.name)`"}"
                 continue
             }
 
@@ -400,6 +411,8 @@ function Invoke-SLAutoLabelScan {
 
                 Write-SLAuditEntry -Action 'AutoLabel-Apply' -Target "$DriveId/$($file.id)" -Detail @{ FileName = $file.name; LabelId = $LabelId } -Result 'failed' -ErrorMessage $_.Exception.Message
             }
+
+            Write-Output "SL_PROGRESS:{`"phase`":`"labelling`",`"total`":$($matchingFiles.Count),`"processed`":$processedCount,`"success`":$successCount,`"failed`":$failedCount,`"file`":`"$($file.name)`"}"
         }
 
         $summary = [PSCustomObject]@{
