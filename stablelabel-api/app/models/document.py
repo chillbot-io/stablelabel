@@ -126,9 +126,14 @@ class BulkRemoveResponse(BaseModel):
 
 
 class CsvUploadResult(BaseModel):
-    """Response for CSV upload labeling."""
+    """Response for CSV upload labeling.
+
+    Returns immediately with parse results. Use the job_ids to track
+    progress via the SSE endpoint: GET /tenants/{id}/jobs/{job_id}/progress
+    """
 
     total_rows: int = 0
     valid_rows: int = 0
     invalid_rows: int = 0
     errors: list[str] = Field(default_factory=list)
+    job_ids: list[str] = Field(default_factory=list)

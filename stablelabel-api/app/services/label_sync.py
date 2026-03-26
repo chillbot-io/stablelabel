@@ -31,49 +31,64 @@ from app.services.label_service import LabelService
 logger = logging.getLogger(__name__)
 
 
+_SYNC_CONCURRENCY = 5  # max concurrent Graph API label fetches
+
+
 async def sync_labels_for_all_tenants(
     db: AsyncSession,
     label_service: LabelService,
 ) -> dict[str, int]:
     """Refresh label inventory for every active customer tenant.
 
+    Phase 1: Fetch labels from Graph API concurrently (I/O-bound, parallelizable).
+    Phase 2: Upsert into DB sequentially (shares one DB session).
+
     Returns a summary dict: {"synced": N, "failed": M, "skipped": K}.
     """
+    import asyncio
+
     stmt = select(CustomerTenant).where(CustomerTenant.consent_status == "active")
     result = await db.execute(stmt)
     tenants = result.scalars().all()
 
     summary = {"synced": 0, "failed": 0, "skipped": 0}
 
-    for tenant in tenants:
-        tid = tenant.entra_tenant_id
+    # Phase 1: Fetch labels concurrently using a semaphore to bound concurrency
+    sem = asyncio.Semaphore(_SYNC_CONCURRENCY)
+
+    async def _fetch(tenant: CustomerTenant) -> tuple[CustomerTenant, list | None]:
+        async with sem:
+            try:
+                labels = await label_service.get_labels(tenant.entra_tenant_id, force=True)
+                return tenant, labels
+            except Exception as exc:
+                logger.warning("Failed to fetch labels for tenant %s: %s", tenant.entra_tenant_id, exc)
+                return tenant, None
+
+    fetch_results = await asyncio.gather(*[_fetch(t) for t in tenants])
+
+    # Phase 2: Upsert sequentially (DB session is not thread-safe)
+    for tenant, labels in fetch_results:
+        if labels is None:
+            summary["failed"] += 1
+            continue
         try:
-            labels = await label_service.get_labels(tid, force=True)
-
-            # Upsert into label_definitions table for durable cache
             await _upsert_label_definitions(db, tenant.id, labels)
-
             summary["synced"] += 1
             logger.debug(
                 "Synced %d labels for tenant %s (%s)",
-                len(labels),
-                tenant.display_name,
-                tid,
+                len(labels), tenant.display_name, tenant.entra_tenant_id,
             )
         except Exception as exc:
-            # Roll back the failed tenant's changes so the session stays usable
             await db.rollback()
             summary["failed"] += 1
-            logger.warning("Failed to sync labels for tenant %s: %s", tid, exc)
+            logger.warning("Failed to upsert labels for tenant %s: %s", tenant.entra_tenant_id, exc)
 
-    # Commit all successful tenant syncs in one transaction
     await db.commit()
 
     logger.info(
         "Label sync complete: %d synced, %d failed, %d skipped",
-        summary["synced"],
-        summary["failed"],
-        summary["skipped"],
+        summary["synced"], summary["failed"], summary["skipped"],
     )
     return summary
 

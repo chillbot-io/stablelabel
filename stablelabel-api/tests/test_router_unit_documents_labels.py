@@ -19,6 +19,7 @@ from app.core.exceptions import (
 )
 from app.db.base import get_session
 from app.dependencies import (
+    get_arq_pool,
     get_document_service,
     get_graph_client,
     get_label_management_service,
@@ -115,13 +116,19 @@ def db_session():
 
 
 @pytest.fixture()
-def doc_client(doc_svc, graph, db_session):
+def arq_pool():
+    return AsyncMock()
+
+
+@pytest.fixture()
+def doc_client(doc_svc, graph, db_session, arq_pool):
     app = FastAPI()
     app.include_router(documents.router)
     app.dependency_overrides[get_current_user] = lambda: _make_user("Operator")
     app.dependency_overrides[get_session] = lambda: db_session
     app.dependency_overrides[get_document_service] = lambda: doc_svc
     app.dependency_overrides[get_graph_client] = lambda: graph
+    app.dependency_overrides[get_arq_pool] = lambda: arq_pool
     return TestClient(app)
 
 
@@ -277,22 +284,16 @@ class TestUploadCsv:
         assert resp.status_code == 400
         assert "columns" in resp.json()["detail"].lower()
 
-    def test_valid_csv(self, doc_client, doc_svc):
-        doc_svc.apply_label_bulk.return_value = BulkLabelResponse(
-            job_id="j1",
-            tenant_id=TID,
-            label_id="l1",
-            total=1,
-            completed=1,
-            results=[],
-        )
+    def test_valid_csv(self, doc_client, doc_svc, arq_pool):
         csv_content = "drive_id,item_id,filename,label_id\nd1,i1,test.docx,l1\n"
         resp = self._upload(doc_client, "test.csv", csv_content)
-        assert resp.status_code == 200
+        assert resp.status_code == 202
         body = resp.json()
         assert body["total_rows"] == 1
         assert body["valid_rows"] == 1
         assert body["invalid_rows"] == 0
+        assert len(body["job_ids"]) == 1
+        arq_pool.enqueue_job.assert_awaited_once()
 
 
 # ===================================================================

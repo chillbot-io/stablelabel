@@ -25,7 +25,8 @@ from app.core.exceptions import (
 )
 from app.core.rbac import check_tenant_access, require_role
 from app.db.base import get_session
-from app.dependencies import get_document_service, get_graph_client
+from app.db.models import AuditEvent, CustomerTenant, Job
+from app.dependencies import get_arq_pool, get_document_service, get_graph_client
 from app.models.document import (
     BulkItem,
     BulkLabelRequest,
@@ -200,18 +201,24 @@ async def remove_label_bulk(
     )
 
 
-@router.post("/upload-csv", response_model=CsvUploadResult)
+@router.post("/upload-csv", response_model=CsvUploadResult, status_code=202)
 async def upload_csv_labels(
     tenant_id: str,
     file: UploadFile,
     user: CurrentUser = Depends(require_role("Operator")),
     db=Depends(get_session),
-    svc: DocumentService = Depends(get_document_service),
+    arq_pool: ArqRedis = Depends(get_arq_pool),
 ) -> CsvUploadResult:
     """Upload a CSV file to apply labels to files in bulk.
 
+    Parses the CSV synchronously (fast), creates a Job per label_id,
+    and enqueues them for async processing. Returns immediately with
+    parse results — use the job IDs to track progress via SSE.
+
     Expected CSV columns: drive_id, item_id, filename, label_id
     """
+    from arq import ArqRedis
+
     await check_tenant_access(user, tenant_id, db)
 
     if not file.filename or not file.filename.endswith(".csv"):
@@ -239,7 +246,7 @@ async def upload_csv_labels(
 
     rows = list(reader)
     errors: list[str] = []
-    items_by_label: dict[str, list[BulkItem]] = {}
+    items_by_label: dict[str, list[dict[str, str]]] = {}
 
     for i, row in enumerate(rows, start=2):
         drive_id = row.get("drive_id", "").strip()
@@ -251,37 +258,44 @@ async def upload_csv_labels(
             errors.append(f"Row {i}: missing required fields")
             continue
 
-        items_by_label.setdefault(label_id, []).append(
-            BulkItem(drive_id=drive_id, item_id=item_id, filename=filename)
-        )
+        items_by_label.setdefault(label_id, []).append({
+            "drive_id": drive_id, "item_id": item_id, "name": filename,
+        })
 
-    parse_error_count = len(errors)
-    apply_failed_count = 0
+    # Create a Job per unique label_id and enqueue for async processing.
+    # This returns immediately — the frontend can track each job via SSE.
+    ct = await db.get(CustomerTenant, uuid.UUID(tenant_id))
+    job_ids: list[str] = []
 
     for label_id, items in items_by_label.items():
-        try:
-            result = await svc.apply_label_bulk(
-                tenant_id=tenant_id,
-                label_id=label_id,
-                items=items,
-            )
-            # Track failures from bulk apply
-            for r in result.results:
-                if r.status == "failed":
-                    apply_failed_count += 1
-                    errors.append(f"{r.filename}: {r.error}")
-        except Exception as exc:
-            apply_failed_count += len(items)
-            errors.append(f"Label {label_id}: {exc}")
+        job = Job(
+            customer_tenant_id=uuid.UUID(tenant_id),
+            created_by=uuid.UUID(user.id),
+            name=f"CSV upload — {file.filename} ({label_id[:8]}…)",
+            config={"target_label_id": label_id, "csv_items": items},
+            status="pending",
+        )
+        db.add(job)
+        if ct:
+            db.add(AuditEvent(
+                msp_tenant_id=ct.msp_tenant_id,
+                customer_tenant_id=ct.id,
+                actor_id=uuid.UUID(user.id),
+                event_type="job.created",
+                extra={"job_name": job.name, "source": "csv_upload", "items": len(items)},
+            ))
+        job_ids.append(str(job.id))
 
-    # Truncate errors after all collection is complete
-    if len(errors) > 50:
-        errors = errors[:50] + [f"... and {len(errors) - 50} more errors"]
+    await db.commit()
 
-    total_invalid = parse_error_count + apply_failed_count
+    # Enqueue all jobs for async processing
+    for jid in job_ids:
+        await arq_pool.enqueue_job("run_job", jid)
+
     return CsvUploadResult(
         total_rows=len(rows),
-        valid_rows=len(rows) - parse_error_count,
-        invalid_rows=total_invalid,
-        errors=errors,
+        valid_rows=len(rows) - len(errors),
+        invalid_rows=len(errors),
+        errors=errors[:50] if len(errors) <= 50 else errors[:50] + [f"... and {len(errors) - 50} more"],
+        job_ids=job_ids,
     )

@@ -115,3 +115,4 @@ class TestCsvUploadResult:
         assert result.valid_rows == 0
         assert result.invalid_rows == 0
         assert result.errors == []
+        assert result.job_ids == []
