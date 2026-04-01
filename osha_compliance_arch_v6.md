@@ -64,6 +64,11 @@
 | New | — | Async job polling endpoint | 8.4 |
 | New | — | Docker Compose for both servers | 6.2 |
 | New | — | Snapshot retention policy | 13.2 |
+| v6.1 | High | IP-based rate limiting on /v1/ endpoints (anti-scraping) | 6.2 |
+| v6.1 | High | Shadow-table swap retains prev table for webhook diff | 3.2, 4.2 |
+| v6.1 | High | Splink cluster mapping uses snapshot of previous clusters | 4.8 |
+| v6.1 | High | db.py log_error function + CLI entry point added | 3.1 |
+| v6.1 | High | PATCH /v1/subscriptions/{id} update endpoint | 8.4 |
 
 ---
 
@@ -267,6 +272,48 @@ def finish_pipeline_run(
                 run_id,
             ),
         )
+
+
+# v6.1: Added — shell script calls `python pipeline/db.py log_error $RUN_ID 'message'`
+# but this function was never defined. Also adds the CLI entry point that the shell
+# script depends on for start / log_error / fail / success subcommands.
+
+def log_error(run_id: str, message: str):
+    """Append a row to pipeline_errors (dead-letter pattern, finding #8)."""
+    with get_cursor() as cur:
+        cur.execute(
+            """
+            INSERT INTO pipeline_errors (run_id, source, error_message, logged_at)
+            VALUES (%s, %s, %s, %s)
+            """,
+            (run_id, 'pipeline', message, datetime.now(timezone.utc)),
+        )
+
+
+# --- CLI entry point -------------------------------------------------------
+# Usage from run_pipeline.sh:
+#   python pipeline/db.py start   <run_id>
+#   python pipeline/db.py log_error <run_id> <message>
+#   python pipeline/db.py fail    <run_id> <message>
+#   python pipeline/db.py success <run_id> <warning_count>
+
+if __name__ == "__main__":
+    import sys
+    cmd, run_id = sys.argv[1], sys.argv[2]
+    if cmd == "start":
+        log_pipeline_run(run_id, source="nightly", status="running")
+    elif cmd == "log_error":
+        log_error(run_id, sys.argv[3])
+    elif cmd == "fail":
+        finish_pipeline_run(run_id, status="failed", error_message=sys.argv[3])
+    elif cmd == "success":
+        warnings = int(sys.argv[3]) if len(sys.argv) > 3 else 0
+        finish_pipeline_run(
+            run_id, status="completed" if warnings == 0 else "completed_with_warnings",
+        )
+    else:
+        print(f"Unknown command: {cmd}", file=sys.stderr)
+        sys.exit(1)
 ```
 
 ### 3.2 Nightly Sync — Shadow-Table Swap
@@ -293,14 +340,18 @@ CREATE INDEX idx_staging_naics ON employer_profile_staging (naics_code);
 CREATE INDEX idx_staging_risk ON employer_profile_staging (risk_tier);
 CREATE INDEX idx_staging_snapshot ON employer_profile_staging (snapshot_date);
 
--- Step 4: Atomic swap (takes < 10ms, holds AccessExclusiveLock briefly)
+-- Step 4: Drop any leftover prev table, then atomic swap
+-- v6.1: Retain old table as employer_profile_prev for webhook diff (Step 8).
+-- Previous version dropped employer_profile_old immediately, making diff impossible.
+DROP TABLE IF EXISTS employer_profile_prev;
 BEGIN;
-ALTER TABLE employer_profile RENAME TO employer_profile_old;
+ALTER TABLE employer_profile RENAME TO employer_profile_prev;
 ALTER TABLE employer_profile_staging RENAME TO employer_profile;
 COMMIT;
 
--- Step 5: Drop the old table outside the transaction
-DROP TABLE IF EXISTS employer_profile_old;
+-- Step 5: employer_profile_prev is kept alive until AFTER dispatch_webhooks.py (Step 8).
+-- dispatch_webhooks.py drops it when done:
+--   DROP TABLE IF EXISTS employer_profile_prev;
 ```
 
 **Python driver for binary COPY (pipeline/sync.py):**
@@ -888,7 +939,7 @@ echo "Pipeline run $RUN_ID complete (warnings: $ERRORS)"
 - **Dead-letter pattern (finding #8):** Ingestion steps log failures to the `pipeline_errors` table and increment the warning counter, but the pipeline continues. Only Great Expectations validation (Step 2) and post-sync validation (Step 7) are hard gates that abort the run. This means a temporary DOL outage does not block FMCSA and SAM data from refreshing.
 - **No SQLite (finding #9):** Pipeline run metadata writes directly to Postgres via `pipeline/db.py`. The `pipeline_runs` and `pipeline_errors` tables live in the `pipeline` schema, separate from the `public` schema the API reads.
 - **Post-sync validation (finding #5):** `validate_sync.py` queries DuckDB for expected row counts per source table, then queries Postgres for actual counts. A mismatch beyond 0.1% fails the run.
-- **Webhook dispatch:** Step 8 diffs `employer_profile` against the previous snapshot (stored as `employer_profile_prev` during the shadow-table swap). Any `risk_tier` change fires a webhook to registered subscribers.
+- **Webhook dispatch (v6.1 fix):** Step 8 diffs `employer_profile` against `employer_profile_prev` — the old table retained during the shadow-table swap. Previous version renamed to `employer_profile_old` and dropped it immediately, making the diff impossible. Now the swap renames the old table to `employer_profile_prev` and keeps it alive. `dispatch_webhooks.py` drops `employer_profile_prev` after completing the diff. Any `risk_tier` change fires a webhook to registered subscribers.
 
 ### 4.3 FMCSA Ingestion
 
@@ -1151,10 +1202,18 @@ def run_deduplication():
     clusters = linker.cluster_pairwise_predictions_at_threshold(predictions, 0.85)
     clusters_df = clusters.as_pandas_dataframe()
     con.register('clusters_df', clusters_df)
+    # v6.1: Snapshot old clusters BEFORE overwriting — needed by update_cluster_mapping
+    # to detect member-record overlap between old and new clusters.
+    # Previous version replaced employer_clusters first, so the overlap query joined
+    # the new table against itself (race condition — old clusters were already gone).
+    con.execute("CREATE OR REPLACE TABLE employer_clusters_prev AS SELECT * FROM employer_clusters")
     con.execute("CREATE OR REPLACE TABLE employer_clusters AS SELECT * FROM clusters_df")
 
     # v6: Populate cluster_id_mapping — stable employer_id UUIDs
     update_cluster_mapping(con)
+
+    # Clean up snapshot
+    con.execute("DROP TABLE IF EXISTS employer_clusters_prev")
 
     # v6: finding #13 — Splink drift monitoring
     monitor_model_drift(con, predictions)
@@ -1185,10 +1244,12 @@ def update_cluster_mapping(con):
         else:
             # Check if any member records overlap with an existing cluster
             # v6.1: parameterized query replaces f-string to prevent SQL injection
+            # v6.1: Join against employer_clusters_prev (snapshot of PREVIOUS run's clusters)
+            # instead of employer_clusters (which now contains CURRENT run's clusters).
             overlap = con.execute("""
                 SELECT DISTINCT m.employer_id
                 FROM cluster_id_mapping m
-                JOIN employer_clusters ec_old ON m.cluster_id = ec_old.cluster_id
+                JOIN employer_clusters_prev ec_old ON m.cluster_id = ec_old.cluster_id
                 JOIN employer_clusters ec_new ON ec_old.activity_nr = ec_new.activity_nr
                 WHERE ec_new.cluster_id = ?
                 LIMIT 1
@@ -1796,11 +1857,12 @@ services:
 
 ### nginx Configuration
 
-Updated with auth rate limiting.
+Updated with auth rate limiting and IP-based scraping protection.
 
 ```nginx
 limit_req_zone $http_x_api_key zone=api_per_key:10m rate=100r/m;
-limit_req_zone $binary_remote_addr zone=auth_limit:10m rate=10r/m;  # v6: finding #21
+limit_req_zone $binary_remote_addr zone=api_per_ip:10m rate=60r/m;   # v6.1: finding — anti-scraping on employer endpoints
+limit_req_zone $binary_remote_addr zone=auth_limit:10m rate=10r/m;   # v6: finding #21
 
 server { listen 80; return 301 https://$host$request_uri; }
 
@@ -1811,6 +1873,7 @@ server {
 
   location /v1/ {
     limit_req zone=api_per_key burst=20 nodelay;
+    limit_req zone=api_per_ip burst=10 nodelay;  # v6.1: IP-based anti-scraping layer
     proxy_pass http://127.0.0.1:8000;
   }
   # v6: finding #21 — rate limit auth endpoints
@@ -2802,6 +2865,47 @@ Response:
 
 ---
 
+#### PATCH /v1/subscriptions/{id} — Update Subscription
+
+<!-- v6.1: was missing — customers had to delete and recreate (losing signing_secret) to change employer_ids -->
+
+```
+PATCH /v1/subscriptions/{sub_xyz789}
+```
+
+Requires scope: `subscriptions:manage`.
+
+Request body (all fields optional — only provided fields are updated):
+
+```json
+{
+  "employer_ids": ["a1b2c3d4-...", "e5f6a7b8-...", "new-id-..."],
+  "events": ["risk_tier_change"],
+  "callback_url": "https://yourapp.com/webhooks/v2/compliance",
+  "status": "paused"
+}
+```
+
+Response:
+
+```json
+{
+  "subscription_id": "sub_xyz789",
+  "employer_ids_count": 3,
+  "events": ["risk_tier_change"],
+  "callback_url": "https://yourapp.com/webhooks/v2/compliance",
+  "status": "paused",
+  "updated_at": "2026-03-28T10:30:00Z"
+}
+```
+
+Notes:
+- The `signing_secret` is **not** regenerated on PATCH — this is the whole point. Use DELETE + POST to rotate the secret.
+- `employer_ids` replaces the full list (not a merge). Send the complete set.
+- `status` accepts `"active"` or `"paused"`. Paused subscriptions retain their config but skip webhook delivery.
+
+---
+
 #### DELETE /v1/subscriptions/{id} — Unsubscribe
 
 ```
@@ -2979,7 +3083,7 @@ ORDER BY willful_count DESC, total_penalties DESC LIMIT 50;
 - FMCSA address parsing + gold-layer entity matching
 - GET /v1/employers/{employer_id}/risk-history endpoint (snapshot queries)
 - POST /v1/subscriptions webhook system (risk_tier_change events, HMAC-SHA256 signed)
-- GET/DELETE /v1/subscriptions management endpoints
+- GET/PATCH/DELETE /v1/subscriptions management endpoints
 - Splink model drift monitoring baseline (precision/recall vs labeled holdout)
 - flock coordination between pipeline and backup crons
 - Disk space monitoring cron
