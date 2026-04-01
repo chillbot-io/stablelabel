@@ -442,7 +442,7 @@ CREATE TABLE employer_profile (
     oflc_pw_wage_levels     TEXT[],
 
     -- Composite risk
-    risk_tier               TEXT NOT NULL CHECK (risk_tier IN ('LOW', 'MODERATE', 'HIGH', 'CRITICAL')),
+    risk_tier               TEXT NOT NULL CHECK (risk_tier IN ('LOW', 'MEDIUM', 'ELEVATED', 'HIGH')),  -- v6.1: aligned with dbt CASE output (was 'MODERATE'/'CRITICAL')
     risk_score              NUMERIC(5,2),
     risk_flags              TEXT[],
 
@@ -556,7 +556,9 @@ CREATE TABLE api_keys (
     monthly_limit   INTEGER NOT NULL DEFAULT 0,        -- v6: [finding #32] 0 = disabled. NULL no longer bypasses quota.
     current_usage   INTEGER DEFAULT 0,
     expires_at      TIMESTAMP,            -- v6: [finding #31] key expiration
-    is_active       BOOLEAN DEFAULT TRUE,
+    status          TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'rotating_out', 'revoked')),  -- v6.1: replaced is_active BOOLEAN to match code (active/rotating_out/revoked)
+    rotation_expires_at TIMESTAMP,        -- v6.1: when rotating_out keys should be revoked (48h NIST window)
+    last_used_at    TIMESTAMP,            -- v6.1: referenced in auth middleware _update_last_used()
     created_at      TIMESTAMP DEFAULT NOW()
 );
 ```
@@ -637,6 +639,155 @@ CREATE TABLE subscriptions (
 - The pipeline retries failed deliveries 3 times with exponential backoff (10s, 60s, 300s).
 - After 3 consecutive failures, the subscription `status` flips to `disabled` and the customer is notified via email.
 
+#### 3.4.10 api_usage
+
+<!-- v6.1: was referenced in auth middleware but never defined -->
+
+Metering table. One row per API call. Used for quota enforcement and billing analytics.
+
+```sql
+CREATE TABLE api_usage (
+    id              BIGSERIAL PRIMARY KEY,
+    key_hash        TEXT NOT NULL,
+    customer_id     INTEGER REFERENCES customers(id),
+    endpoint        TEXT,                  -- e.g., '/v1/employers'
+    queried_at      TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_api_usage_key_month ON api_usage (key_hash, queried_at);
+CREATE INDEX idx_api_usage_customer ON api_usage (customer_id, queried_at);
+```
+
+#### 3.4.11 email_verifications
+
+<!-- v6.1: was referenced in signup flow (5.3) but never defined -->
+
+```sql
+CREATE TABLE email_verifications (
+    id              SERIAL PRIMARY KEY,
+    customer_id     INTEGER REFERENCES customers(id) ON DELETE CASCADE,
+    token_hash      TEXT NOT NULL,         -- SHA-256 of the raw verification token
+    expires_at      TIMESTAMP NOT NULL,    -- NOW() + 24 hours
+    used            BOOLEAN DEFAULT FALSE,
+    created_at      TIMESTAMP DEFAULT NOW()
+);
+```
+
+#### 3.4.12 password_reset_tokens
+
+<!-- v6.1: was referenced in password reset flow (5.3) but never defined -->
+
+```sql
+CREATE TABLE password_reset_tokens (
+    id              SERIAL PRIMARY KEY,
+    customer_id     INTEGER REFERENCES customers(id) ON DELETE CASCADE,
+    token_hash      TEXT NOT NULL,         -- SHA-256 of the raw reset token
+    expires_at      TIMESTAMP NOT NULL,    -- NOW() + 1 hour
+    used            BOOLEAN DEFAULT FALSE,
+    created_at      TIMESTAMP DEFAULT NOW()
+);
+```
+
+#### 3.4.13 feedback
+
+<!-- v6.1: was referenced in POST /v1/employers/{employer_id}/feedback but never defined -->
+
+```sql
+CREATE TABLE feedback (
+    id              BIGSERIAL PRIMARY KEY,
+    employer_id     UUID NOT NULL,
+    customer_id     INTEGER REFERENCES customers(id),
+    type            TEXT NOT NULL CHECK (type IN ('incorrect_match', 'missing_data', 'wrong_employer', 'other')),
+    description     TEXT,
+    contact_email   TEXT,
+    created_at      TIMESTAMP DEFAULT NOW()
+);
+```
+
+#### 3.4.14 review_queue
+
+<!-- v6.1: was referenced in Splink drift monitoring (4.8) but never defined -->
+
+Human-labeled entity resolution pairs for Splink drift monitoring and model retraining.
+
+```sql
+CREATE TABLE review_queue (
+    id              BIGSERIAL PRIMARY KEY,
+    record_id_left  TEXT NOT NULL,
+    record_id_right TEXT NOT NULL,
+    match_probability NUMERIC(5,4),        -- Splink's predicted probability
+    decision        TEXT CHECK (decision IN ('match', 'non_match', NULL)),  -- NULL = unreviewed
+    reviewed_by     TEXT,
+    reviewed_at     TIMESTAMP,
+    pipeline_run_id UUID,
+    created_at      TIMESTAMP DEFAULT NOW()
+);
+```
+
+#### 3.4.15 test_fixtures
+
+<!-- v6.1: was referenced in test key routing (5.4) but never defined -->
+
+50 frozen employer profiles for integration testing with `emp_test_` keys. No production data. Manually curated.
+
+```sql
+CREATE TABLE test_fixtures (
+    employer_id     UUID PRIMARY KEY,
+    employer_name   TEXT NOT NULL,
+    ein             TEXT,
+    address         TEXT,
+    city            TEXT,
+    state           TEXT,
+    zip             TEXT,
+    naics_code      TEXT,
+    risk_tier       TEXT NOT NULL CHECK (risk_tier IN ('LOW', 'MEDIUM', 'ELEVATED', 'HIGH')),
+    osha_inspections_5yr INTEGER DEFAULT 0,
+    osha_violations_5yr  INTEGER DEFAULT 0,
+    osha_total_penalties NUMERIC(12,2) DEFAULT 0,
+    response_json   JSONB NOT NULL         -- full mock API response for this fixture
+);
+```
+
+#### 3.4.16 pipeline_errors
+
+<!-- v6.1: was referenced in dead-letter pattern (4.2) but never defined -->
+
+Append-only table for partial ingestion failures. Lives in `pipeline` schema alongside `pipeline_runs`.
+
+```sql
+CREATE TABLE pipeline_errors (
+    id              BIGSERIAL PRIMARY KEY,
+    run_id          UUID NOT NULL,
+    source          TEXT NOT NULL,          -- e.g., 'ingest_dol', 'ingest_fmcsa'
+    error_message   TEXT NOT NULL,
+    created_at      TIMESTAMP DEFAULT NOW()
+);
+```
+
+#### 3.4.17 risk_snapshots
+
+<!-- v6.1: was referenced in risk-history endpoint (8.4) but never defined -->
+
+Lightweight snapshot for the `/employers/{id}/risk-history` endpoint. Populated nightly during the pipeline sync step.
+
+```sql
+CREATE TABLE risk_snapshots (
+    id              BIGSERIAL PRIMARY KEY,
+    employer_id     UUID NOT NULL,
+    snapshot_date   DATE NOT NULL,
+    risk_tier       TEXT NOT NULL CHECK (risk_tier IN ('LOW', 'MEDIUM', 'ELEVATED', 'HIGH')),
+    confidence_tier TEXT,
+    osha_inspection_count_5yr INTEGER DEFAULT 0,
+    osha_violation_count_5yr  INTEGER DEFAULT 0,
+    osha_penalty_total_5yr    NUMERIC(12,2) DEFAULT 0,
+    violation_rate_trend      TEXT,
+    pipeline_run_id UUID,
+    UNIQUE (employer_id, snapshot_date)
+);
+
+CREATE INDEX idx_risk_snap_employer ON risk_snapshots (employer_id, snapshot_date DESC);
+```
+
 ---
 
 *End of Part 1 (Sections 1-3). Part 2 continues with Section 4 (API Design) onward.*
@@ -694,10 +845,10 @@ python pipeline/validate_bronze.py || { python pipeline/db.py fail $RUN_ID 'GX v
 # Step 3: Address parsing — MUST precede dbt
 python pipeline/parse_addresses.py
 
-# Step 4: dbt transformations
+# Step 4: dbt transformations — v6.1: dbt test now gates the pipeline (was silent on failure)
 dbt seed  --project-dir dbt/ --profiles-dir dbt/
 dbt run   --project-dir dbt/ --profiles-dir dbt/
-dbt test  --project-dir dbt/ --profiles-dir dbt/
+dbt test  --project-dir dbt/ --profiles-dir dbt/ || { python pipeline/db.py fail $RUN_ID 'dbt test failed'; exit 1; }
 
 # Step 5: Entity resolution
 python pipeline/entity_resolution.py
@@ -1017,14 +1168,15 @@ def update_cluster_mapping(con):
             mappings.append({'employer_id': existing_map[cid], 'cluster_id': cid})
         else:
             # Check if any member records overlap with an existing cluster
-            overlap = con.execute(f"""
+            # v6.1: parameterized query replaces f-string to prevent SQL injection
+            overlap = con.execute("""
                 SELECT DISTINCT m.employer_id
                 FROM cluster_id_mapping m
                 JOIN employer_clusters ec_old ON m.cluster_id = ec_old.cluster_id
                 JOIN employer_clusters ec_new ON ec_old.activity_nr = ec_new.activity_nr
-                WHERE ec_new.cluster_id = '{cid}'
+                WHERE ec_new.cluster_id = ?
                 LIMIT 1
-            """).df()
+            """, [cid]).df()
             if not overlap.empty:
                 mappings.append({'employer_id': overlap.iloc[0]['employer_id'], 'cluster_id': cid})
             else:
