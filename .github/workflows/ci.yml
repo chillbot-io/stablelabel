@@ -12,7 +12,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: stablelabel-gui
+        working-directory: desktop/stablelabel-gui
     steps:
       - uses: actions/checkout@v4
 
@@ -20,7 +20,7 @@ jobs:
         with:
           node-version: 20
           cache: npm
-          cache-dependency-path: stablelabel-gui/package-lock.json
+          cache-dependency-path: desktop/stablelabel-gui/package-lock.json
 
       - run: npm ci
       - run: npm test
@@ -30,7 +30,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: stablelabel-api
+        working-directory: server/stablelabel-api
     steps:
       - uses: actions/checkout@v4
 
@@ -53,7 +53,7 @@ jobs:
         run: |
           Install-Module -Name Pester -MinimumVersion 5.0 -Force -Scope CurrentUser
           $config = New-PesterConfiguration
-          $config.Run.Path = './StableLabel/Tests'
+          $config.Run.Path = './desktop/StableLabel/Tests'
           $config.Output.Verbosity = 'Detailed'
           $config.TestResult.Enabled = $true
           $config.TestResult.OutputPath = 'pester-results.xml'
@@ -66,3 +66,44 @@ jobs:
         with:
           name: pester-results
           path: pester-results.xml
+
+  # ── Security scanning ──────────────────────────────────────
+  security-scan:
+    name: Security Scanning
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      # Python dependency audit
+      - name: Audit Python dependencies
+        working-directory: server/stablelabel-api
+        run: |
+          pip install pip-audit
+          pip-audit -r <(pip install -e ".[dev]" --dry-run --report - 2>/dev/null || true) || true
+          pip install -e "."
+          pip-audit
+
+      # Node dependency audit
+      - name: Audit Node dependencies (GUI)
+        working-directory: desktop/stablelabel-gui
+        run: npm audit --omit=dev || true
+
+      - name: Audit Node dependencies (Web)
+        working-directory: server/stablelabel-web
+        run: npm audit --omit=dev || true
+
+      # Python SAST with bandit
+      - name: Run bandit (Python SAST)
+        working-directory: server/stablelabel-api
+        run: |
+          pip install bandit
+          bandit -r app/ -ll -ii --skip B101
