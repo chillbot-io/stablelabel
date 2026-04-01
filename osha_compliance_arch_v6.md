@@ -74,6 +74,11 @@
 | v6.1 | High | Deploy rollback uses previous image tag instead of recreating same failing image | 6.2 |
 | v6.1 | High | Health check runs immediately after pipeline (was 6h blind spot) | 6.2 |
 | v6.1 | High | Cron alerting wrapper (cron_alert.sh) actually implemented | 6.2 |
+| v6.1 | Medium | Indexes on subscriptions (customer_id, employer_ids GIN, active status) | 3.4 |
+| v6.1 | Medium | FK from api_key_audit_log.key_id to api_keys.key_id | 3.4 |
+| v6.1 | Medium | Versioned migration strategy (migrate.py + schema_migrations table) | 3.4, 6.2 |
+| v6.1 | Medium | TLS assertion on pipeline DATABASE_URL (sslmode=require enforced) | 3.1 |
+| v6.1 | Medium | Scope enforcement matrix — every endpoint annotated with required scope | 5.2, 8.x |
 
 ---
 
@@ -182,7 +187,13 @@ import psycopg2
 from psycopg2.extras import RealDictCursor
 
 
-DATABASE_URL = os.environ["DATABASE_URL"]  # postgresql://user:pass@host:5432/stablelabel
+DATABASE_URL = os.environ["DATABASE_URL"]  # postgresql://pipeline_user:pass@10.0.0.1:5432/stablelabel?sslmode=require
+
+# v6.1: Enforce TLS on the wire — reject connections that silently downgrade to plaintext.
+# The pipeline server connects to the API server's Postgres over the Hetzner vSwitch.
+# sslmode=require is set in the connection string, but we also verify it programmatically.
+assert "sslmode=require" in DATABASE_URL or "sslmode=verify" in DATABASE_URL, \
+    "DATABASE_URL must include sslmode=require (or verify-ca/verify-full) for inter-server connections"
 
 
 def get_connection():
@@ -432,7 +443,68 @@ max_client_conn = 100
 
 ### 3.4 Postgres Schema
 
-All tables live in a single `stablelabel` database. Schema is applied by a migration file (`migrations/001_init.sql`) run at first deploy.
+All tables live in a single `stablelabel` database. Schema is applied by numbered migration files run at deploy time.
+
+<!-- v6.1: Was a single 001_init.sql with no versioning strategy. Now uses a simple
+     sequential migration runner with a tracking table — no ORM dependency. -->
+
+**Migration strategy:** Migrations are sequential SQL files in `migrations/` (e.g., `001_init.sql`, `002_add_subscriptions_indexes.sql`). A `schema_migrations` table tracks which migrations have been applied:
+
+```sql
+CREATE TABLE IF NOT EXISTS schema_migrations (
+    version     INTEGER PRIMARY KEY,
+    filename    TEXT NOT NULL,
+    applied_at  TIMESTAMP DEFAULT NOW()
+);
+```
+
+The migration runner (`migrations/migrate.py`) runs at container startup before the app:
+
+```python
+# migrations/migrate.py
+import os, re, psycopg2
+
+def migrate():
+    con = psycopg2.connect(os.environ["DATABASE_URL"])
+    con.autocommit = False
+    cur = con.cursor()
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS schema_migrations (
+            version INTEGER PRIMARY KEY,
+            filename TEXT NOT NULL,
+            applied_at TIMESTAMP DEFAULT NOW()
+        )
+    """)
+    con.commit()
+
+    cur.execute("SELECT version FROM schema_migrations ORDER BY version")
+    applied = {row[0] for row in cur.fetchall()}
+
+    migration_dir = os.path.dirname(__file__)
+    files = sorted(f for f in os.listdir(migration_dir) if re.match(r'^\d{3}_.*\.sql$', f))
+
+    for f in files:
+        version = int(f[:3])
+        if version in applied:
+            continue
+        print(f"Applying migration {f}...")
+        sql = open(os.path.join(migration_dir, f)).read()
+        try:
+            cur.execute(sql)
+            cur.execute(
+                "INSERT INTO schema_migrations (version, filename) VALUES (%s, %s)",
+                (version, f),
+            )
+            con.commit()
+        except Exception:
+            con.rollback()
+            raise
+
+if __name__ == "__main__":
+    migrate()
+```
+
+The Docker entrypoint runs `python migrations/migrate.py` before `uvicorn`. This is idempotent — re-running skips already-applied migrations.
 
 #### 3.4.1 Pipeline Monitoring
 
@@ -653,7 +725,7 @@ Every key lifecycle event is recorded. No deletions from this table — it is ap
 -- v6: [finding #29] new table — audit trail for API key lifecycle
 CREATE TABLE api_key_audit_log (
     id              BIGSERIAL PRIMARY KEY,
-    key_id          UUID NOT NULL,
+    key_id          UUID NOT NULL REFERENCES api_keys(key_id),  -- v6.1: was missing FK; orphan rows possible
     customer_id     INTEGER REFERENCES customers(id),
     action          TEXT NOT NULL,         -- created / rotated / revoked / quota_changed / scope_changed
     performed_by    TEXT,                  -- email or system identifier
@@ -702,6 +774,12 @@ CREATE TABLE subscriptions (
     status          TEXT DEFAULT 'active' CHECK (status IN ('active', 'paused', 'disabled')),
     created_at      TIMESTAMP DEFAULT NOW()
 );
+
+-- v6.1: Missing indexes — customer_id for list queries, GIN on employer_ids for
+-- webhook dispatch (pipeline needs to find all subscriptions watching a given employer_id).
+CREATE INDEX idx_subscriptions_customer ON subscriptions (customer_id);
+CREATE INDEX idx_subscriptions_employer_ids ON subscriptions USING GIN (employer_ids);
+CREATE INDEX idx_subscriptions_status ON subscriptions (status) WHERE status = 'active';
 ```
 
 **Webhook payload signing:** Every outbound webhook POST includes a `X-StableLabel-Signature` header containing `HMAC-SHA256(signing_secret, raw_body)`. The subscriber verifies the signature before trusting the payload. This is the same pattern Stripe uses.
@@ -1528,6 +1606,35 @@ def check_scope(required_scope: str):
     return scope_checker
 ```
 
+<!-- v6.1: Scope checking was defined as a decorator but not confirmed applied to all endpoints.
+     The table below is the canonical scope-to-endpoint mapping. Every /v1/ endpoint MUST use
+     Depends(check_scope(...)) — endpoints missing it are a security bug. -->
+
+**Scope enforcement matrix — every API endpoint and its required scope:**
+
+| Endpoint | Method | Required Scope | Metered? |
+|----------|--------|---------------|----------|
+| `/v1/employers` | GET | `employer:read` | Yes |
+| `/v1/employers/{id}` | GET | `employer:read` | Yes |
+| `/v1/employers/{id}/risk-history` | GET | `employer:read` | Yes |
+| `/v1/employers/{id}/inspections` | GET | `employer:read` | No (free) |
+| `/v1/employers/{id}/feedback` | POST | `employer:read` | No |
+| `/v1/employers/batch` | POST | `batch:write` | Yes (1 per item) |
+| `/v1/jobs/{id}` | GET | `batch:write` | No |
+| `/v1/industries/{naics4}` | GET | `employer:read` | No |
+| `/v1/industries/naics-codes` | GET | `employer:read` | No |
+| `/v1/subscriptions` | GET | `subscriptions:manage` | No |
+| `/v1/subscriptions` | POST | `subscriptions:manage` | No |
+| `/v1/subscriptions/{id}` | PATCH | `subscriptions:manage` | No |
+| `/v1/subscriptions/{id}` | DELETE | `subscriptions:manage` | No |
+| `/v1/health` | GET | *(none — public)* | No |
+| `/dashboard/keys` | GET | *(JWT session)* | No |
+| `/dashboard/keys` | POST | *(JWT session)* | No |
+| `/dashboard/keys/{id}/rotate` | POST | *(JWT session)* | No |
+| `/dashboard/keys/{id}` | DELETE | *(JWT session)* | No |
+
+`admin:all` bypasses all scope checks. Dashboard endpoints use JWT cookie auth, not API keys — scope checking does not apply (CSRF protection applies instead).
+
 ### 5.3 Self-Serve Signup Flow
 
 **Step 1: Signup** -- use argon2id, not bcrypt.
@@ -1687,7 +1794,7 @@ redis==5.*
 
 ```bash
 # .env.example — all secrets required before starting the application
-PG_DSN=postgresql://api:yourpassword@localhost:6432/compliance
+PG_DSN=postgresql://api:yourpassword@localhost:6432/compliance  # localhost = pgBouncer on same host; sslmode not needed (v6.1 note)
 STRIPE_SECRET_KEY=sk_live_...
 STRIPE_WEBHOOK_SECRET=whsec_...
 RESEND_API_KEY=re_...
@@ -1751,7 +1858,8 @@ COPY auth/ auth/
 COPY migrations/ migrations/
 
 EXPOSE 8000
-CMD ["uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "4"]
+# v6.1: Run migrations before app startup (was manual 001_init.sql at first deploy only)
+CMD ["sh", "-c", "python migrations/migrate.py && uvicorn api.main:app --host 0.0.0.0 --port 8000 --workers 4"]
 ```
 
 **Dockerfile.pipeline** (Pipeline server):
@@ -2323,6 +2431,8 @@ Header notes:
 
 `# v6: finding #49 — path is plural /employers, not /employer`
 
+Requires scope: `employer:read`. <!-- v6.1: was implicit; now explicit -->
+
 This is the main search endpoint. It resolves a query (name, EIN, address) to an employer profile and returns the full compliance summary.
 
 ```
@@ -2512,6 +2622,8 @@ HTTP 404
 
 `# v6: finding #33 — the most fundamental REST gap in v5`
 
+Requires scope: `employer:read`. <!-- v6.1 -->
+
 This is the endpoint consumers call after resolving an employer via the search endpoint. The `employer_id` is a stable UUID that does not change across pipeline runs, making this endpoint cache-friendly and suitable for bookmarking.
 
 ```
@@ -2526,6 +2638,8 @@ Returns the same response structure as the search endpoint `match` object, inclu
 #### GET /v1/employers/{employer_id}/risk-history — Risk Tier Over Time
 
 `# v6: Phase 1 — snapshot queries`
+
+Requires scope: `employer:read`. <!-- v6.1 -->
 
 Returns historical risk tier snapshots for an employer, enabling trend analysis and audit trails. Each snapshot is created nightly by the pipeline and stored in the `risk_snapshots` table.
 
@@ -2570,6 +2684,8 @@ Response:
 #### GET /v1/employers/{employer_id}/inspections — Inspection Detail
 
 `# v6: employer_id replaces cluster_id; this endpoint is FREE`
+
+Requires scope: `employer:read`. <!-- v6.1 -->
 
 ```
 GET /v1/employers/{employer_id}/inspections
@@ -2696,6 +2812,8 @@ Response:
 #### POST /v1/employers/batch — Bulk Lookup
 
 `# v6: finding #36 — async mode for large batches + higher cap`
+
+Requires scope: `batch:write`. <!-- v6.1 -->
 
 ```
 POST /v1/employers/batch
