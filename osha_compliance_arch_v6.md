@@ -64,6 +64,30 @@
 | New | — | Async job polling endpoint | 8.4 |
 | New | — | Docker Compose for both servers | 6.2 |
 | New | — | Snapshot retention policy | 13.2 |
+| v6.1 | High | IP-based rate limiting on /v1/ endpoints (anti-scraping) | 6.2 |
+| v6.1 | High | Shadow-table swap retains prev table for webhook diff | 3.2, 4.2 |
+| v6.1 | High | Splink cluster mapping uses snapshot of previous clusters | 4.8 |
+| v6.1 | High | db.py log_error function + CLI entry point added | 3.1 |
+| v6.1 | High | PATCH /v1/subscriptions/{id} update endpoint | 8.4 |
+| v6.1 | High | Pagination envelopes on list endpoints (inspections, subscriptions) | 8.4 |
+| v6.1 | High | Dashboard key management endpoints formally specified | 8.5 |
+| v6.1 | High | Deploy rollback uses previous image tag instead of recreating same failing image | 6.2 |
+| v6.1 | High | Health check runs immediately after pipeline (was 6h blind spot) | 6.2 |
+| v6.1 | High | Cron alerting wrapper (cron_alert.sh) actually implemented | 6.2 |
+| v6.1 | Medium | Indexes on subscriptions (customer_id, employer_ids GIN, active status) | 3.4 |
+| v6.1 | Medium | FK from api_key_audit_log.key_id to api_keys.key_id | 3.4 |
+| v6.1 | Medium | Versioned migration strategy (migrate.py + schema_migrations table) | 3.4, 6.2 |
+| v6.1 | Medium | TLS assertion on pipeline DATABASE_URL (sslmode=require enforced) | 3.1 |
+| v6.1 | Medium | Scope enforcement matrix — every endpoint annotated with required scope | 5.2, 8.x |
+| v6.1 | High | dispatch_webhooks.py implementation added | 4.2 |
+| v6.1 | High | validate_sync.py implementation added | 4.2 |
+| v6.1 | Medium | compact_bronze.sh implementation added | 6.2 |
+| v6.1 | Medium | Batch response envelope standardized ("results" → "data") | 8.4 |
+| v6.1 | Low | sync_to_postgres.py renamed to sync.py (matches code block) | 4.2 |
+| v6.1 | Medium | Missing env vars added to .env.example (ALERT_WEBHOOK_URL, DUCKDB_PATH, DATABASE_URL) | 6.1 |
+| v6.1 | High | Snapshot retention script (prune_snapshots.sh) + cron job | 6.2 |
+| v6.1 | High | batch_jobs table + R2 storage scheme for async batch results | 3.4 |
+| v6.1 | Medium | reset_monthly_usage.py implementation + cron job (1st of month) | 5.6 |
 
 ---
 
@@ -172,7 +196,13 @@ import psycopg2
 from psycopg2.extras import RealDictCursor
 
 
-DATABASE_URL = os.environ["DATABASE_URL"]  # postgresql://user:pass@host:5432/stablelabel
+DATABASE_URL = os.environ["DATABASE_URL"]  # postgresql://pipeline_user:pass@10.0.0.1:5432/stablelabel?sslmode=require
+
+# v6.1: Enforce TLS on the wire — reject connections that silently downgrade to plaintext.
+# The pipeline server connects to the API server's Postgres over the Hetzner vSwitch.
+# sslmode=require is set in the connection string, but we also verify it programmatically.
+assert "sslmode=require" in DATABASE_URL or "sslmode=verify" in DATABASE_URL, \
+    "DATABASE_URL must include sslmode=require (or verify-ca/verify-full) for inter-server connections"
 
 
 def get_connection():
@@ -267,6 +297,48 @@ def finish_pipeline_run(
                 run_id,
             ),
         )
+
+
+# v6.1: Added — shell script calls `python pipeline/db.py log_error $RUN_ID 'message'`
+# but this function was never defined. Also adds the CLI entry point that the shell
+# script depends on for start / log_error / fail / success subcommands.
+
+def log_error(run_id: str, message: str):
+    """Append a row to pipeline_errors (dead-letter pattern, finding #8)."""
+    with get_cursor() as cur:
+        cur.execute(
+            """
+            INSERT INTO pipeline_errors (run_id, source, error_message, logged_at)
+            VALUES (%s, %s, %s, %s)
+            """,
+            (run_id, 'pipeline', message, datetime.now(timezone.utc)),
+        )
+
+
+# --- CLI entry point -------------------------------------------------------
+# Usage from run_pipeline.sh:
+#   python pipeline/db.py start   <run_id>
+#   python pipeline/db.py log_error <run_id> <message>
+#   python pipeline/db.py fail    <run_id> <message>
+#   python pipeline/db.py success <run_id> <warning_count>
+
+if __name__ == "__main__":
+    import sys
+    cmd, run_id = sys.argv[1], sys.argv[2]
+    if cmd == "start":
+        log_pipeline_run(run_id, source="nightly", status="running")
+    elif cmd == "log_error":
+        log_error(run_id, sys.argv[3])
+    elif cmd == "fail":
+        finish_pipeline_run(run_id, status="failed", error_message=sys.argv[3])
+    elif cmd == "success":
+        warnings = int(sys.argv[3]) if len(sys.argv) > 3 else 0
+        finish_pipeline_run(
+            run_id, status="completed" if warnings == 0 else "completed_with_warnings",
+        )
+    else:
+        print(f"Unknown command: {cmd}", file=sys.stderr)
+        sys.exit(1)
 ```
 
 ### 3.2 Nightly Sync — Shadow-Table Swap
@@ -293,14 +365,18 @@ CREATE INDEX idx_staging_naics ON employer_profile_staging (naics_code);
 CREATE INDEX idx_staging_risk ON employer_profile_staging (risk_tier);
 CREATE INDEX idx_staging_snapshot ON employer_profile_staging (snapshot_date);
 
--- Step 4: Atomic swap (takes < 10ms, holds AccessExclusiveLock briefly)
+-- Step 4: Drop any leftover prev table, then atomic swap
+-- v6.1: Retain old table as employer_profile_prev for webhook diff (Step 8).
+-- Previous version dropped employer_profile_old immediately, making diff impossible.
+DROP TABLE IF EXISTS employer_profile_prev;
 BEGIN;
-ALTER TABLE employer_profile RENAME TO employer_profile_old;
+ALTER TABLE employer_profile RENAME TO employer_profile_prev;
 ALTER TABLE employer_profile_staging RENAME TO employer_profile;
 COMMIT;
 
--- Step 5: Drop the old table outside the transaction
-DROP TABLE IF EXISTS employer_profile_old;
+-- Step 5: employer_profile_prev is kept alive until AFTER dispatch_webhooks.py (Step 8).
+-- dispatch_webhooks.py drops it when done:
+--   DROP TABLE IF EXISTS employer_profile_prev;
 ```
 
 **Python driver for binary COPY (pipeline/sync.py):**
@@ -376,7 +452,68 @@ max_client_conn = 100
 
 ### 3.4 Postgres Schema
 
-All tables live in a single `stablelabel` database. Schema is applied by a migration file (`migrations/001_init.sql`) run at first deploy.
+All tables live in a single `stablelabel` database. Schema is applied by numbered migration files run at deploy time.
+
+<!-- v6.1: Was a single 001_init.sql with no versioning strategy. Now uses a simple
+     sequential migration runner with a tracking table — no ORM dependency. -->
+
+**Migration strategy:** Migrations are sequential SQL files in `migrations/` (e.g., `001_init.sql`, `002_add_subscriptions_indexes.sql`). A `schema_migrations` table tracks which migrations have been applied:
+
+```sql
+CREATE TABLE IF NOT EXISTS schema_migrations (
+    version     INTEGER PRIMARY KEY,
+    filename    TEXT NOT NULL,
+    applied_at  TIMESTAMP DEFAULT NOW()
+);
+```
+
+The migration runner (`migrations/migrate.py`) runs at container startup before the app:
+
+```python
+# migrations/migrate.py
+import os, re, psycopg2
+
+def migrate():
+    con = psycopg2.connect(os.environ["DATABASE_URL"])
+    con.autocommit = False
+    cur = con.cursor()
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS schema_migrations (
+            version INTEGER PRIMARY KEY,
+            filename TEXT NOT NULL,
+            applied_at TIMESTAMP DEFAULT NOW()
+        )
+    """)
+    con.commit()
+
+    cur.execute("SELECT version FROM schema_migrations ORDER BY version")
+    applied = {row[0] for row in cur.fetchall()}
+
+    migration_dir = os.path.dirname(__file__)
+    files = sorted(f for f in os.listdir(migration_dir) if re.match(r'^\d{3}_.*\.sql$', f))
+
+    for f in files:
+        version = int(f[:3])
+        if version in applied:
+            continue
+        print(f"Applying migration {f}...")
+        sql = open(os.path.join(migration_dir, f)).read()
+        try:
+            cur.execute(sql)
+            cur.execute(
+                "INSERT INTO schema_migrations (version, filename) VALUES (%s, %s)",
+                (version, f),
+            )
+            con.commit()
+        except Exception:
+            con.rollback()
+            raise
+
+if __name__ == "__main__":
+    migrate()
+```
+
+The Docker entrypoint runs `python migrations/migrate.py` before `uvicorn`. This is idempotent — re-running skips already-applied migrations.
 
 #### 3.4.1 Pipeline Monitoring
 
@@ -597,7 +734,7 @@ Every key lifecycle event is recorded. No deletions from this table — it is ap
 -- v6: [finding #29] new table — audit trail for API key lifecycle
 CREATE TABLE api_key_audit_log (
     id              BIGSERIAL PRIMARY KEY,
-    key_id          UUID NOT NULL,
+    key_id          UUID NOT NULL REFERENCES api_keys(key_id),  -- v6.1: was missing FK; orphan rows possible
     customer_id     INTEGER REFERENCES customers(id),
     action          TEXT NOT NULL,         -- created / rotated / revoked / quota_changed / scope_changed
     performed_by    TEXT,                  -- email or system identifier
@@ -646,6 +783,12 @@ CREATE TABLE subscriptions (
     status          TEXT DEFAULT 'active' CHECK (status IN ('active', 'paused', 'disabled')),
     created_at      TIMESTAMP DEFAULT NOW()
 );
+
+-- v6.1: Missing indexes — customer_id for list queries, GIN on employer_ids for
+-- webhook dispatch (pipeline needs to find all subscriptions watching a given employer_id).
+CREATE INDEX idx_subscriptions_customer ON subscriptions (customer_id);
+CREATE INDEX idx_subscriptions_employer_ids ON subscriptions USING GIN (employer_ids);
+CREATE INDEX idx_subscriptions_status ON subscriptions (status) WHERE status = 'active';
 ```
 
 **Webhook payload signing:** Every outbound webhook POST includes a `X-StableLabel-Signature` header containing `HMAC-SHA256(signing_secret, raw_body)`. The subscriber verifies the signature before trusting the payload. This is the same pattern Stripe uses.
@@ -804,6 +947,42 @@ CREATE TABLE risk_snapshots (
 CREATE INDEX idx_risk_snap_employer ON risk_snapshots (employer_id, snapshot_date DESC);
 ```
 
+#### 3.4.18 batch_jobs
+
+<!-- v6.1: Async batch endpoints (POST /v1/employers/batch, GET /v1/jobs/{job_id}) referenced
+     job tracking but no Postgres table or R2 storage scheme was defined. -->
+
+Tracks async batch job state. Jobs with >25 items run asynchronously; results are stored in R2.
+
+```sql
+CREATE TABLE batch_jobs (
+    job_id          TEXT PRIMARY KEY,       -- format: "job_" + gen_random_uuid()
+    customer_id     INTEGER REFERENCES customers(id),
+    status          TEXT NOT NULL DEFAULT 'processing'
+                    CHECK (status IN ('processing', 'completed', 'failed')),
+    items_total     INTEGER NOT NULL,
+    items_completed INTEGER DEFAULT 0,
+    items_found     INTEGER DEFAULT 0,
+    result_url      TEXT,                   -- R2 presigned URL, set on completion
+    expires_at      TIMESTAMP,             -- results expire after 24h
+    error_message   TEXT,
+    created_at      TIMESTAMP DEFAULT NOW(),
+    completed_at    TIMESTAMP
+);
+
+CREATE INDEX idx_batch_jobs_customer ON batch_jobs (customer_id, created_at DESC);
+CREATE INDEX idx_batch_jobs_status ON batch_jobs (status) WHERE status = 'processing';
+```
+
+**R2 storage scheme:**
+- Bucket: `compliance-batch-results`
+- Key pattern: `jobs/{job_id}.json`
+- Lifecycle: R2 lifecycle rule auto-deletes objects after 24 hours
+- The `result_url` stored in `batch_jobs` is a presigned R2 URL valid for 24h
+- Example: `https://r2.yourdomain.com/compliance-batch-results/jobs/job_abc123.json`
+
+**Job ID format:** `"job_" + UUID v4` (e.g., `job_a1b2c3d4-e5f6-7890-abcd-ef1234567890`). The `job_` prefix makes IDs self-documenting in logs and URLs.
+
 ---
 
 *End of Part 1 (Sections 1-3). Part 2 continues with Section 4 (API Design) onward.*
@@ -870,7 +1049,8 @@ dbt test  --project-dir dbt/ --profiles-dir dbt/ || { python pipeline/db.py fail
 python pipeline/entity_resolution.py
 
 # Step 6: Sync to Postgres (shadow-table swap)
-python pipeline/sync_to_postgres.py
+# v6.1: Fixed naming — was sync_to_postgres.py but code block defined sync.py
+python pipeline/sync.py
 
 # Step 7: Post-sync validation (v6: finding #5)
 python pipeline/validate_sync.py $RUN_ID || { python pipeline/db.py fail $RUN_ID 'Post-sync validation failed'; exit 1; }
@@ -888,7 +1068,180 @@ echo "Pipeline run $RUN_ID complete (warnings: $ERRORS)"
 - **Dead-letter pattern (finding #8):** Ingestion steps log failures to the `pipeline_errors` table and increment the warning counter, but the pipeline continues. Only Great Expectations validation (Step 2) and post-sync validation (Step 7) are hard gates that abort the run. This means a temporary DOL outage does not block FMCSA and SAM data from refreshing.
 - **No SQLite (finding #9):** Pipeline run metadata writes directly to Postgres via `pipeline/db.py`. The `pipeline_runs` and `pipeline_errors` tables live in the `pipeline` schema, separate from the `public` schema the API reads.
 - **Post-sync validation (finding #5):** `validate_sync.py` queries DuckDB for expected row counts per source table, then queries Postgres for actual counts. A mismatch beyond 0.1% fails the run.
-- **Webhook dispatch:** Step 8 diffs `employer_profile` against the previous snapshot (stored as `employer_profile_prev` during the shadow-table swap). Any `risk_tier` change fires a webhook to registered subscribers.
+- **Webhook dispatch (v6.1 fix):** Step 8 diffs `employer_profile` against `employer_profile_prev` — the old table retained during the shadow-table swap. Previous version renamed to `employer_profile_old` and dropped it immediately, making the diff impossible. Now the swap renames the old table to `employer_profile_prev` and keeps it alive. `dispatch_webhooks.py` drops `employer_profile_prev` after completing the diff. Any `risk_tier` change fires a webhook to registered subscribers.
+
+### 4.2.1 dispatch_webhooks.py
+
+<!-- v6.1: Was referenced in pipeline Step 8 and design notes but never implemented. -->
+
+```python
+"""
+pipeline/dispatch_webhooks.py — Diff risk tiers and fire webhooks to subscribers.
+Called as Step 8 of run_pipeline.sh: python pipeline/dispatch_webhooks.py $RUN_ID
+Drops employer_profile_prev when done (retained by shadow-table swap for this diff).
+"""
+
+import hashlib, hmac, json, sys, time
+import psycopg2
+import requests
+from pipeline.db import get_cursor
+
+MAX_RETRIES = 3
+BACKOFF = [10, 60, 300]  # seconds
+
+
+def diff_risk_tiers(cur):
+    """Find employers whose risk_tier changed between prev and current snapshot."""
+    cur.execute("""
+        SELECT c.employer_id, c.canonical_name, c.risk_tier AS new_tier,
+               p.risk_tier AS old_tier, c.snapshot_date
+        FROM employer_profile c
+        JOIN employer_profile_prev p USING (employer_id)
+        WHERE COALESCE(c.risk_tier, '') != COALESCE(p.risk_tier, '')
+    """)
+    return cur.fetchall()
+
+
+def find_subscribers(cur, employer_id: str):
+    """Find active subscriptions watching this employer_id."""
+    cur.execute("""
+        SELECT id, callback_url, signing_secret, events
+        FROM subscriptions
+        WHERE status = 'active'
+          AND %s = ANY(employer_ids)
+          AND 'risk_tier_change' = ANY(events)
+    """, (employer_id,))
+    return cur.fetchall()
+
+
+def deliver_webhook(callback_url: str, signing_secret: str, payload: dict) -> bool:
+    """POST signed payload to subscriber with retry + exponential backoff."""
+    body = json.dumps(payload).encode()
+    signature = hmac.new(signing_secret.encode(), body, hashlib.sha256).hexdigest()
+    headers = {
+        "Content-Type": "application/json",
+        "X-StableLabel-Signature": f"sha256={signature}",
+    }
+    for attempt in range(MAX_RETRIES):
+        try:
+            resp = requests.post(callback_url, data=body, headers=headers, timeout=10)
+            if resp.status_code < 300:
+                return True
+        except requests.RequestException:
+            pass
+        if attempt < MAX_RETRIES - 1:
+            time.sleep(BACKOFF[attempt])
+    return False
+
+
+def disable_subscription(cur, sub_id: str):
+    """Mark subscription as disabled after 3 consecutive delivery failures."""
+    cur.execute(
+        "UPDATE subscriptions SET status = 'disabled' WHERE id = %s",
+        (sub_id,),
+    )
+
+
+def main(run_id: str):
+    with get_cursor() as cur:
+        changes = diff_risk_tiers(cur)
+        dispatched, failed = 0, 0
+
+        for change in changes:
+            employer_id = str(change["employer_id"])
+            payload = {
+                "event": "risk_tier_change",
+                "employer_id": employer_id,
+                "canonical_name": change["canonical_name"],
+                "previous_risk_tier": change["old_tier"],
+                "new_risk_tier": change["new_tier"],
+                "snapshot_date": str(change["snapshot_date"]),
+                "details_url": f"/v1/employers/{employer_id}/risk-history",
+            }
+            subs = find_subscribers(cur, employer_id)
+            for sub in subs:
+                ok = deliver_webhook(sub["callback_url"], sub["signing_secret"], payload)
+                if ok:
+                    dispatched += 1
+                else:
+                    failed += 1
+                    disable_subscription(cur, str(sub["id"]))
+
+        # Clean up prev table now that diff is complete
+        cur.execute("DROP TABLE IF EXISTS employer_profile_prev")
+
+    print(f"Webhooks: {dispatched} delivered, {failed} failed (run {run_id})")
+
+
+if __name__ == "__main__":
+    main(sys.argv[1])
+```
+
+### 4.2.2 validate_sync.py
+
+<!-- v6.1: Was referenced in pipeline Step 7 and design notes but never implemented. -->
+
+```python
+"""
+pipeline/validate_sync.py — Post-sync validation (finding #5).
+Compares DuckDB source row counts to Postgres employer_profile.
+Fails the run if any source drifts by more than 0.1%.
+Usage: python pipeline/validate_sync.py $RUN_ID
+"""
+
+import os, sys
+import duckdb
+import psycopg2
+from psycopg2.extras import RealDictCursor
+
+DUCKDB_PATH = os.environ.get("DUCKDB_PATH", "/data/duckdb/employer_compliance.duckdb")
+DATABASE_URL = os.environ["DATABASE_URL"]
+DRIFT_THRESHOLD = 0.001  # 0.1%
+
+# Source tables in DuckDB gold layer that feed employer_profile
+GOLD_SOURCES = [
+    "employer_clusters",
+    "fmcsa_matched",
+    "ein_bridge",
+    "sam_entity_matches",
+]
+
+
+def main(run_id: str):
+    duck = duckdb.connect(DUCKDB_PATH, read_only=True)
+    pg = psycopg2.connect(DATABASE_URL, cursor_factory=RealDictCursor)
+
+    # Expected: count of distinct employer_ids across gold tables
+    expected = duck.execute(
+        "SELECT COUNT(DISTINCT employer_id) AS cnt FROM employer_clusters"
+    ).fetchone()[0]
+
+    # Actual: rows in Postgres employer_profile
+    with pg.cursor() as cur:
+        cur.execute("SELECT COUNT(*) AS cnt FROM employer_profile")
+        actual = cur.fetchone()["cnt"]
+
+    duck.close()
+    pg.close()
+
+    if expected == 0:
+        print(f"FAIL: DuckDB employer_clusters is empty — pipeline produced no data")
+        sys.exit(1)
+
+    drift = abs(expected - actual) / expected
+    if drift > DRIFT_THRESHOLD:
+        print(
+            f"FAIL: Row count drift {drift:.2%} exceeds {DRIFT_THRESHOLD:.1%} threshold. "
+            f"DuckDB: {expected}, Postgres: {actual}"
+        )
+        sys.exit(1)
+
+    print(f"OK: DuckDB={expected}, Postgres={actual}, drift={drift:.4%} (run {run_id})")
+
+
+if __name__ == "__main__":
+    main(sys.argv[1])
+```
 
 ### 4.3 FMCSA Ingestion
 
@@ -1151,10 +1504,18 @@ def run_deduplication():
     clusters = linker.cluster_pairwise_predictions_at_threshold(predictions, 0.85)
     clusters_df = clusters.as_pandas_dataframe()
     con.register('clusters_df', clusters_df)
+    # v6.1: Snapshot old clusters BEFORE overwriting — needed by update_cluster_mapping
+    # to detect member-record overlap between old and new clusters.
+    # Previous version replaced employer_clusters first, so the overlap query joined
+    # the new table against itself (race condition — old clusters were already gone).
+    con.execute("CREATE OR REPLACE TABLE employer_clusters_prev AS SELECT * FROM employer_clusters")
     con.execute("CREATE OR REPLACE TABLE employer_clusters AS SELECT * FROM clusters_df")
 
     # v6: Populate cluster_id_mapping — stable employer_id UUIDs
     update_cluster_mapping(con)
+
+    # Clean up snapshot
+    con.execute("DROP TABLE IF EXISTS employer_clusters_prev")
 
     # v6: finding #13 — Splink drift monitoring
     monitor_model_drift(con, predictions)
@@ -1185,10 +1546,12 @@ def update_cluster_mapping(con):
         else:
             # Check if any member records overlap with an existing cluster
             # v6.1: parameterized query replaces f-string to prevent SQL injection
+            # v6.1: Join against employer_clusters_prev (snapshot of PREVIOUS run's clusters)
+            # instead of employer_clusters (which now contains CURRENT run's clusters).
             overlap = con.execute("""
                 SELECT DISTINCT m.employer_id
                 FROM cluster_id_mapping m
-                JOIN employer_clusters ec_old ON m.cluster_id = ec_old.cluster_id
+                JOIN employer_clusters_prev ec_old ON m.cluster_id = ec_old.cluster_id
                 JOIN employer_clusters ec_new ON ec_old.activity_nr = ec_new.activity_nr
                 WHERE ec_new.cluster_id = ?
                 LIMIT 1
@@ -1462,6 +1825,35 @@ def check_scope(required_scope: str):
     return scope_checker
 ```
 
+<!-- v6.1: Scope checking was defined as a decorator but not confirmed applied to all endpoints.
+     The table below is the canonical scope-to-endpoint mapping. Every /v1/ endpoint MUST use
+     Depends(check_scope(...)) — endpoints missing it are a security bug. -->
+
+**Scope enforcement matrix — every API endpoint and its required scope:**
+
+| Endpoint | Method | Required Scope | Metered? |
+|----------|--------|---------------|----------|
+| `/v1/employers` | GET | `employer:read` | Yes |
+| `/v1/employers/{id}` | GET | `employer:read` | Yes |
+| `/v1/employers/{id}/risk-history` | GET | `employer:read` | Yes |
+| `/v1/employers/{id}/inspections` | GET | `employer:read` | No (free) |
+| `/v1/employers/{id}/feedback` | POST | `employer:read` | No |
+| `/v1/employers/batch` | POST | `batch:write` | Yes (1 per item) |
+| `/v1/jobs/{id}` | GET | `batch:write` | No |
+| `/v1/industries/{naics4}` | GET | `employer:read` | No |
+| `/v1/industries/naics-codes` | GET | `employer:read` | No |
+| `/v1/subscriptions` | GET | `subscriptions:manage` | No |
+| `/v1/subscriptions` | POST | `subscriptions:manage` | No |
+| `/v1/subscriptions/{id}` | PATCH | `subscriptions:manage` | No |
+| `/v1/subscriptions/{id}` | DELETE | `subscriptions:manage` | No |
+| `/v1/health` | GET | *(none — public)* | No |
+| `/dashboard/keys` | GET | *(JWT session)* | No |
+| `/dashboard/keys` | POST | *(JWT session)* | No |
+| `/dashboard/keys/{id}/rotate` | POST | *(JWT session)* | No |
+| `/dashboard/keys/{id}` | DELETE | *(JWT session)* | No |
+
+`admin:all` bypasses all scope checks. Dashboard endpoints use JWT cookie auth, not API keys — scope checking does not apply (CSRF protection applies instead).
+
 ### 5.3 Self-Serve Signup Flow
 
 **Step 1: Signup** -- use argon2id, not bcrypt.
@@ -1578,6 +1970,28 @@ async def expire_rotating_keys():
 asyncio.run(expire_rotating_keys())
 ```
 
+### 5.6 Monthly Usage Reset
+
+<!-- v6.1: reset_monthly_usage was referenced in quota enforcement (finding #32) but had
+     no cron entry or implementation. Runs 1st of each month at midnight. -->
+
+```python
+# pipeline/reset_monthly_usage.py — runs 1st of each month via cron
+import asyncpg, asyncio, os
+
+async def reset():
+    pool = await asyncpg.create_pool(os.environ['DATABASE_URL'])
+    async with pool.acquire() as con:
+        result = await con.execute("""
+            UPDATE api_keys SET current_usage = 0
+            WHERE current_usage > 0
+        """)
+        print(f'Monthly usage reset: {result}')
+    await pool.close()
+
+asyncio.run(reset())
+```
+
 ---
 
 ## 6. Technology Stack
@@ -1620,8 +2034,13 @@ redis==5.*
 ### 6.1 .env.example
 
 ```bash
-# .env.example — all secrets required before starting the application
-PG_DSN=postgresql://api:yourpassword@localhost:6432/compliance
+# .env.example — all secrets and config required before starting the application
+# v6.1: Added ALERT_WEBHOOK_URL, DUCKDB_PATH, DATABASE_URL (were referenced in code but missing here)
+
+# --- API Server ---
+PG_PASSWORD=<postgres password for api user>             # referenced by docker-compose.api.yml
+MB_DB_PASS=<metabase postgres password>                  # referenced by docker-compose.api.yml
+PG_DSN=postgresql://api:${PG_PASSWORD}@localhost:6432/compliance  # localhost = pgBouncer on same host
 STRIPE_SECRET_KEY=sk_live_...
 STRIPE_WEBHOOK_SECRET=whsec_...
 RESEND_API_KEY=re_...
@@ -1631,8 +2050,15 @@ JWT_PRIVATE_KEY_PATH=/etc/employer-compliance/jwt_private.pem
 JWT_PUBLIC_KEY_PATH=/etc/employer-compliance/jwt_public.pem
 # Generate keypair: openssl genrsa -out jwt_private.pem 2048 && openssl rsa -in jwt_private.pem -pubout -out jwt_public.pem
 ENV=production
+
+# --- Pipeline Server ---
+DATABASE_URL=postgresql://pipeline_user:password@10.0.0.1:5432/stablelabel?sslmode=require
+DUCKDB_PATH=/data/duckdb/employer_compliance.duckdb
 DOL_API_KEY=<from dataportal.dol.gov>
 SAM_API_KEY=<from sam.gov/content/entity-registration>
+
+# --- Shared (both servers) ---
+ALERT_WEBHOOK_URL=https://hooks.slack.com/services/T.../B.../...   # Slack incoming webhook for cron/health alerts
 ```
 
 Add `.env` to `.gitignore`. On servers: store in `/opt/employer-compliance/.env`, `chmod 600`.
@@ -1685,7 +2111,8 @@ COPY auth/ auth/
 COPY migrations/ migrations/
 
 EXPOSE 8000
-CMD ["uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "4"]
+# v6.1: Run migrations before app startup (was manual 001_init.sql at first deploy only)
+CMD ["sh", "-c", "python migrations/migrate.py && uvicorn api.main:app --host 0.0.0.0 --port 8000 --workers 4"]
 ```
 
 **Dockerfile.pipeline** (Pipeline server):
@@ -1796,11 +2223,12 @@ services:
 
 ### nginx Configuration
 
-Updated with auth rate limiting.
+Updated with auth rate limiting and IP-based scraping protection.
 
 ```nginx
 limit_req_zone $http_x_api_key zone=api_per_key:10m rate=100r/m;
-limit_req_zone $binary_remote_addr zone=auth_limit:10m rate=10r/m;  # v6: finding #21
+limit_req_zone $binary_remote_addr zone=api_per_ip:10m rate=60r/m;   # v6.1: finding — anti-scraping on employer endpoints
+limit_req_zone $binary_remote_addr zone=auth_limit:10m rate=10r/m;   # v6: finding #21
 
 server { listen 80; return 301 https://$host$request_uri; }
 
@@ -1811,6 +2239,7 @@ server {
 
   location /v1/ {
     limit_req zone=api_per_key burst=20 nodelay;
+    limit_req zone=api_per_ip burst=10 nodelay;  # v6.1: IP-based anti-scraping layer
     proxy_pass http://127.0.0.1:8000;
   }
   # v6: finding #21 — rate limit auth endpoints
@@ -1893,15 +2322,23 @@ On the pipeline server:
 ```bash
 # crontab -e (pipeline server)
 # v6: finding #55 — flock prevents overlap
-0  2 * * *     flock -n /var/lock/pipeline.lock /opt/employer-compliance/run_pipeline.sh >> /var/log/pipeline.log 2>&1
-30 8 * * *     python /opt/employer-compliance/pipeline/check_health.py
-0  * * * *     python /opt/employer-compliance/pipeline/rotate_keys.py
+# v6.1: Run health check immediately after pipeline (was 8:30am — 6h blind spot).
+#        Keep 8:30am check as safety net for non-pipeline failures.
+# v6.1: finding #57 actually implemented — every cron job wrapped with cron_alert.sh.
+#        Previous version had the comment but no actual alerting on any line.
+
+0  2 * * *     /opt/employer-compliance/cron_alert.sh "pipeline" flock -n /var/lock/pipeline.lock /opt/employer-compliance/run_pipeline.sh; /opt/employer-compliance/cron_alert.sh "health-check" python /opt/employer-compliance/pipeline/check_health.py
+30 8 * * *     /opt/employer-compliance/cron_alert.sh "health-check" python /opt/employer-compliance/pipeline/check_health.py
+0  * * * *     /opt/employer-compliance/cron_alert.sh "key-rotation" python /opt/employer-compliance/pipeline/rotate_keys.py
 # v6: finding #55 — flock on backup too
-0  4 * * *     flock -n /var/lock/backup.lock /opt/employer-compliance/backup.sh >> /var/log/backup.log 2>&1
-0  3 * * 0     [ $(date +\%d) -le 7 ] && /opt/employer-compliance/compact_bronze.sh
+0  4 * * *     /opt/employer-compliance/cron_alert.sh "backup" flock -n /var/lock/backup.lock /opt/employer-compliance/backup.sh
+0  3 * * 0     [ $(date +\%d) -le 7 ] && /opt/employer-compliance/cron_alert.sh "compact-bronze" /opt/employer-compliance/compact_bronze.sh
 # v6: finding #56 — disk space monitoring
-0  */6 * * *   /opt/employer-compliance/check_disk.sh
-# v6: finding #57 — all cron jobs wrapped with alerting (|| curl alert webhook)
+0  */6 * * *   /opt/employer-compliance/cron_alert.sh "disk-check" /opt/employer-compliance/check_disk.sh
+# v6.1: snapshot retention (policy was in Section 13.2 but had no cron/script)
+0  5 1 * *     /opt/employer-compliance/cron_alert.sh "prune-snapshots" /opt/employer-compliance/prune_snapshots.sh
+# v6.1: monthly quota reset (referenced in finding #32 docs but had no cron entry)
+0  0 1 * *     /opt/employer-compliance/cron_alert.sh "reset-usage" python /opt/employer-compliance/pipeline/reset_monthly_usage.py
 ```
 
 ### Backup Script
@@ -1959,14 +2396,24 @@ jobs:
         uses: webfactory/ssh-agent@v0.9.0
         with:
           ssh-private-key: ${{ secrets.HETZNER_SSH_KEY }}
+      # v6.1: Fixed rollback — previous version ran `docker compose up -d --force-recreate`
+      # which recreated the SAME failing image. Now we record the current (known-good)
+      # image tag before deploying, and revert to it on health check failure.
       - run: |
+          PREV_TAG=$(ssh deploy@api-server "cd /opt/employer-compliance && \
+            cat .current_image_tag 2>/dev/null || echo 'none'")
+          NEW_TAG=${{ github.sha }}
           ssh deploy@api-server "cd /opt/employer-compliance && \
-            docker compose pull && \
-            docker compose up -d --remove-orphans"
-          # v6: finding #61 — post-deploy health check
+            IMAGE_TAG=${NEW_TAG} docker compose pull && \
+            IMAGE_TAG=${NEW_TAG} docker compose up -d --remove-orphans"
+          # v6: finding #61 — post-deploy health check with actual rollback
           sleep 5
-          ssh deploy@api-server "curl -sf http://localhost:8000/v1/health || \
-            (docker compose up -d --force-recreate && exit 1)"
+          ssh deploy@api-server "curl -sf http://localhost:8000/v1/health && \
+            echo '${NEW_TAG}' > /opt/employer-compliance/.current_image_tag || \
+            (echo 'Health check failed — rolling back to ${PREV_TAG}' && \
+             cd /opt/employer-compliance && \
+             IMAGE_TAG=${PREV_TAG} docker compose up -d --remove-orphans && \
+             exit 1)"
 ```
 
 ### Disk Space Monitor
@@ -1981,6 +2428,110 @@ if [ "$USAGE" -gt 80 ]; then
     -d "{\"text\": \"DISK WARNING: /data is ${USAGE}% full on $(hostname)\"}"
 fi
 ```
+
+### Cron Alerting Wrapper
+
+<!-- v6.1: finding #57 was claimed but never implemented.
+     The crontab comment said "all cron jobs wrapped with alerting" but no actual
+     alerting wrapper existed. This script is what every cron entry now calls. -->
+
+```bash
+#!/bin/bash
+# /opt/employer-compliance/cron_alert.sh
+# Usage: cron_alert.sh <job-name> <command...>
+# Runs the command; on non-zero exit, POSTs failure alert to Slack/webhook.
+
+JOB_NAME="$1"; shift
+"$@" >> "/var/log/${JOB_NAME}.log" 2>&1
+EXIT_CODE=$?
+
+if [ $EXIT_CODE -ne 0 ]; then
+  curl -sf -X POST "$ALERT_WEBHOOK_URL" \
+    -H 'Content-Type: application/json' \
+    -d "{\"text\": \"CRON FAILED: ${JOB_NAME} exited ${EXIT_CODE} on $(hostname) at $(date -u +%Y-%m-%dT%H:%M:%SZ)\"}"
+fi
+
+exit $EXIT_CODE
+```
+
+### Bronze Compaction
+
+<!-- v6.1: compact_bronze.sh referenced in crontab but never defined. -->
+
+```bash
+#!/bin/bash
+# /opt/employer-compliance/compact_bronze.sh
+# Runs monthly (1st Sunday, via cron). Removes bronze partitions older than 90 days.
+# Bronze data is already backed up to R2 by backup.sh, so local copies beyond 90 days
+# are redundant. Keeps disk usage bounded on the pipeline server.
+
+set -euo pipefail
+
+BRONZE_DIR="/data/bronze"
+RETENTION_DAYS=90
+
+echo "Compacting bronze partitions older than ${RETENTION_DAYS} days..."
+
+BEFORE=$(du -sh "$BRONZE_DIR" | cut -f1)
+
+# Each source has dated subdirectories: /data/bronze/{source}/{YYYY-MM-DD}/
+find "$BRONZE_DIR" -mindepth 2 -maxdepth 2 -type d -mtime +${RETENTION_DAYS} | while read dir; do
+  echo "  Removing: $dir"
+  rm -rf "$dir"
+done
+
+AFTER=$(du -sh "$BRONZE_DIR" | cut -f1)
+echo "Bronze compaction complete: ${BEFORE} -> ${AFTER}"
+```
+
+### Snapshot Retention
+
+<!-- v6.1: Retention policy was defined in Section 13.2 (risks) but had no implementation script or cron job. -->
+
+```bash
+#!/bin/bash
+# /opt/employer-compliance/prune_snapshots.sh
+# Runs monthly (1st of month, via cron). Implements tiered retention:
+#   - Daily snapshots: keep 90 days
+#   - Weekly snapshots: keep 1 year (keep Sunday snapshots beyond 90 days)
+#   - Monthly snapshots: keep 3 years (keep 1st-of-month beyond 1 year)
+# Operates on the risk_snapshots Postgres table.
+
+set -euo pipefail
+
+DATABASE_URL="${DATABASE_URL:?DATABASE_URL must be set}"
+
+echo "Pruning risk_snapshots (tiered retention)..."
+
+psql "$DATABASE_URL" <<'SQL'
+BEGIN;
+
+-- Delete daily snapshots older than 90 days, EXCEPT:
+--   - Sunday snapshots (weekly tier, kept for 1 year)
+--   - 1st-of-month snapshots (monthly tier, kept for 3 years)
+DELETE FROM risk_snapshots
+WHERE snapshot_date < CURRENT_DATE - INTERVAL '90 days'
+  AND EXTRACT(DOW FROM snapshot_date) != 0          -- not Sunday
+  AND EXTRACT(DAY FROM snapshot_date) != 1;          -- not 1st of month
+
+-- Delete weekly (Sunday) snapshots older than 1 year, EXCEPT 1st-of-month
+DELETE FROM risk_snapshots
+WHERE snapshot_date < CURRENT_DATE - INTERVAL '1 year'
+  AND EXTRACT(DOW FROM snapshot_date) = 0
+  AND EXTRACT(DAY FROM snapshot_date) != 1;
+
+-- Delete monthly (1st) snapshots older than 3 years
+DELETE FROM risk_snapshots
+WHERE snapshot_date < CURRENT_DATE - INTERVAL '3 years'
+  AND EXTRACT(DAY FROM snapshot_date) = 1;
+
+COMMIT;
+SQL
+
+echo "Snapshot pruning complete."
+```
+
+`ALERT_WEBHOOK_URL` is set in the container's environment (same variable used by `check_disk.sh`). Points to a Slack incoming webhook or generic webhook endpoint.
 
 ---
 
@@ -2214,6 +2765,8 @@ Header notes:
 
 `# v6: finding #49 — path is plural /employers, not /employer`
 
+Requires scope: `employer:read`. <!-- v6.1: was implicit; now explicit -->
+
 This is the main search endpoint. It resolves a query (name, EIN, address) to an employer profile and returns the full compliance summary.
 
 ```
@@ -2403,6 +2956,8 @@ HTTP 404
 
 `# v6: finding #33 — the most fundamental REST gap in v5`
 
+Requires scope: `employer:read`. <!-- v6.1 -->
+
 This is the endpoint consumers call after resolving an employer via the search endpoint. The `employer_id` is a stable UUID that does not change across pipeline runs, making this endpoint cache-friendly and suitable for bookmarking.
 
 ```
@@ -2417,6 +2972,8 @@ Returns the same response structure as the search endpoint `match` object, inclu
 #### GET /v1/employers/{employer_id}/risk-history — Risk Tier Over Time
 
 `# v6: Phase 1 — snapshot queries`
+
+Requires scope: `employer:read`. <!-- v6.1 -->
 
 Returns historical risk tier snapshots for an employer, enabling trend analysis and audit trails. Each snapshot is created nightly by the pipeline and stored in the `risk_snapshots` table.
 
@@ -2462,6 +3019,8 @@ Response:
 
 `# v6: employer_id replaces cluster_id; this endpoint is FREE`
 
+Requires scope: `employer:read`. <!-- v6.1 -->
+
 ```
 GET /v1/employers/{employer_id}/inspections
   ?page=1&per_page=25
@@ -2473,31 +3032,41 @@ GET /v1/employers/{employer_id}/inspections
 
 The response includes the header `X-Billing-Note: not-metered`. Inspection data is public record; charging for it adds friction without revenue justification. This endpoint reads from the `inspection_history` Postgres table, which is synced nightly from DuckDB silver.
 
+<!-- v6.1: Response wrapped in pagination envelope — was raw array with no metadata -->
+
 Response:
 
 ```json
-[
-  {
-    "activity_nr": "1234567",
-    "inspection_date": "2024-08-14",
-    "insp_type_label": "Complaint — formal",
-    "agency": "OSHA",
-    "violations": [
-      {
-        "viol_type": "W",
-        "standard": "1926.501",
-        "final_penalty": 15000,
-        "issuance_date": "2024-09-20"
-      },
-      {
-        "viol_type": "S",
-        "standard": "1926.503",
-        "final_penalty": 8500,
-        "issuance_date": "2024-09-20"
-      }
-    ]
+{
+  "data": [
+    {
+      "activity_nr": "1234567",
+      "inspection_date": "2024-08-14",
+      "insp_type_label": "Complaint — formal",
+      "agency": "OSHA",
+      "violations": [
+        {
+          "viol_type": "W",
+          "standard": "1926.501",
+          "final_penalty": 15000,
+          "issuance_date": "2024-09-20"
+        },
+        {
+          "viol_type": "S",
+          "standard": "1926.503",
+          "final_penalty": 8500,
+          "issuance_date": "2024-09-20"
+        }
+      ]
+    }
+  ],
+  "pagination": {
+    "page": 1,
+    "per_page": 25,
+    "total": 47,
+    "total_pages": 2
   }
-]
+}
 ```
 
 ---
@@ -2505,6 +3074,8 @@ Response:
 #### GET /v1/industries/{naics4} — Industry Benchmark
 
 `# v6: finding #49 — plural path /industries`
+
+Requires scope: `employer:read`. <!-- v6.1 -->
 
 ```
 GET /v1/industries/{naics4}
@@ -2552,6 +3123,8 @@ Successful response:
 
 `# v6: NAICS lookup and validation endpoint`
 
+Requires scope: `employer:read`. <!-- v6.1 -->
+
 Helps callers discover valid NAICS codes before querying benchmarks.
 
 ```
@@ -2577,6 +3150,8 @@ Response:
 #### POST /v1/employers/batch — Bulk Lookup
 
 `# v6: finding #36 — async mode for large batches + higher cap`
+
+Requires scope: `batch:write`. <!-- v6.1 -->
 
 ```
 POST /v1/employers/batch
@@ -2607,11 +3182,14 @@ Two modes based on batch size:
 }
 ```
 
+<!-- v6.1: Standardized response key from "results" to "data" for consistency
+     with inspections and subscriptions list endpoints. All list responses now use "data". -->
+
 Synchronous response (≤25 items):
 
 ```json
 {
-  "results": [
+  "data": [
     {"...match object...": ""},
     {"...match object...": ""}
   ],
@@ -2639,6 +3217,8 @@ Async response (>25 items):
 #### GET /v1/jobs/{job_id} — Async Batch Polling
 
 `# v6: async batch polling endpoint`
+
+Requires scope: `batch:write`. <!-- v6.1 -->
 
 ```
 GET /v1/jobs/{job_id}
@@ -2684,6 +3264,8 @@ On failure:
 
 #### POST /v1/employers/{employer_id}/feedback — User Feedback
 
+Requires scope: `employer:read`. <!-- v6.1 -->
+
 ```
 POST /v1/employers/{employer_id}/feedback
 ```
@@ -2700,9 +3282,21 @@ Request body:
 
 Inserts into the `feedback` table and sends an alert email to ops. No metering. The `type` field accepts: `incorrect_match`, `missing_data`, `wrong_employer`, `other`.
 
+Response (`201 Created`):
+
+```json
+{
+  "feedback_id": "f1b2c3d4-...",
+  "status": "received",
+  "message": "Thank you for your feedback. Our team will review it."
+}
+```
+
 ---
 
 #### GET /v1/health — System Health
+
+Public endpoint — no authentication required. <!-- v6.1 -->
 
 ```
 GET /v1/health
@@ -2782,33 +3376,198 @@ X-Signature: sha256=<HMAC-SHA256 of body using signing_secret>
 
 #### GET /v1/subscriptions — List Subscriptions
 
+Requires scope: `subscriptions:manage`. <!-- v6.1 -->
+
+<!-- v6.1: Added pagination params and envelope — was raw array -->
+
 ```
 GET /v1/subscriptions
+  ?page=1&per_page=25
 ```
 
 Response:
 
 ```json
-[
-  {
-    "subscription_id": "sub_xyz789",
-    "employer_ids_count": 2,
-    "events": ["risk_tier_change"],
-    "status": "active",
-    "created_at": "2026-03-20T14:00:00Z"
+{
+  "data": [
+    {
+      "subscription_id": "sub_xyz789",
+      "employer_ids_count": 2,
+      "events": ["risk_tier_change"],
+      "status": "active",
+      "created_at": "2026-03-20T14:00:00Z"
+    }
+  ],
+  "pagination": {
+    "page": 1,
+    "per_page": 25,
+    "total": 3,
+    "total_pages": 1
   }
-]
+}
 ```
 
 ---
 
+#### PATCH /v1/subscriptions/{id} — Update Subscription
+
+<!-- v6.1: was missing — customers had to delete and recreate (losing signing_secret) to change employer_ids -->
+
+```
+PATCH /v1/subscriptions/{sub_xyz789}
+```
+
+Requires scope: `subscriptions:manage`.
+
+Request body (all fields optional — only provided fields are updated):
+
+```json
+{
+  "employer_ids": ["a1b2c3d4-...", "e5f6a7b8-...", "new-id-..."],
+  "events": ["risk_tier_change"],
+  "callback_url": "https://yourapp.com/webhooks/v2/compliance",
+  "status": "paused"
+}
+```
+
+Response:
+
+```json
+{
+  "subscription_id": "sub_xyz789",
+  "employer_ids_count": 3,
+  "events": ["risk_tier_change"],
+  "callback_url": "https://yourapp.com/webhooks/v2/compliance",
+  "status": "paused",
+  "updated_at": "2026-03-28T10:30:00Z"
+}
+```
+
+Notes:
+- The `signing_secret` is **not** regenerated on PATCH — this is the whole point. Use DELETE + POST to rotate the secret.
+- `employer_ids` replaces the full list (not a merge). Send the complete set.
+- `status` accepts `"active"` or `"paused"`. Paused subscriptions retain their config but skip webhook delivery.
+
+---
+
 #### DELETE /v1/subscriptions/{id} — Unsubscribe
+
+Requires scope: `subscriptions:manage`. <!-- v6.1 -->
 
 ```
 DELETE /v1/subscriptions/{sub_xyz789}
 ```
 
 Returns `204 No Content`. The subscription is soft-deleted and webhook delivery stops immediately.
+
+---
+
+### 8.5 Dashboard Key Management Endpoints
+
+<!-- v6.1: These were referenced in Section 5.3 (signup flow) but never formally specified
+     with request/response schemas in Section 8. Now fully documented. -->
+
+Dashboard endpoints use cookie-based JWT sessions (not `X-Api-Key`). All require an authenticated session with the `admin` or key-owner role. CSRF token required (see 6.2).
+
+#### GET /dashboard/keys — List API Keys
+
+```
+GET /dashboard/keys
+```
+
+Response:
+
+```json
+{
+  "data": [
+    {
+      "key_id": "kid_abc123",
+      "name": "Production key",
+      "key_prefix": "sk_live_abc1...",
+      "status": "active",
+      "scopes": ["employer:read", "batch:write"],
+      "monthly_limit": 10000,
+      "current_usage": 342,
+      "expires_at": "2026-09-20T00:00:00Z",
+      "created_at": "2026-03-20T14:00:00Z"
+    }
+  ],
+  "pagination": {
+    "page": 1,
+    "per_page": 25,
+    "total": 2,
+    "total_pages": 1
+  }
+}
+```
+
+Note: The raw key value is **never** returned after initial creation (finding #22).
+
+---
+
+#### POST /dashboard/keys — Generate New API Key
+
+```
+POST /dashboard/keys
+```
+
+Request body:
+
+```json
+{
+  "name": "CI/CD key",
+  "scopes": ["employer:read", "batch:write"],
+  "monthly_limit": 5000,
+  "expires_in_days": 180
+}
+```
+
+Response (key shown **once**, never retrievable again):
+
+```json
+{
+  "key_id": "kid_def456",
+  "raw_key": "sk_live_def456...",
+  "name": "CI/CD key",
+  "scopes": ["employer:read", "batch:write"],
+  "monthly_limit": 5000,
+  "expires_at": "2026-09-17T00:00:00Z",
+  "message": "Store this key securely. It will not be shown again."
+}
+```
+
+---
+
+#### POST /dashboard/keys/{key_id}/rotate — Rotate Key
+
+```
+POST /dashboard/keys/{key_id}/rotate
+```
+
+Initiates NIST-compliant 48-hour rotation window. The old key continues working during the overlap.
+
+Response (new key shown **once**):
+
+```json
+{
+  "new_key_id": "kid_ghi789",
+  "raw_key": "sk_live_ghi789...",
+  "old_key_id": "kid_def456",
+  "old_key_status": "rotating_out",
+  "old_key_expires_at": "2026-03-30T14:00:00Z",
+  "message": "Old key will continue working for 48 hours. Store the new key securely."
+}
+```
+
+---
+
+#### DELETE /dashboard/keys/{key_id} — Revoke Key
+
+```
+DELETE /dashboard/keys/{key_id}
+```
+
+Returns `204 No Content`. Key is immediately revoked (status set to `revoked`). Logged to `api_key_audit_log` (finding #29).
 
 ---
 
@@ -2825,7 +3584,7 @@ import asyncpg, asyncio, os
 async def check():
     con = await asyncpg.connect(os.environ['PG_DSN'])
     row = await con.fetchrow("""
-        SELECT completed_at, status, error_msg
+        SELECT completed_at, status, error_message
         FROM pipeline_runs ORDER BY started_at DESC LIMIT 1
     """)
     await con.close()
@@ -2834,7 +3593,7 @@ async def check():
         send_alert('No pipeline runs recorded.')
         return
     if row['status'] != 'success':
-        send_alert(f"Last pipeline run failed: {row['status']} — {row['error_msg']}")
+        send_alert(f"Last pipeline run failed: {row['status']} — {row['error_message']}")
         return
     from datetime import datetime, timedelta, timezone
     if row['completed_at'] < datetime.now(timezone.utc) - timedelta(hours=26):
@@ -2979,7 +3738,7 @@ ORDER BY willful_count DESC, total_penalties DESC LIMIT 50;
 - FMCSA address parsing + gold-layer entity matching
 - GET /v1/employers/{employer_id}/risk-history endpoint (snapshot queries)
 - POST /v1/subscriptions webhook system (risk_tier_change events, HMAC-SHA256 signed)
-- GET/DELETE /v1/subscriptions management endpoints
+- GET/PATCH/DELETE /v1/subscriptions management endpoints
 - Splink model drift monitoring baseline (precision/recall vs labeled holdout)
 - flock coordination between pipeline and backup crons
 - Disk space monitoring cron
