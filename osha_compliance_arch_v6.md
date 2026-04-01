@@ -69,6 +69,11 @@
 | v6.1 | High | Splink cluster mapping uses snapshot of previous clusters | 4.8 |
 | v6.1 | High | db.py log_error function + CLI entry point added | 3.1 |
 | v6.1 | High | PATCH /v1/subscriptions/{id} update endpoint | 8.4 |
+| v6.1 | High | Pagination envelopes on list endpoints (inspections, subscriptions) | 8.4 |
+| v6.1 | High | Dashboard key management endpoints formally specified | 8.5 |
+| v6.1 | High | Deploy rollback uses previous image tag instead of recreating same failing image | 6.2 |
+| v6.1 | High | Health check runs immediately after pipeline (was 6h blind spot) | 6.2 |
+| v6.1 | High | Cron alerting wrapper (cron_alert.sh) actually implemented | 6.2 |
 
 ---
 
@@ -1956,15 +1961,19 @@ On the pipeline server:
 ```bash
 # crontab -e (pipeline server)
 # v6: finding #55 — flock prevents overlap
-0  2 * * *     flock -n /var/lock/pipeline.lock /opt/employer-compliance/run_pipeline.sh >> /var/log/pipeline.log 2>&1
-30 8 * * *     python /opt/employer-compliance/pipeline/check_health.py
-0  * * * *     python /opt/employer-compliance/pipeline/rotate_keys.py
+# v6.1: Run health check immediately after pipeline (was 8:30am — 6h blind spot).
+#        Keep 8:30am check as safety net for non-pipeline failures.
+# v6.1: finding #57 actually implemented — every cron job wrapped with cron_alert.sh.
+#        Previous version had the comment but no actual alerting on any line.
+
+0  2 * * *     /opt/employer-compliance/cron_alert.sh "pipeline" flock -n /var/lock/pipeline.lock /opt/employer-compliance/run_pipeline.sh; /opt/employer-compliance/cron_alert.sh "health-check" python /opt/employer-compliance/pipeline/check_health.py
+30 8 * * *     /opt/employer-compliance/cron_alert.sh "health-check" python /opt/employer-compliance/pipeline/check_health.py
+0  * * * *     /opt/employer-compliance/cron_alert.sh "key-rotation" python /opt/employer-compliance/pipeline/rotate_keys.py
 # v6: finding #55 — flock on backup too
-0  4 * * *     flock -n /var/lock/backup.lock /opt/employer-compliance/backup.sh >> /var/log/backup.log 2>&1
-0  3 * * 0     [ $(date +\%d) -le 7 ] && /opt/employer-compliance/compact_bronze.sh
+0  4 * * *     /opt/employer-compliance/cron_alert.sh "backup" flock -n /var/lock/backup.lock /opt/employer-compliance/backup.sh
+0  3 * * 0     [ $(date +\%d) -le 7 ] && /opt/employer-compliance/cron_alert.sh "compact-bronze" /opt/employer-compliance/compact_bronze.sh
 # v6: finding #56 — disk space monitoring
-0  */6 * * *   /opt/employer-compliance/check_disk.sh
-# v6: finding #57 — all cron jobs wrapped with alerting (|| curl alert webhook)
+0  */6 * * *   /opt/employer-compliance/cron_alert.sh "disk-check" /opt/employer-compliance/check_disk.sh
 ```
 
 ### Backup Script
@@ -2022,14 +2031,24 @@ jobs:
         uses: webfactory/ssh-agent@v0.9.0
         with:
           ssh-private-key: ${{ secrets.HETZNER_SSH_KEY }}
+      # v6.1: Fixed rollback — previous version ran `docker compose up -d --force-recreate`
+      # which recreated the SAME failing image. Now we record the current (known-good)
+      # image tag before deploying, and revert to it on health check failure.
       - run: |
+          PREV_TAG=$(ssh deploy@api-server "cd /opt/employer-compliance && \
+            cat .current_image_tag 2>/dev/null || echo 'none'")
+          NEW_TAG=${{ github.sha }}
           ssh deploy@api-server "cd /opt/employer-compliance && \
-            docker compose pull && \
-            docker compose up -d --remove-orphans"
-          # v6: finding #61 — post-deploy health check
+            IMAGE_TAG=${NEW_TAG} docker compose pull && \
+            IMAGE_TAG=${NEW_TAG} docker compose up -d --remove-orphans"
+          # v6: finding #61 — post-deploy health check with actual rollback
           sleep 5
-          ssh deploy@api-server "curl -sf http://localhost:8000/v1/health || \
-            (docker compose up -d --force-recreate && exit 1)"
+          ssh deploy@api-server "curl -sf http://localhost:8000/v1/health && \
+            echo '${NEW_TAG}' > /opt/employer-compliance/.current_image_tag || \
+            (echo 'Health check failed — rolling back to ${PREV_TAG}' && \
+             cd /opt/employer-compliance && \
+             IMAGE_TAG=${PREV_TAG} docker compose up -d --remove-orphans && \
+             exit 1)"
 ```
 
 ### Disk Space Monitor
@@ -2044,6 +2063,33 @@ if [ "$USAGE" -gt 80 ]; then
     -d "{\"text\": \"DISK WARNING: /data is ${USAGE}% full on $(hostname)\"}"
 fi
 ```
+
+### Cron Alerting Wrapper
+
+<!-- v6.1: finding #57 was claimed but never implemented.
+     The crontab comment said "all cron jobs wrapped with alerting" but no actual
+     alerting wrapper existed. This script is what every cron entry now calls. -->
+
+```bash
+#!/bin/bash
+# /opt/employer-compliance/cron_alert.sh
+# Usage: cron_alert.sh <job-name> <command...>
+# Runs the command; on non-zero exit, POSTs failure alert to Slack/webhook.
+
+JOB_NAME="$1"; shift
+"$@" >> "/var/log/${JOB_NAME}.log" 2>&1
+EXIT_CODE=$?
+
+if [ $EXIT_CODE -ne 0 ]; then
+  curl -sf -X POST "$ALERT_WEBHOOK_URL" \
+    -H 'Content-Type: application/json' \
+    -d "{\"text\": \"CRON FAILED: ${JOB_NAME} exited ${EXIT_CODE} on $(hostname) at $(date -u +%Y-%m-%dT%H:%M:%SZ)\"}"
+fi
+
+exit $EXIT_CODE
+```
+
+`ALERT_WEBHOOK_URL` is set in the container's environment (same variable used by `check_disk.sh`). Points to a Slack incoming webhook or generic webhook endpoint.
 
 ---
 
@@ -2536,31 +2582,41 @@ GET /v1/employers/{employer_id}/inspections
 
 The response includes the header `X-Billing-Note: not-metered`. Inspection data is public record; charging for it adds friction without revenue justification. This endpoint reads from the `inspection_history` Postgres table, which is synced nightly from DuckDB silver.
 
+<!-- v6.1: Response wrapped in pagination envelope — was raw array with no metadata -->
+
 Response:
 
 ```json
-[
-  {
-    "activity_nr": "1234567",
-    "inspection_date": "2024-08-14",
-    "insp_type_label": "Complaint — formal",
-    "agency": "OSHA",
-    "violations": [
-      {
-        "viol_type": "W",
-        "standard": "1926.501",
-        "final_penalty": 15000,
-        "issuance_date": "2024-09-20"
-      },
-      {
-        "viol_type": "S",
-        "standard": "1926.503",
-        "final_penalty": 8500,
-        "issuance_date": "2024-09-20"
-      }
-    ]
+{
+  "data": [
+    {
+      "activity_nr": "1234567",
+      "inspection_date": "2024-08-14",
+      "insp_type_label": "Complaint — formal",
+      "agency": "OSHA",
+      "violations": [
+        {
+          "viol_type": "W",
+          "standard": "1926.501",
+          "final_penalty": 15000,
+          "issuance_date": "2024-09-20"
+        },
+        {
+          "viol_type": "S",
+          "standard": "1926.503",
+          "final_penalty": 8500,
+          "issuance_date": "2024-09-20"
+        }
+      ]
+    }
+  ],
+  "pagination": {
+    "page": 1,
+    "per_page": 25,
+    "total": 47,
+    "total_pages": 2
   }
-]
+}
 ```
 
 ---
@@ -2845,22 +2901,33 @@ X-Signature: sha256=<HMAC-SHA256 of body using signing_secret>
 
 #### GET /v1/subscriptions — List Subscriptions
 
+<!-- v6.1: Added pagination params and envelope — was raw array -->
+
 ```
 GET /v1/subscriptions
+  ?page=1&per_page=25
 ```
 
 Response:
 
 ```json
-[
-  {
-    "subscription_id": "sub_xyz789",
-    "employer_ids_count": 2,
-    "events": ["risk_tier_change"],
-    "status": "active",
-    "created_at": "2026-03-20T14:00:00Z"
+{
+  "data": [
+    {
+      "subscription_id": "sub_xyz789",
+      "employer_ids_count": 2,
+      "events": ["risk_tier_change"],
+      "status": "active",
+      "created_at": "2026-03-20T14:00:00Z"
+    }
+  ],
+  "pagination": {
+    "page": 1,
+    "per_page": 25,
+    "total": 3,
+    "total_pages": 1
   }
-]
+}
 ```
 
 ---
@@ -2913,6 +2980,115 @@ DELETE /v1/subscriptions/{sub_xyz789}
 ```
 
 Returns `204 No Content`. The subscription is soft-deleted and webhook delivery stops immediately.
+
+---
+
+### 8.5 Dashboard Key Management Endpoints
+
+<!-- v6.1: These were referenced in Section 5.3 (signup flow) but never formally specified
+     with request/response schemas in Section 8. Now fully documented. -->
+
+Dashboard endpoints use cookie-based JWT sessions (not `X-Api-Key`). All require an authenticated session with the `admin` or key-owner role. CSRF token required (see 6.2).
+
+#### GET /dashboard/keys — List API Keys
+
+```
+GET /dashboard/keys
+```
+
+Response:
+
+```json
+{
+  "data": [
+    {
+      "key_id": "kid_abc123",
+      "name": "Production key",
+      "key_prefix": "sk_live_abc1...",
+      "status": "active",
+      "scopes": ["employer:read", "batch:write"],
+      "monthly_limit": 10000,
+      "current_usage": 342,
+      "expires_at": "2026-09-20T00:00:00Z",
+      "created_at": "2026-03-20T14:00:00Z"
+    }
+  ],
+  "pagination": {
+    "page": 1,
+    "per_page": 25,
+    "total": 2,
+    "total_pages": 1
+  }
+}
+```
+
+Note: The raw key value is **never** returned after initial creation (finding #22).
+
+---
+
+#### POST /dashboard/keys — Generate New API Key
+
+```
+POST /dashboard/keys
+```
+
+Request body:
+
+```json
+{
+  "name": "CI/CD key",
+  "scopes": ["employer:read", "batch:write"],
+  "monthly_limit": 5000,
+  "expires_in_days": 180
+}
+```
+
+Response (key shown **once**, never retrievable again):
+
+```json
+{
+  "key_id": "kid_def456",
+  "raw_key": "sk_live_def456...",
+  "name": "CI/CD key",
+  "scopes": ["employer:read", "batch:write"],
+  "monthly_limit": 5000,
+  "expires_at": "2026-09-17T00:00:00Z",
+  "message": "Store this key securely. It will not be shown again."
+}
+```
+
+---
+
+#### POST /dashboard/keys/{key_id}/rotate — Rotate Key
+
+```
+POST /dashboard/keys/{key_id}/rotate
+```
+
+Initiates NIST-compliant 48-hour rotation window. The old key continues working during the overlap.
+
+Response (new key shown **once**):
+
+```json
+{
+  "new_key_id": "kid_ghi789",
+  "raw_key": "sk_live_ghi789...",
+  "old_key_id": "kid_def456",
+  "old_key_status": "rotating_out",
+  "old_key_expires_at": "2026-03-30T14:00:00Z",
+  "message": "Old key will continue working for 48 hours. Store the new key securely."
+}
+```
+
+---
+
+#### DELETE /dashboard/keys/{key_id} — Revoke Key
+
+```
+DELETE /dashboard/keys/{key_id}
+```
+
+Returns `204 No Content`. Key is immediately revoked (status set to `revoked`). Logged to `api_key_audit_log` (finding #29).
 
 ---
 
