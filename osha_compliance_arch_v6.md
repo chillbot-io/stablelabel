@@ -553,38 +553,45 @@ CREATE TABLE employer_profile (
     naics_sector            TEXT,
 
     -- OSHA
-    osha_inspections_5yr    INTEGER DEFAULT 0,
-    osha_violations_5yr     INTEGER DEFAULT 0,
-    osha_serious_willful    INTEGER DEFAULT 0,
-    osha_total_penalties    NUMERIC(12,2) DEFAULT 0,
-    osha_open_date_latest   DATE,
-    osha_avg_gravity        NUMERIC(4,2),
+    -- v6.1: Column names aligned with risk tier logic (4.7), API responses (8.3),
+    -- risk_snapshots table, and test cases. Previous schema used shorter names
+    -- (osha_inspections_5yr) that didn't match code (osha_inspection_count_5yr).
+    osha_inspection_count_5yr   INTEGER DEFAULT 0,
+    osha_violation_count_5yr    INTEGER DEFAULT 0,
+    osha_willful_count_5yr      INTEGER DEFAULT 0,  -- v6.1: split from osha_serious_willful; any willful = HIGH tier
+    osha_repeat_count_5yr       INTEGER DEFAULT 0,  -- v6.1: split from osha_serious_willful; >= 3 repeat = HIGH tier
+    osha_serious_count_5yr      INTEGER DEFAULT 0,  -- serious (non-willful, non-repeat) violations
+    osha_penalty_total_5yr      NUMERIC(12,2) DEFAULT 0,
+    osha_open_date_latest       DATE,
+    osha_avg_gravity            NUMERIC(4,2),
+    osha_violation_count_1yr    INTEGER DEFAULT 0,  -- v6.1: needed by trend signal logic
+    osha_violation_count_3yr    INTEGER DEFAULT 0,  -- v6.1: needed by trend signal logic
 
     -- WHD
-    whd_cases_5yr           INTEGER DEFAULT 0,
-    whd_backwages_total     NUMERIC(12,2) DEFAULT 0,
-    whd_ee_violated_total   INTEGER DEFAULT 0,
+    whd_violation_count_5yr     INTEGER DEFAULT 0,  -- v6.1: was whd_cases_5yr
+    whd_backwages_total         NUMERIC(12,2) DEFAULT 0,
+    whd_ee_violated_total       INTEGER DEFAULT 0,
 
     -- MSHA
-    msha_violations_5yr     INTEGER DEFAULT 0,
-    msha_assessed_penalties NUMERIC(12,2) DEFAULT 0,
-    msha_mine_status        TEXT,
+    msha_violation_count_5yr    INTEGER DEFAULT 0,  -- v6.1: was msha_violations_5yr
+    msha_assessed_penalties     NUMERIC(12,2) DEFAULT 0,
+    msha_mine_status            TEXT,
 
     -- EPA ECHO
-    epa_qtrs_noncompliance  INTEGER DEFAULT 0,
-    epa_compliance_status   TEXT,
-    epa_permits             TEXT[],
+    epa_qtrs_noncompliance      INTEGER DEFAULT 0,
+    epa_compliance_status       TEXT,
+    epa_permits                 TEXT[],
 
     -- FMCSA
-    fmcsa_dot_number        TEXT,
-    fmcsa_basics            JSONB,          -- {category: percentile, ...}
+    fmcsa_dot_number            TEXT,
+    fmcsa_basics                JSONB,          -- {category: percentile, ...}
 
     -- OFCCP
-    ofccp_evaluations       INTEGER DEFAULT 0,
-    ofccp_violations_found  BOOLEAN DEFAULT FALSE,
+    ofccp_evaluations           INTEGER DEFAULT 0,
+    ofccp_violation_count_5yr   INTEGER DEFAULT 0,  -- v6.1: was BOOLEAN ofccp_violations_found; risk tier logic uses integer comparison
 
     -- NLRB
-    nlrb_cases_5yr          INTEGER DEFAULT 0,
+    nlrb_cases_5yr              INTEGER DEFAULT 0,
     nlrb_case_types         TEXT[],
 
     -- OFLC
@@ -625,7 +632,7 @@ FROM employer_profile
 ORDER BY employer_id, snapshot_date DESC;
 ```
 
-**Risk tier boundary note (finding #34):** The rule engine must not leave a gap between MODERATE and HIGH. Specifically: an employer with 1 inspection and >= 10 violations in that single inspection MUST be caught. The rule `osha_serious_willful >= 3 OR (osha_inspections_5yr >= 1 AND osha_violations_5yr >= 10)` closes this gap. Encode this in `dbt/models/risk_tier.sql`, not in application code.
+**Risk tier boundary note (finding #34):** The rule engine must not leave a gap between MODERATE and HIGH. Specifically: an employer with 1 inspection and >= 10 violations in that single inspection MUST be caught. The rule `osha_willful_count_5yr >= 1 OR osha_repeat_count_5yr >= 3 OR (osha_inspection_count_5yr >= 1 AND osha_violation_count_5yr >= 10)` closes this gap. Encode this in `dbt/models/risk_tier.sql`, not in application code.
 
 #### 3.4.3 cluster_id_mapping
 
