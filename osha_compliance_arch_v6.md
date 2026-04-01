@@ -84,6 +84,10 @@
 | v6.1 | Medium | compact_bronze.sh implementation added | 6.2 |
 | v6.1 | Medium | Batch response envelope standardized ("results" → "data") | 8.4 |
 | v6.1 | Low | sync_to_postgres.py renamed to sync.py (matches code block) | 4.2 |
+| v6.1 | Medium | Missing env vars added to .env.example (ALERT_WEBHOOK_URL, DUCKDB_PATH, DATABASE_URL) | 6.1 |
+| v6.1 | High | Snapshot retention script (prune_snapshots.sh) + cron job | 6.2 |
+| v6.1 | High | batch_jobs table + R2 storage scheme for async batch results | 3.4 |
+| v6.1 | Medium | reset_monthly_usage.py implementation + cron job (1st of month) | 5.6 |
 
 ---
 
@@ -942,6 +946,42 @@ CREATE TABLE risk_snapshots (
 
 CREATE INDEX idx_risk_snap_employer ON risk_snapshots (employer_id, snapshot_date DESC);
 ```
+
+#### 3.4.18 batch_jobs
+
+<!-- v6.1: Async batch endpoints (POST /v1/employers/batch, GET /v1/jobs/{job_id}) referenced
+     job tracking but no Postgres table or R2 storage scheme was defined. -->
+
+Tracks async batch job state. Jobs with >25 items run asynchronously; results are stored in R2.
+
+```sql
+CREATE TABLE batch_jobs (
+    job_id          TEXT PRIMARY KEY,       -- format: "job_" + gen_random_uuid()
+    customer_id     INTEGER REFERENCES customers(id),
+    status          TEXT NOT NULL DEFAULT 'processing'
+                    CHECK (status IN ('processing', 'completed', 'failed')),
+    items_total     INTEGER NOT NULL,
+    items_completed INTEGER DEFAULT 0,
+    items_found     INTEGER DEFAULT 0,
+    result_url      TEXT,                   -- R2 presigned URL, set on completion
+    expires_at      TIMESTAMP,             -- results expire after 24h
+    error_message   TEXT,
+    created_at      TIMESTAMP DEFAULT NOW(),
+    completed_at    TIMESTAMP
+);
+
+CREATE INDEX idx_batch_jobs_customer ON batch_jobs (customer_id, created_at DESC);
+CREATE INDEX idx_batch_jobs_status ON batch_jobs (status) WHERE status = 'processing';
+```
+
+**R2 storage scheme:**
+- Bucket: `compliance-batch-results`
+- Key pattern: `jobs/{job_id}.json`
+- Lifecycle: R2 lifecycle rule auto-deletes objects after 24 hours
+- The `result_url` stored in `batch_jobs` is a presigned R2 URL valid for 24h
+- Example: `https://r2.yourdomain.com/compliance-batch-results/jobs/job_abc123.json`
+
+**Job ID format:** `"job_" + UUID v4` (e.g., `job_a1b2c3d4-e5f6-7890-abcd-ef1234567890`). The `job_` prefix makes IDs self-documenting in logs and URLs.
 
 ---
 
@@ -1930,6 +1970,28 @@ async def expire_rotating_keys():
 asyncio.run(expire_rotating_keys())
 ```
 
+### 5.6 Monthly Usage Reset
+
+<!-- v6.1: reset_monthly_usage was referenced in quota enforcement (finding #32) but had
+     no cron entry or implementation. Runs 1st of each month at midnight. -->
+
+```python
+# pipeline/reset_monthly_usage.py — runs 1st of each month via cron
+import asyncpg, asyncio, os
+
+async def reset():
+    pool = await asyncpg.create_pool(os.environ['DATABASE_URL'])
+    async with pool.acquire() as con:
+        result = await con.execute("""
+            UPDATE api_keys SET current_usage = 0
+            WHERE current_usage > 0
+        """)
+        print(f'Monthly usage reset: {result}')
+    await pool.close()
+
+asyncio.run(reset())
+```
+
 ---
 
 ## 6. Technology Stack
@@ -1972,7 +2034,10 @@ redis==5.*
 ### 6.1 .env.example
 
 ```bash
-# .env.example — all secrets required before starting the application
+# .env.example — all secrets and config required before starting the application
+# v6.1: Added ALERT_WEBHOOK_URL, DUCKDB_PATH, DATABASE_URL (were referenced in code but missing here)
+
+# --- API Server ---
 PG_DSN=postgresql://api:yourpassword@localhost:6432/compliance  # localhost = pgBouncer on same host; sslmode not needed (v6.1 note)
 STRIPE_SECRET_KEY=sk_live_...
 STRIPE_WEBHOOK_SECRET=whsec_...
@@ -1983,8 +2048,15 @@ JWT_PRIVATE_KEY_PATH=/etc/employer-compliance/jwt_private.pem
 JWT_PUBLIC_KEY_PATH=/etc/employer-compliance/jwt_public.pem
 # Generate keypair: openssl genrsa -out jwt_private.pem 2048 && openssl rsa -in jwt_private.pem -pubout -out jwt_public.pem
 ENV=production
+
+# --- Pipeline Server ---
+DATABASE_URL=postgresql://pipeline_user:password@10.0.0.1:5432/stablelabel?sslmode=require
+DUCKDB_PATH=/data/duckdb/employer_compliance.duckdb
 DOL_API_KEY=<from dataportal.dol.gov>
 SAM_API_KEY=<from sam.gov/content/entity-registration>
+
+# --- Shared (both servers) ---
+ALERT_WEBHOOK_URL=https://hooks.slack.com/services/T.../B.../...   # Slack incoming webhook for cron/health alerts
 ```
 
 Add `.env` to `.gitignore`. On servers: store in `/opt/employer-compliance/.env`, `chmod 600`.
@@ -2261,6 +2333,10 @@ On the pipeline server:
 0  3 * * 0     [ $(date +\%d) -le 7 ] && /opt/employer-compliance/cron_alert.sh "compact-bronze" /opt/employer-compliance/compact_bronze.sh
 # v6: finding #56 — disk space monitoring
 0  */6 * * *   /opt/employer-compliance/cron_alert.sh "disk-check" /opt/employer-compliance/check_disk.sh
+# v6.1: snapshot retention (policy was in Section 13.2 but had no cron/script)
+0  5 1 * *     /opt/employer-compliance/cron_alert.sh "prune-snapshots" /opt/employer-compliance/prune_snapshots.sh
+# v6.1: monthly quota reset (referenced in finding #32 docs but had no cron entry)
+0  0 1 * *     /opt/employer-compliance/cron_alert.sh "reset-usage" python /opt/employer-compliance/pipeline/reset_monthly_usage.py
 ```
 
 ### Backup Script
@@ -2404,6 +2480,53 @@ done
 
 AFTER=$(du -sh "$BRONZE_DIR" | cut -f1)
 echo "Bronze compaction complete: ${BEFORE} -> ${AFTER}"
+```
+
+### Snapshot Retention
+
+<!-- v6.1: Retention policy was defined in Section 13.2 (risks) but had no implementation script or cron job. -->
+
+```bash
+#!/bin/bash
+# /opt/employer-compliance/prune_snapshots.sh
+# Runs monthly (1st of month, via cron). Implements tiered retention:
+#   - Daily snapshots: keep 90 days
+#   - Weekly snapshots: keep 1 year (keep Sunday snapshots beyond 90 days)
+#   - Monthly snapshots: keep 3 years (keep 1st-of-month beyond 1 year)
+# Operates on the risk_snapshots Postgres table.
+
+set -euo pipefail
+
+DATABASE_URL="${DATABASE_URL:?DATABASE_URL must be set}"
+
+echo "Pruning risk_snapshots (tiered retention)..."
+
+psql "$DATABASE_URL" <<'SQL'
+BEGIN;
+
+-- Delete daily snapshots older than 90 days, EXCEPT:
+--   - Sunday snapshots (weekly tier, kept for 1 year)
+--   - 1st-of-month snapshots (monthly tier, kept for 3 years)
+DELETE FROM risk_snapshots
+WHERE snapshot_date < CURRENT_DATE - INTERVAL '90 days'
+  AND EXTRACT(DOW FROM snapshot_date) != 0          -- not Sunday
+  AND EXTRACT(DAY FROM snapshot_date) != 1;          -- not 1st of month
+
+-- Delete weekly (Sunday) snapshots older than 1 year, EXCEPT 1st-of-month
+DELETE FROM risk_snapshots
+WHERE snapshot_date < CURRENT_DATE - INTERVAL '1 year'
+  AND EXTRACT(DOW FROM snapshot_date) = 0
+  AND EXTRACT(DAY FROM snapshot_date) != 1;
+
+-- Delete monthly (1st) snapshots older than 3 years
+DELETE FROM risk_snapshots
+WHERE snapshot_date < CURRENT_DATE - INTERVAL '3 years'
+  AND EXTRACT(DAY FROM snapshot_date) = 1;
+
+COMMIT;
+SQL
+
+echo "Snapshot pruning complete."
 ```
 
 `ALERT_WEBHOOK_URL` is set in the container's environment (same variable used by `check_disk.sh`). Points to a Slack incoming webhook or generic webhook endpoint.
