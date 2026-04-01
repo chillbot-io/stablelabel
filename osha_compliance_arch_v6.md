@@ -2038,7 +2038,9 @@ redis==5.*
 # v6.1: Added ALERT_WEBHOOK_URL, DUCKDB_PATH, DATABASE_URL (were referenced in code but missing here)
 
 # --- API Server ---
-PG_DSN=postgresql://api:yourpassword@localhost:6432/compliance  # localhost = pgBouncer on same host; sslmode not needed (v6.1 note)
+PG_PASSWORD=<postgres password for api user>             # referenced by docker-compose.api.yml
+MB_DB_PASS=<metabase postgres password>                  # referenced by docker-compose.api.yml
+PG_DSN=postgresql://api:${PG_PASSWORD}@localhost:6432/compliance  # localhost = pgBouncer on same host
 STRIPE_SECRET_KEY=sk_live_...
 STRIPE_WEBHOOK_SECRET=whsec_...
 RESEND_API_KEY=re_...
@@ -3073,6 +3075,8 @@ Response:
 
 `# v6: finding #49 — plural path /industries`
 
+Requires scope: `employer:read`. <!-- v6.1 -->
+
 ```
 GET /v1/industries/{naics4}
 ```
@@ -3118,6 +3122,8 @@ Successful response:
 #### GET /v1/industries/naics-codes — NAICS Code Lookup
 
 `# v6: NAICS lookup and validation endpoint`
+
+Requires scope: `employer:read`. <!-- v6.1 -->
 
 Helps callers discover valid NAICS codes before querying benchmarks.
 
@@ -3212,6 +3218,8 @@ Async response (>25 items):
 
 `# v6: async batch polling endpoint`
 
+Requires scope: `batch:write`. <!-- v6.1 -->
+
 ```
 GET /v1/jobs/{job_id}
 ```
@@ -3256,6 +3264,8 @@ On failure:
 
 #### POST /v1/employers/{employer_id}/feedback — User Feedback
 
+Requires scope: `employer:read`. <!-- v6.1 -->
+
 ```
 POST /v1/employers/{employer_id}/feedback
 ```
@@ -3272,9 +3282,21 @@ Request body:
 
 Inserts into the `feedback` table and sends an alert email to ops. No metering. The `type` field accepts: `incorrect_match`, `missing_data`, `wrong_employer`, `other`.
 
+Response (`201 Created`):
+
+```json
+{
+  "feedback_id": "f1b2c3d4-...",
+  "status": "received",
+  "message": "Thank you for your feedback. Our team will review it."
+}
+```
+
 ---
 
 #### GET /v1/health — System Health
+
+Public endpoint — no authentication required. <!-- v6.1 -->
 
 ```
 GET /v1/health
@@ -3354,6 +3376,8 @@ X-Signature: sha256=<HMAC-SHA256 of body using signing_secret>
 
 #### GET /v1/subscriptions — List Subscriptions
 
+Requires scope: `subscriptions:manage`. <!-- v6.1 -->
+
 <!-- v6.1: Added pagination params and envelope — was raw array -->
 
 ```
@@ -3427,6 +3451,8 @@ Notes:
 ---
 
 #### DELETE /v1/subscriptions/{id} — Unsubscribe
+
+Requires scope: `subscriptions:manage`. <!-- v6.1 -->
 
 ```
 DELETE /v1/subscriptions/{sub_xyz789}
@@ -3558,7 +3584,7 @@ import asyncpg, asyncio, os
 async def check():
     con = await asyncpg.connect(os.environ['PG_DSN'])
     row = await con.fetchrow("""
-        SELECT completed_at, status, error_msg
+        SELECT completed_at, status, error_message
         FROM pipeline_runs ORDER BY started_at DESC LIMIT 1
     """)
     await con.close()
@@ -3567,7 +3593,7 @@ async def check():
         send_alert('No pipeline runs recorded.')
         return
     if row['status'] != 'success':
-        send_alert(f"Last pipeline run failed: {row['status']} — {row['error_msg']}")
+        send_alert(f"Last pipeline run failed: {row['status']} — {row['error_message']}")
         return
     from datetime import datetime, timedelta, timezone
     if row['completed_at'] < datetime.now(timezone.utc) - timedelta(hours=26):
