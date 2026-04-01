@@ -79,6 +79,11 @@
 | v6.1 | Medium | Versioned migration strategy (migrate.py + schema_migrations table) | 3.4, 6.2 |
 | v6.1 | Medium | TLS assertion on pipeline DATABASE_URL (sslmode=require enforced) | 3.1 |
 | v6.1 | Medium | Scope enforcement matrix — every endpoint annotated with required scope | 5.2, 8.x |
+| v6.1 | High | dispatch_webhooks.py implementation added | 4.2 |
+| v6.1 | High | validate_sync.py implementation added | 4.2 |
+| v6.1 | Medium | compact_bronze.sh implementation added | 6.2 |
+| v6.1 | Medium | Batch response envelope standardized ("results" → "data") | 8.4 |
+| v6.1 | Low | sync_to_postgres.py renamed to sync.py (matches code block) | 4.2 |
 
 ---
 
@@ -1004,7 +1009,8 @@ dbt test  --project-dir dbt/ --profiles-dir dbt/ || { python pipeline/db.py fail
 python pipeline/entity_resolution.py
 
 # Step 6: Sync to Postgres (shadow-table swap)
-python pipeline/sync_to_postgres.py
+# v6.1: Fixed naming — was sync_to_postgres.py but code block defined sync.py
+python pipeline/sync.py
 
 # Step 7: Post-sync validation (v6: finding #5)
 python pipeline/validate_sync.py $RUN_ID || { python pipeline/db.py fail $RUN_ID 'Post-sync validation failed'; exit 1; }
@@ -1023,6 +1029,179 @@ echo "Pipeline run $RUN_ID complete (warnings: $ERRORS)"
 - **No SQLite (finding #9):** Pipeline run metadata writes directly to Postgres via `pipeline/db.py`. The `pipeline_runs` and `pipeline_errors` tables live in the `pipeline` schema, separate from the `public` schema the API reads.
 - **Post-sync validation (finding #5):** `validate_sync.py` queries DuckDB for expected row counts per source table, then queries Postgres for actual counts. A mismatch beyond 0.1% fails the run.
 - **Webhook dispatch (v6.1 fix):** Step 8 diffs `employer_profile` against `employer_profile_prev` — the old table retained during the shadow-table swap. Previous version renamed to `employer_profile_old` and dropped it immediately, making the diff impossible. Now the swap renames the old table to `employer_profile_prev` and keeps it alive. `dispatch_webhooks.py` drops `employer_profile_prev` after completing the diff. Any `risk_tier` change fires a webhook to registered subscribers.
+
+### 4.2.1 dispatch_webhooks.py
+
+<!-- v6.1: Was referenced in pipeline Step 8 and design notes but never implemented. -->
+
+```python
+"""
+pipeline/dispatch_webhooks.py — Diff risk tiers and fire webhooks to subscribers.
+Called as Step 8 of run_pipeline.sh: python pipeline/dispatch_webhooks.py $RUN_ID
+Drops employer_profile_prev when done (retained by shadow-table swap for this diff).
+"""
+
+import hashlib, hmac, json, sys, time
+import psycopg2
+import requests
+from pipeline.db import get_cursor
+
+MAX_RETRIES = 3
+BACKOFF = [10, 60, 300]  # seconds
+
+
+def diff_risk_tiers(cur):
+    """Find employers whose risk_tier changed between prev and current snapshot."""
+    cur.execute("""
+        SELECT c.employer_id, c.canonical_name, c.risk_tier AS new_tier,
+               p.risk_tier AS old_tier, c.snapshot_date
+        FROM employer_profile c
+        JOIN employer_profile_prev p USING (employer_id)
+        WHERE COALESCE(c.risk_tier, '') != COALESCE(p.risk_tier, '')
+    """)
+    return cur.fetchall()
+
+
+def find_subscribers(cur, employer_id: str):
+    """Find active subscriptions watching this employer_id."""
+    cur.execute("""
+        SELECT id, callback_url, signing_secret, events
+        FROM subscriptions
+        WHERE status = 'active'
+          AND %s = ANY(employer_ids)
+          AND 'risk_tier_change' = ANY(events)
+    """, (employer_id,))
+    return cur.fetchall()
+
+
+def deliver_webhook(callback_url: str, signing_secret: str, payload: dict) -> bool:
+    """POST signed payload to subscriber with retry + exponential backoff."""
+    body = json.dumps(payload).encode()
+    signature = hmac.new(signing_secret.encode(), body, hashlib.sha256).hexdigest()
+    headers = {
+        "Content-Type": "application/json",
+        "X-StableLabel-Signature": f"sha256={signature}",
+    }
+    for attempt in range(MAX_RETRIES):
+        try:
+            resp = requests.post(callback_url, data=body, headers=headers, timeout=10)
+            if resp.status_code < 300:
+                return True
+        except requests.RequestException:
+            pass
+        if attempt < MAX_RETRIES - 1:
+            time.sleep(BACKOFF[attempt])
+    return False
+
+
+def disable_subscription(cur, sub_id: str):
+    """Mark subscription as disabled after 3 consecutive delivery failures."""
+    cur.execute(
+        "UPDATE subscriptions SET status = 'disabled' WHERE id = %s",
+        (sub_id,),
+    )
+
+
+def main(run_id: str):
+    with get_cursor() as cur:
+        changes = diff_risk_tiers(cur)
+        dispatched, failed = 0, 0
+
+        for change in changes:
+            employer_id = str(change["employer_id"])
+            payload = {
+                "event": "risk_tier_change",
+                "employer_id": employer_id,
+                "canonical_name": change["canonical_name"],
+                "previous_risk_tier": change["old_tier"],
+                "new_risk_tier": change["new_tier"],
+                "snapshot_date": str(change["snapshot_date"]),
+                "details_url": f"/v1/employers/{employer_id}/risk-history",
+            }
+            subs = find_subscribers(cur, employer_id)
+            for sub in subs:
+                ok = deliver_webhook(sub["callback_url"], sub["signing_secret"], payload)
+                if ok:
+                    dispatched += 1
+                else:
+                    failed += 1
+                    disable_subscription(cur, str(sub["id"]))
+
+        # Clean up prev table now that diff is complete
+        cur.execute("DROP TABLE IF EXISTS employer_profile_prev")
+
+    print(f"Webhooks: {dispatched} delivered, {failed} failed (run {run_id})")
+
+
+if __name__ == "__main__":
+    main(sys.argv[1])
+```
+
+### 4.2.2 validate_sync.py
+
+<!-- v6.1: Was referenced in pipeline Step 7 and design notes but never implemented. -->
+
+```python
+"""
+pipeline/validate_sync.py — Post-sync validation (finding #5).
+Compares DuckDB source row counts to Postgres employer_profile.
+Fails the run if any source drifts by more than 0.1%.
+Usage: python pipeline/validate_sync.py $RUN_ID
+"""
+
+import os, sys
+import duckdb
+import psycopg2
+from psycopg2.extras import RealDictCursor
+
+DUCKDB_PATH = os.environ.get("DUCKDB_PATH", "/data/duckdb/employer_compliance.duckdb")
+DATABASE_URL = os.environ["DATABASE_URL"]
+DRIFT_THRESHOLD = 0.001  # 0.1%
+
+# Source tables in DuckDB gold layer that feed employer_profile
+GOLD_SOURCES = [
+    "employer_clusters",
+    "fmcsa_matched",
+    "ein_bridge",
+    "sam_entity_matches",
+]
+
+
+def main(run_id: str):
+    duck = duckdb.connect(DUCKDB_PATH, read_only=True)
+    pg = psycopg2.connect(DATABASE_URL, cursor_factory=RealDictCursor)
+
+    # Expected: count of distinct employer_ids across gold tables
+    expected = duck.execute(
+        "SELECT COUNT(DISTINCT employer_id) AS cnt FROM employer_clusters"
+    ).fetchone()[0]
+
+    # Actual: rows in Postgres employer_profile
+    with pg.cursor() as cur:
+        cur.execute("SELECT COUNT(*) AS cnt FROM employer_profile")
+        actual = cur.fetchone()["cnt"]
+
+    duck.close()
+    pg.close()
+
+    if expected == 0:
+        print(f"FAIL: DuckDB employer_clusters is empty — pipeline produced no data")
+        sys.exit(1)
+
+    drift = abs(expected - actual) / expected
+    if drift > DRIFT_THRESHOLD:
+        print(
+            f"FAIL: Row count drift {drift:.2%} exceeds {DRIFT_THRESHOLD:.1%} threshold. "
+            f"DuckDB: {expected}, Postgres: {actual}"
+        )
+        sys.exit(1)
+
+    print(f"OK: DuckDB={expected}, Postgres={actual}, drift={drift:.4%} (run {run_id})")
+
+
+if __name__ == "__main__":
+    main(sys.argv[1])
+```
 
 ### 4.3 FMCSA Ingestion
 
@@ -2197,6 +2376,36 @@ fi
 exit $EXIT_CODE
 ```
 
+### Bronze Compaction
+
+<!-- v6.1: compact_bronze.sh referenced in crontab but never defined. -->
+
+```bash
+#!/bin/bash
+# /opt/employer-compliance/compact_bronze.sh
+# Runs monthly (1st Sunday, via cron). Removes bronze partitions older than 90 days.
+# Bronze data is already backed up to R2 by backup.sh, so local copies beyond 90 days
+# are redundant. Keeps disk usage bounded on the pipeline server.
+
+set -euo pipefail
+
+BRONZE_DIR="/data/bronze"
+RETENTION_DAYS=90
+
+echo "Compacting bronze partitions older than ${RETENTION_DAYS} days..."
+
+BEFORE=$(du -sh "$BRONZE_DIR" | cut -f1)
+
+# Each source has dated subdirectories: /data/bronze/{source}/{YYYY-MM-DD}/
+find "$BRONZE_DIR" -mindepth 2 -maxdepth 2 -type d -mtime +${RETENTION_DAYS} | while read dir; do
+  echo "  Removing: $dir"
+  rm -rf "$dir"
+done
+
+AFTER=$(du -sh "$BRONZE_DIR" | cut -f1)
+echo "Bronze compaction complete: ${BEFORE} -> ${AFTER}"
+```
+
 `ALERT_WEBHOOK_URL` is set in the container's environment (same variable used by `check_disk.sh`). Points to a Slack incoming webhook or generic webhook endpoint.
 
 ---
@@ -2844,11 +3053,14 @@ Two modes based on batch size:
 }
 ```
 
+<!-- v6.1: Standardized response key from "results" to "data" for consistency
+     with inspections and subscriptions list endpoints. All list responses now use "data". -->
+
 Synchronous response (≤25 items):
 
 ```json
 {
-  "results": [
+  "data": [
     {"...match object...": ""},
     {"...match object...": ""}
   ],
